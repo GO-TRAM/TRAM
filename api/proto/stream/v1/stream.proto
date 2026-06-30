@@ -1,0 +1,76 @@
+syntax = "proto3";
+package api.proto.stream.v1;
+
+import "buf/validate/validate.proto";
+import "google/api/annotations.proto";
+
+option go_package = "codeberg.org/eljoth/stream/pkg/gen/go/stream/service/v1";
+
+//------------------------------------------------------------------------------
+// Domain definitions
+//------------------------------------------------------------------------------
+
+message Source {
+  string name = 1 [(buf.validate.field).string.min_len = 1];
+  string type = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+message Stage {
+  string name = 1 [(buf.validate.field).string.min_len = 1];
+  string type = 2 [(buf.validate.field).string.min_len = 1];
+  string from = 3;
+}
+
+message Sink {
+  string name = 1 [(buf.validate.field).string.min_len = 1];
+  string type = 2 [(buf.validate.field).string.min_len = 1];
+  string from = 3;
+}
+
+message Stream {
+  string name = 1 [(buf.validate.field).string.min_len = 1];
+  string type = 2 [(buf.validate.field).string.min_len = 1];
+  Source source = 3;
+  repeated Stage stages = 4;
+  repeated Sink sinks = 5 [(buf.validate.field).repeated.min_items = 1];
+}
+
+//------------------------------------------------------------------------------
+// Payload definitions
+//------------------------------------------------------------------------------
+
+message PutStreamRequest {
+  string name = 1;
+  string type = 2;
+}
+
+message PutStreamResponse {
+  string name = 1;
+}
+
+message GetStreamRequest {
+  string name = 1;
+}
+
+message GetStreamResponse {}
+
+message DeleteStreamRequest {
+  string name = 1;
+}
+
+message DeleteStreamResponse {}
+
+service StreamService {
+  rpc PutStream(PutStreamRequest) returns (PutStreamResponse) {
+    option (google.api.http) = {
+      put: "/v1/streams/name"
+      body: "*"
+    };
+  }
+  rpc GetStream(GetStreamRequest) returns (GetStreamResponse) {
+    option (google.api.http) = {get: "/v1/streams/{name}"};
+  }
+  rpc DeleteStream(DeleteStreamRequest) returns (DeleteStreamResponse) {
+    option (google.api.http) = {delete: "/v1/streams/{name}"};
+  }
+}
