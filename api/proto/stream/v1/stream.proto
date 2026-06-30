@@ -40,19 +40,20 @@ message Stream {
 //------------------------------------------------------------------------------
 
 message PutStreamRequest {
-  string name = 1;
-  string type = 2;
+  Stream stream = 1;
 }
 
 message PutStreamResponse {
-  string name = 1;
+  Stream stream = 1;
 }
 
 message GetStreamRequest {
   string name = 1;
 }
 
-message GetStreamResponse {}
+message GetStreamResponse {
+  Stream stream = 1;
+}
 
 message DeleteStreamRequest {
   string name = 1;
@@ -63,7 +64,7 @@ message DeleteStreamResponse {}
 service StreamService {
   rpc PutStream(PutStreamRequest) returns (PutStreamResponse) {
     option (google.api.http) = {
-      put: "/v1/streams/name"
+      put: "/v1/streams/{stream.name}"
       body: "*"
     };
   }

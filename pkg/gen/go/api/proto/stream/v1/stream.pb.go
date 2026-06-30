@@ -273,8 +273,7 @@ func (x *Stream) GetSinks() []*Sink {
 
 type PutStreamRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Type          string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
+	Stream        *Stream                `protobuf:"bytes,1,opt,name=stream,proto3" json:"stream,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -309,23 +308,16 @@ func (*PutStreamRequest) Descriptor() ([]byte, []int) {
 	return file_api_proto_stream_v1_stream_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *PutStreamRequest) GetName() string {
+func (x *PutStreamRequest) GetStream() *Stream {
 	if x != nil {
-		return x.Name
+		return x.Stream
 	}
-	return ""
-}
-
-func (x *PutStreamRequest) GetType() string {
-	if x != nil {
-		return x.Type
-	}
-	return ""
+	return nil
 }
 
 type PutStreamResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Stream        *Stream                `protobuf:"bytes,1,opt,name=stream,proto3" json:"stream,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -360,11 +352,11 @@ func (*PutStreamResponse) Descriptor() ([]byte, []int) {
 	return file_api_proto_stream_v1_stream_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *PutStreamResponse) GetName() string {
+func (x *PutStreamResponse) GetStream() *Stream {
 	if x != nil {
-		return x.Name
+		return x.Stream
 	}
-	return ""
+	return nil
 }
 
 type GetStreamRequest struct {
@@ -413,6 +405,7 @@ func (x *GetStreamRequest) GetName() string {
 
 type GetStreamResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Stream        *Stream                `protobuf:"bytes,1,opt,name=stream,proto3" json:"stream,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -445,6 +438,13 @@ func (x *GetStreamResponse) ProtoReflect() protoreflect.Message {
 // Deprecated: Use GetStreamResponse.ProtoReflect.Descriptor instead.
 func (*GetStreamResponse) Descriptor() ([]byte, []int) {
 	return file_api_proto_stream_v1_stream_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *GetStreamResponse) GetStream() *Stream {
+	if x != nil {
+		return x.Stream
+	}
+	return nil
 }
 
 type DeleteStreamRequest struct {
@@ -548,20 +548,20 @@ const file_api_proto_stream_v1_stream_proto_rawDesc = "" +
 	"\x04type\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04type\x123\n" +
 	"\x06source\x18\x03 \x01(\v2\x1b.api.proto.stream.v1.SourceR\x06source\x122\n" +
 	"\x06stages\x18\x04 \x03(\v2\x1a.api.proto.stream.v1.StageR\x06stages\x129\n" +
-	"\x05sinks\x18\x05 \x03(\v2\x19.api.proto.stream.v1.SinkB\b\xbaH\x05\x92\x01\x02\b\x01R\x05sinks\":\n" +
-	"\x10PutStreamRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
-	"\x04type\x18\x02 \x01(\tR\x04type\"'\n" +
-	"\x11PutStreamResponse\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"&\n" +
+	"\x05sinks\x18\x05 \x03(\v2\x19.api.proto.stream.v1.SinkB\b\xbaH\x05\x92\x01\x02\b\x01R\x05sinks\"G\n" +
+	"\x10PutStreamRequest\x123\n" +
+	"\x06stream\x18\x01 \x01(\v2\x1b.api.proto.stream.v1.StreamR\x06stream\"H\n" +
+	"\x11PutStreamResponse\x123\n" +
+	"\x06stream\x18\x01 \x01(\v2\x1b.api.proto.stream.v1.StreamR\x06stream\"&\n" +
 	"\x10GetStreamRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x13\n" +
-	"\x11GetStreamResponse\")\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"H\n" +
+	"\x11GetStreamResponse\x123\n" +
+	"\x06stream\x18\x01 \x01(\v2\x1b.api.proto.stream.v1.StreamR\x06stream\")\n" +
 	"\x13DeleteStreamRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x16\n" +
-	"\x14DeleteStreamResponse2\x81\x03\n" +
-	"\rStreamService\x12w\n" +
-	"\tPutStream\x12%.api.proto.stream.v1.PutStreamRequest\x1a&.api.proto.stream.v1.PutStreamResponse\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\x1a\x10/v1/streams/name\x12v\n" +
+	"\x14DeleteStreamResponse2\x8b\x03\n" +
+	"\rStreamService\x12\x80\x01\n" +
+	"\tPutStream\x12%.api.proto.stream.v1.PutStreamRequest\x1a&.api.proto.stream.v1.PutStreamResponse\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\x1a\x19/v1/streams/{stream.name}\x12v\n" +
 	"\tGetStream\x12%.api.proto.stream.v1.GetStreamRequest\x1a&.api.proto.stream.v1.GetStreamResponse\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/streams/{name}\x12\x7f\n" +
 	"\fDeleteStream\x12(.api.proto.stream.v1.DeleteStreamRequest\x1a).api.proto.stream.v1.DeleteStreamResponse\"\x1a\x82\xd3\xe4\x93\x02\x14*\x12/v1/streams/{name}B9Z7codeberg.org/eljoth/stream/pkg/gen/go/stream/service/v1b\x06proto3"
 
@@ -594,17 +594,20 @@ var file_api_proto_stream_v1_stream_proto_depIdxs = []int32{
 	0, // 0: api.proto.stream.v1.Stream.source:type_name -> api.proto.stream.v1.Source
 	1, // 1: api.proto.stream.v1.Stream.stages:type_name -> api.proto.stream.v1.Stage
 	2, // 2: api.proto.stream.v1.Stream.sinks:type_name -> api.proto.stream.v1.Sink
-	4, // 3: api.proto.stream.v1.StreamService.PutStream:input_type -> api.proto.stream.v1.PutStreamRequest
-	6, // 4: api.proto.stream.v1.StreamService.GetStream:input_type -> api.proto.stream.v1.GetStreamRequest
-	8, // 5: api.proto.stream.v1.StreamService.DeleteStream:input_type -> api.proto.stream.v1.DeleteStreamRequest
-	5, // 6: api.proto.stream.v1.StreamService.PutStream:output_type -> api.proto.stream.v1.PutStreamResponse
-	7, // 7: api.proto.stream.v1.StreamService.GetStream:output_type -> api.proto.stream.v1.GetStreamResponse
-	9, // 8: api.proto.stream.v1.StreamService.DeleteStream:output_type -> api.proto.stream.v1.DeleteStreamResponse
-	6, // [6:9] is the sub-list for method output_type
-	3, // [3:6] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	3, // 3: api.proto.stream.v1.PutStreamRequest.stream:type_name -> api.proto.stream.v1.Stream
+	3, // 4: api.proto.stream.v1.PutStreamResponse.stream:type_name -> api.proto.stream.v1.Stream
+	3, // 5: api.proto.stream.v1.GetStreamResponse.stream:type_name -> api.proto.stream.v1.Stream
+	4, // 6: api.proto.stream.v1.StreamService.PutStream:input_type -> api.proto.stream.v1.PutStreamRequest
+	6, // 7: api.proto.stream.v1.StreamService.GetStream:input_type -> api.proto.stream.v1.GetStreamRequest
+	8, // 8: api.proto.stream.v1.StreamService.DeleteStream:input_type -> api.proto.stream.v1.DeleteStreamRequest
+	5, // 9: api.proto.stream.v1.StreamService.PutStream:output_type -> api.proto.stream.v1.PutStreamResponse
+	7, // 10: api.proto.stream.v1.StreamService.GetStream:output_type -> api.proto.stream.v1.GetStreamResponse
+	9, // 11: api.proto.stream.v1.StreamService.DeleteStream:output_type -> api.proto.stream.v1.DeleteStreamResponse
+	9, // [9:12] is the sub-list for method output_type
+	6, // [6:9] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_api_proto_stream_v1_stream_proto_init() }

@@ -39,12 +39,21 @@ func request_StreamService_PutStream_0(ctx context.Context, marshaler runtime.Ma
 	var (
 		protoReq PutStreamRequest
 		metadata runtime.ServerMetadata
+		err      error
 	)
 	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["stream.name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "stream.name")
+	}
+	err = runtime.PopulateFieldFromPath(&protoReq, "stream.name", val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "stream.name", err)
 	}
 	msg, err := client.PutStream(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -54,9 +63,18 @@ func local_request_StreamService_PutStream_0(ctx context.Context, marshaler runt
 	var (
 		protoReq PutStreamRequest
 		metadata runtime.ServerMetadata
+		err      error
 	)
 	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	val, ok := pathParams["stream.name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "stream.name")
+	}
+	err = runtime.PopulateFieldFromPath(&protoReq, "stream.name", val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "stream.name", err)
 	}
 	msg, err := server.PutStream(ctx, &protoReq)
 	return msg, metadata, err
@@ -152,7 +170,7 @@ func RegisterStreamServiceHandlerServer(ctx context.Context, mux *runtime.ServeM
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/api.proto.stream.v1.StreamService/PutStream", runtime.WithHTTPPathPattern("/v1/streams/name"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/api.proto.stream.v1.StreamService/PutStream", runtime.WithHTTPPathPattern("/v1/streams/{stream.name}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -250,7 +268,7 @@ func RegisterStreamServiceHandlerClient(ctx context.Context, mux *runtime.ServeM
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/api.proto.stream.v1.StreamService/PutStream", runtime.WithHTTPPathPattern("/v1/streams/name"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/api.proto.stream.v1.StreamService/PutStream", runtime.WithHTTPPathPattern("/v1/streams/{stream.name}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -301,7 +319,7 @@ func RegisterStreamServiceHandlerClient(ctx context.Context, mux *runtime.ServeM
 }
 
 var (
-	pattern_StreamService_PutStream_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "streams", "name"}, ""))
+	pattern_StreamService_PutStream_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2}, []string{"v1", "streams", "stream.name"}, ""))
 	pattern_StreamService_GetStream_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2}, []string{"v1", "streams", "name"}, ""))
 	pattern_StreamService_DeleteStream_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2}, []string{"v1", "streams", "name"}, ""))
 )
