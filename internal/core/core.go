@@ -10,7 +10,7 @@ func New() *Core {
 	return &Core{}
 }
 
-func (c *Core) UpsertStream(stream domain.Stream) (*domain.Stream, error) {
+func (c *Core) UpsertStream(stream domain.StreamSpec) (*domain.StreamSpec, error) {
 	return nil, nil
 }
 
@@ -18,6 +18,6 @@ func (c *Core) DeleteStream(name string) error {
 	return nil
 }
 
-func (c *Core) GetStream(name string) (*domain.Stream, error) {
+func (c *Core) GetStream(name string) (*domain.StreamSpec, error) {
 	return nil, nil
 }
