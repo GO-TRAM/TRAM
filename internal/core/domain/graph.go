@@ -1,22 +1,38 @@
 package domain
 
-const (
-	KindSource = "source"
-	KindStage  = "stage"
-	KindSink   = "sink"
+import (
+	"fmt"
+	"sort"
+	"strings"
 )
+
+const (
+	KindSource Kind = "source"
+	KindStage  Kind = "stage"
+	KindSink   Kind = "sink"
+)
+
+type Kind string
+
+func (k Kind) Value() int {
+	switch k {
+	case KindSource:
+		return 0
+	case KindStage:
+		return 1
+	case KindSink:
+		return 2
+	default:
+		return -1
+	}
+}
 
 type Graph map[string]*Node
 
 type Node struct {
 	Name     string
-	Kind     string
-	Children []Child
-}
-
-type Child struct {
-	Name string
-	Kind string
+	Kind     Kind
+	Children []*Node
 }
 
 func (g Graph) IsDAG() bool {
@@ -94,12 +110,46 @@ func (g Graph) dfs(name string, visited map[string]bool) {
 	}
 }
 
-func (g Graph) LeafNodes() []Node {
-	var leafNodes []Node
+func (g Graph) SourceNode() *Node {
+	for _, node := range g {
+		if node.Kind == KindSource {
+			return node
+		}
+	}
+	return nil
+}
+
+func (g Graph) LeafNodes() []*Node {
+	var leafNodes []*Node
 	for _, node := range g {
 		if len(node.Children) == 0 {
-			leafNodes = append(leafNodes, *node)
+			leafNodes = append(leafNodes, node)
 		}
 	}
 	return leafNodes
+}
+
+func (g Graph) String() string {
+	source := g.SourceNode()
+	if source == nil {
+		return Node{}.String()
+	}
+	return source.String()
+}
+
+func (n Node) String() string {
+	var children []*Node
+	for _, child := range n.Children {
+		children = append(children, child)
+	}
+	sort.Slice(children, func(i, j int) bool {
+		return children[i].Kind.Value() < children[j].Kind.Value()
+	})
+
+	var childStrings []string
+	for _, child := range children {
+		childStrings = append(childStrings, child.String())
+	}
+
+	return fmt.Sprintf("%s:%s->[%s]", n.Kind, n.Name, strings.Join(childStrings, ","))
 }

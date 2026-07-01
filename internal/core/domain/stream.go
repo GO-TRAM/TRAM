@@ -1,35 +1,50 @@
 package domain
 
+import "fmt"
+
 type Stream struct {
-	Name   string
+	Spec   StreamSpec
 	Source Source
 	Stages []Stage
 	Sinks  []Sink
-	Graph  Graph
 }
 
-func (s *Stream) Validate() error {
-	graph, err := s.buildGraph()
+func NewStream(spec StreamSpec) (*Stream, error) {
+	if err := spec.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid stream spec: %w", err)
+	}
+
+	return &Stream{Spec: spec}, nil
+}
+
+type StreamSpec struct {
+	Name   string
+	Source SourceSpec
+	Stages []StageSpec
+	Sinks  []SinkSpec
+}
+
+func (s *StreamSpec) Validate() error {
+	graph, err := s.Graph()
 	if err != nil {
 		return err
 	}
-	s.Graph = graph
 
-	if !s.Graph.IsDAG() {
+	if !graph.IsDAG() {
 		return ErrGraphNotDAG
 	}
 
-	if !s.Graph.IsConnected() {
+	if !graph.IsConnected() {
 		return ErrGraphNotConnected
 	}
 
-	for _, node := range s.Graph.LeafNodes() {
+	for _, node := range graph.LeafNodes() {
 		if node.Kind != KindSink {
 			return ErrGraphLeafNotSink
 		}
 	}
 
-	for _, node := range s.Graph {
+	for _, node := range graph {
 		if node.Kind == KindSink && len(node.Children) != 0 {
 			return ErrGraphSinkHasChildren
 		}
@@ -38,20 +53,22 @@ func (s *Stream) Validate() error {
 	return nil
 }
 
-func (s Stream) buildGraph() (Graph, error) {
+func (s StreamSpec) Graph() (Graph, error) {
 	graph := make(map[string]*Node)
 	graph[s.Source.Name] = &Node{
-		Children: []Child{},
+		Children: []*Node{},
 		Kind:     KindSource,
+		Name:     s.Source.Name,
 	}
 
 	for _, stage := range s.Stages {
-		if graph[stage.Name] != nil {
+		if _, ok := graph[stage.Name]; ok {
 			return nil, ErrStageDuplicate
 		}
 		graph[stage.Name] = &Node{
-			Children: []Child{},
+			Children: []*Node{},
 			Kind:     KindStage,
+			Name:     stage.Name,
 		}
 	}
 
@@ -61,22 +78,25 @@ func (s Stream) buildGraph() (Graph, error) {
 			return nil, ErrStageInvalidFrom
 		}
 
-		graph[stage.From].Children = append(from.Children, Child{Name: stage.Name, Kind: KindStage})
+		node := graph[stage.Name]
+		graph[stage.From].Children = append(from.Children, node)
 	}
 
 	for _, sink := range s.Sinks {
-		if graph[sink.Name] != nil {
+		if _, ok := graph[sink.Name]; ok {
 			return nil, ErrSinkDuplicate
 		}
 		from, ok := graph[sink.From]
 		if !ok {
 			return nil, ErrSinkInvalidFrom
 		}
-		graph[sink.Name] = &Node{
-			Children: []Child{},
+		node := &Node{
+			Children: []*Node{},
 			Kind:     KindSink,
+			Name:     sink.Name,
 		}
-		graph[sink.From].Children = append(from.Children, Child{Name: sink.Name, Kind: KindSink})
+		graph[sink.Name] = node
+		from.Children = append(from.Children, node)
 	}
 	return graph, nil
 }

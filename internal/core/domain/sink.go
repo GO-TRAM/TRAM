@@ -1,6 +1,10 @@
 package domain
 
-type Sink struct {
+type Sink interface {
+	Emitter
+}
+
+type SinkSpec struct {
 	Name string
 	Type string
 	From string
