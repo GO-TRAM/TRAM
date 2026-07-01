@@ -11,4 +11,5 @@ var (
 	ErrGraphNotConnected    = errors.New("stream is not a connected graph")
 	ErrGraphLeafNotSink     = errors.New("stream has a leaf that is not a sink")
 	ErrGraphSinkHasChildren = errors.New("stream has a sink that has children")
+	ErrInvalidStreamSpec    = errors.New("stream spec is invalid")
 )

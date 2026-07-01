@@ -39,7 +39,7 @@ func runServer(ctx context.Context) {
 		cancel()
 	}()
 
-	c := core.New()
+	c := core.New(nil, nil, nil) // TODO
 	a := api.New(c, grpcEndpoint, httpEndpoint)
 
 	log.Printf("Starting gRPC Gateway server on %s, forwarding to gRPC at %s", httpEndpoint, grpcEndpoint)

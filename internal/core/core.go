@@ -1,16 +1,31 @@
 package core
 
-import "codeberg.org/eljoth/stream/internal/core/domain"
+import (
+	"codeberg.org/eljoth/stream/internal/core/domain"
+	"codeberg.org/eljoth/stream/internal/ports"
+)
 
 type Core struct {
-	streams map[string]*domain.Stream
+	streams       map[string]*domain.Stream
+	sourceFactory ports.Factory[domain.SourceSpec, domain.Source]
+	stageFactory  ports.Factory[domain.StageSpec, domain.Stage]
+	sinkFactory   ports.Factory[domain.SinkSpec, domain.Sink]
 }
 
-func New() *Core {
-	return &Core{}
+func New(
+	sourceFactory ports.Factory[domain.SourceSpec, domain.Source],
+	stageFactory ports.Factory[domain.StageSpec, domain.Stage],
+	sinkFactory ports.Factory[domain.SinkSpec, domain.Sink],
+) *Core {
+	return &Core{
+		sourceFactory: sourceFactory,
+		stageFactory:  stageFactory,
+		sinkFactory:   sinkFactory,
+	}
 }
 
 func (c *Core) UpsertStream(stream domain.StreamSpec) (*domain.StreamSpec, error) {
+	c.BuildStream(domain.StreamSpec{})
 	return nil, nil
 }
 

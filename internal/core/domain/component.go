@@ -16,3 +16,20 @@ type Registry interface {
 	RegisterStage(stage Stage) error
 	RegisterSink(sink Sink) error
 }
+
+type Source interface {
+	Emitter
+	Registry
+
+	Run(ctx context.Context) error
+	Stop() error
+}
+
+type Stage interface {
+	Emitter
+	Registry
+}
+
+type Sink interface {
+	Emitter
+}
