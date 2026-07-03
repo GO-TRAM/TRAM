@@ -29,10 +29,9 @@ message Sink {
 
 message Stream {
   string name = 1 [(buf.validate.field).string.min_len = 1];
-  string type = 2 [(buf.validate.field).string.min_len = 1];
-  Source source = 3;
-  repeated Stage stages = 4;
-  repeated Sink sinks = 5 [(buf.validate.field).repeated.min_items = 1];
+  Source source = 2;
+  repeated Stage stages = 3;
+  repeated Sink sinks = 4 [(buf.validate.field).repeated.min_items = 1];
 }
 
 //------------------------------------------------------------------------------

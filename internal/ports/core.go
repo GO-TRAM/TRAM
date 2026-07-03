@@ -1,9 +1,13 @@
 package ports
 
-import "codeberg.org/eljoth/stream/internal/core/domain"
+import (
+	"context"
+
+	"codeberg.org/eljoth/stream/internal/core/domain"
+)
 
 type Core interface {
-	UpsertStream(stream domain.StreamSpec) (*domain.StreamSpec, error)
-	DeleteStream(name string) error
-	GetStream(name string) (*domain.StreamSpec, error)
+	UpsertStream(ctx context.Context, stream domain.StreamSpec) (*domain.StreamSpec, error)
+	DeleteStream(ctx context.Context, name string) error
+	GetStream(ctx context.Context, name string) (*domain.StreamSpec, error)
 }

@@ -3,33 +3,42 @@ package domain
 
 import "context"
 
+// TODO switch to OTLP
 type Event struct {
 	Data     []byte
 	Metadata map[string]string
 }
 
-type Emitter interface {
-	Emit(ctx context.Context, event Event) error
+type Namable interface {
+	Name() string
 }
 
-type Registry interface {
-	RegisterStage(stage Stage) error
-	RegisterSink(sink Sink) error
+type Subscriber interface {
+	Namable
+
+	From() string
+	Notify(ctx context.Context, event Event) error
+	// TODO Drain(ctx context.Context) error
+}
+
+type Observer interface {
+	Namable
+
+	Subscribe(subscriber Subscriber) error
 }
 
 type Source interface {
-	Emitter
-	Registry
+	Observer
 
 	Run(ctx context.Context) error
 	Stop() error
 }
 
 type Stage interface {
-	Emitter
-	Registry
+	Observer
+	Subscriber
 }
 
 type Sink interface {
-	Emitter
+	Subscriber
 }

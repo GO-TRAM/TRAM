@@ -8,6 +8,9 @@ import (
 	"syscall"
 
 	"codeberg.org/eljoth/stream/internal/adapters/api"
+	"codeberg.org/eljoth/stream/internal/adapters/sink"
+	"codeberg.org/eljoth/stream/internal/adapters/source"
+	"codeberg.org/eljoth/stream/internal/adapters/stage"
 	"github.com/spf13/cobra"
 
 	"codeberg.org/eljoth/stream/internal/core"
@@ -39,7 +42,20 @@ func runServer(ctx context.Context) {
 		cancel()
 	}()
 
-	c := core.New(nil, nil, nil) // TODO
+	// driven
+	sourceFac := source.NewFactory()
+	stageFac := stage.NewFactory()
+	sinkFac := sink.NewFactory()
+
+	// core
+	c := core.New(
+		ctx,
+		sourceFac,
+		stageFac,
+		sinkFac,
+	)
+
+	// driver
 	a := api.New(c, grpcEndpoint, httpEndpoint)
 
 	log.Printf("Starting gRPC Gateway server on %s, forwarding to gRPC at %s", httpEndpoint, grpcEndpoint)

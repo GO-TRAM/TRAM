@@ -1,0 +1,10 @@
+[
+  {
+    "label": "Steam Server",
+    "adapter": "Delve",
+    "request": "launch",
+    "mode": "debug",
+    "program": "./cmd/stream",
+    "args": ["server"],
+  },
+]

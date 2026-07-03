@@ -29,6 +29,7 @@ func New(core ports.Core, grpcServerEndpoint, httpServerEndpoint string) *API {
 	return &API{
 		grpcServerEndpoint: grpcServerEndpoint,
 		httpServerEndpoint: httpServerEndpoint,
+		core:               core,
 	}
 }
 

@@ -1,10 +1,22 @@
 package sink
 
-import "codeberg.org/eljoth/stream/internal/core/domain"
+import (
+	debug "codeberg.org/eljoth/stream/internal/adapters/sink/debug"
+	"codeberg.org/eljoth/stream/internal/core/domain"
+)
 
 type Factory struct {
 }
 
-func (f *Factory) New(domain.SinkSpec) (domain.Sink, error) {
-	return nil, nil
+func NewFactory() *Factory {
+	return &Factory{}
+}
+
+func (f *Factory) New(spec domain.SinkSpec) (domain.Sink, error) {
+	switch spec.Type {
+	case debug.Type:
+		return debug.New(spec), nil
+	default:
+		return nil, domain.ErrInvalidSourceType
+	}
 }

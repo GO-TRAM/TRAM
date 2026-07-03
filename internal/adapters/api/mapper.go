@@ -1,0 +1,79 @@
+package api
+
+import (
+	"codeberg.org/eljoth/stream/internal/core/domain"
+	v1 "codeberg.org/eljoth/stream/pkg/gen/go/api/proto/stream/v1"
+)
+
+func pbStreamToStreamSpec(req *v1.Stream) domain.StreamSpec {
+	source := pbSourceToSourceSpec(req.Source)
+	return domain.StreamSpec{
+		Name:   req.Name,
+		Source: source,
+		Stages: mmap(req.Stages, pbStageToStageSpec),
+		Sinks:  mmap(req.Sinks, pbSinkToSinkSpec),
+	}
+}
+
+func pbSourceToSourceSpec(req *v1.Source) domain.SourceSpec {
+	return domain.SourceSpec{
+		Name: req.Name,
+		Type: req.GetType(),
+	}
+}
+
+func pbStageToStageSpec(req *v1.Stage) domain.StageSpec {
+	return domain.StageSpec{
+		Name: req.Name,
+		Type: req.Type,
+		From: req.From,
+	}
+}
+
+func pbSinkToSinkSpec(req *v1.Sink) domain.SinkSpec {
+	return domain.SinkSpec{
+		Name: req.Name,
+		Type: req.Type,
+		From: req.From,
+	}
+}
+
+func streamSpecToPBStream(spec domain.StreamSpec) *v1.Stream {
+	return &v1.Stream{
+		Name:   spec.Name,
+		Source: sourceSpecToPBSource(spec.Source),
+		Stages: mmap(spec.Stages, stageSpecToPBStage),
+		Sinks:  mmap(spec.Sinks, sinkSpecToPBSink),
+	}
+}
+
+func sourceSpecToPBSource(spec domain.SourceSpec) *v1.Source {
+	return &v1.Source{
+		Name: spec.Name,
+		Type: spec.Type,
+	}
+}
+
+func stageSpecToPBStage(spec domain.StageSpec) *v1.Stage {
+	return &v1.Stage{
+		Name: spec.Name,
+		Type: spec.Type,
+		From: spec.From,
+	}
+}
+
+func sinkSpecToPBSink(spec domain.SinkSpec) *v1.Sink {
+	return &v1.Sink{
+		Name: spec.Name,
+		Type: spec.Type,
+		From: spec.From,
+	}
+}
+
+func mmap[T, S any](in []T, f func(T) S) []S {
+	out := make([]S, len(in))
+	for i, v := range in {
+		out[i] = f(v)
+	}
+	return out
+}

@@ -120,9 +120,6 @@
         "stream": {
           "type": "object",
           "properties": {
-            "type": {
-              "type": "string"
-            },
             "source": {
               "$ref": "#/definitions/v1Source"
             },
@@ -234,9 +231,6 @@
       "type": "object",
       "properties": {
         "name": {
-          "type": "string"
-        },
-        "type": {
           "type": "string"
         },
         "source": {
