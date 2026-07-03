@@ -75,7 +75,7 @@ func (c *Core) DeleteStream(ctx context.Context, name string) error {
 func (c *Core) GetStream(ctx context.Context, name string) (*domain.StreamSpec, error) {
 	stream, exists := c.getStream(name)
 	if !exists {
-		return &stream.Spec, nil
+		return nil, domain.ErrStreamNotFound
 	}
-	return nil, domain.ErrStreamNotFound
+	return &stream.Spec, nil
 }
