@@ -40,22 +40,17 @@ func (g *Generator) Subscribe(sub domain.Subscriber) error {
 }
 
 func (g *Generator) Run(ctx context.Context) error {
-	log.Printf("Running %s", g.Name())
+	log.Printf("Running source %s", g.Name())
 	combinedCtx, stop := context.WithCancel(ctx)
 	defer stop()
 
-	go func() {
-		<-combinedCtx.Done()
-		g.cancel()
-	}()
-
 	for {
 		select {
+		case <-combinedCtx.Done():
 		case <-g.ctx.Done():
-			log.Printf("Stopping %s", g.Name())
+			log.Printf("Stopping source %s", g.Name())
 			return nil
 		case <-time.After(10 * time.Second):
-			log.Println("Notifying subscribers")
 			for _, subscriber := range g.subscribers {
 				subscriber.Notify(ctx, domain.Event{Metadata: map[string]string{"source": g.Name(), "subscriber": subscriber.Name()}})
 			}

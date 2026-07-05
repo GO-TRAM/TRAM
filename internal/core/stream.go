@@ -74,9 +74,6 @@ func (c *Core) wireStream(stream *domain.Stream) error {
 }
 
 func (c *Core) getStream(name string) (*domain.Stream, bool) {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-
 	stream, ok := c.streams[name]
 
 	return stream, ok

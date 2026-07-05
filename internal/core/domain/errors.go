@@ -17,4 +17,7 @@ var (
 	ErrStreamWireSinks      = errors.New("cannot wire sink")
 	ErrStreamNotFound       = errors.New("stream not found")
 	ErrStreamStopFailed     = errors.New("stream stop failed")
+	ErrStreamWireFailed     = errors.New("stream wire failed")
+	ErrStreamBuildFailed    = errors.New("stream build failed")
+	ErrCoreClosed           = errors.New("core closed")
 )

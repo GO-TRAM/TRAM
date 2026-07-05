@@ -1,7 +1,7 @@
 package sink
 
 import (
-	debug "codeberg.org/eljoth/stream/internal/adapters/sink/debug"
+	"codeberg.org/eljoth/stream/internal/adapters/sink/debug"
 	"codeberg.org/eljoth/stream/internal/core/domain"
 )
 

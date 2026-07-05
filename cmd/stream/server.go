@@ -54,6 +54,11 @@ func runServer(ctx context.Context) {
 		stageFac,
 		sinkFac,
 	)
+	defer func() {
+		if err := c.Close(); err != nil {
+			log.Printf("Failed to close core: %v", err)
+		}
+	}()
 
 	// driver
 	a := api.New(c, grpcEndpoint, httpEndpoint)
