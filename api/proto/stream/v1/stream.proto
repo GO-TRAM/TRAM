@@ -3,6 +3,7 @@ package api.proto.stream.v1;
 
 import "buf/validate/validate.proto";
 import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
 
 option go_package = "codeberg.org/eljoth/stream/pkg/gen/go/stream/service/v1";
 
@@ -13,18 +14,21 @@ option go_package = "codeberg.org/eljoth/stream/pkg/gen/go/stream/service/v1";
 message Source {
   string name = 1 [(buf.validate.field).string.min_len = 1];
   string type = 2 [(buf.validate.field).string.min_len = 1];
+  google.protobuf.Struct spec = 3;
 }
 
 message Stage {
   string name = 1 [(buf.validate.field).string.min_len = 1];
   string type = 2 [(buf.validate.field).string.min_len = 1];
   string from = 3;
+  google.protobuf.Struct spec = 4;
 }
 
 message Sink {
   string name = 1 [(buf.validate.field).string.min_len = 1];
   string type = 2 [(buf.validate.field).string.min_len = 1];
   string from = 3;
+  google.protobuf.Struct spec = 4;
 }
 
 message Stream {

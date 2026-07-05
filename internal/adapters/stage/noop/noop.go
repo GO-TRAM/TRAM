@@ -6,18 +6,23 @@ import (
 
 	"codeberg.org/eljoth/stream/internal/adapters/stage/base"
 	"codeberg.org/eljoth/stream/internal/core/domain"
+	"github.com/go-playground/validator/v10"
 )
 
 const Type = "noop"
 
 type NoOp struct {
-	*base.Stage
+	*base.Stage[Spec]
 }
 
-func New(spec domain.StageSpec) *NoOp {
-	return &NoOp{
-		Stage: base.New(spec.Name, spec.From),
+func New(stage domain.StageSpec, validator *validator.Validate) (*NoOp, error) {
+	base, err := base.New[Spec](stage.Name, stage.From, stage.Spec, validator)
+	if err != nil {
+		return nil, err
 	}
+	return &NoOp{
+		Stage: base,
+	}, nil
 }
 
 func (n *NoOp) Notify(ctx context.Context, event domain.Event) error {

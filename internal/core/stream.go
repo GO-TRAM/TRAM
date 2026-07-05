@@ -16,14 +16,14 @@ func (c *Core) buildStream(
 
 	source, err := c.sourceFactory.New(spec.Source)
 	if err != nil {
-		return nil, errors.Join(domain.ErrInvalidStreamSpec, err)
+		return nil, errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, spec.Source.Name), err)
 	}
 
 	stages := make(map[string]domain.Stage, len(spec.Stages))
 	for _, stageSpec := range spec.Stages {
 		stage, err := c.stageFactory.New(stageSpec)
 		if err != nil {
-			return nil, errors.Join(domain.ErrInvalidStreamSpec, err)
+			return nil, errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, stageSpec.Name), err)
 		}
 		stages[stageSpec.Name] = stage
 	}
@@ -32,7 +32,7 @@ func (c *Core) buildStream(
 	for _, sinkSpec := range spec.Sinks {
 		sink, err := c.sinkFactory.New(sinkSpec)
 		if err != nil {
-			return nil, errors.Join(domain.ErrInvalidStreamSpec, err)
+			return nil, errors.Join(fmt.Errorf("%: %s", domain.ErrInvalidStreamSpec, sinkSpec.Name), err)
 		}
 		sinks[sinkSpec.Name] = sink
 	}

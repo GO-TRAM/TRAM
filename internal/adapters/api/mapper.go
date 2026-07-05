@@ -3,6 +3,7 @@ package api
 import (
 	"codeberg.org/eljoth/stream/internal/core/domain"
 	v1 "codeberg.org/eljoth/stream/pkg/gen/go/api/proto/stream/v1"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func pbStreamToStreamSpec(req *v1.Stream) domain.StreamSpec {
@@ -19,6 +20,7 @@ func pbSourceToSourceSpec(req *v1.Source) domain.SourceSpec {
 	return domain.SourceSpec{
 		Name: req.Name,
 		Type: req.GetType(),
+		Spec: req.Spec.AsMap(),
 	}
 }
 
@@ -27,6 +29,7 @@ func pbStageToStageSpec(req *v1.Stage) domain.StageSpec {
 		Name: req.Name,
 		Type: req.Type,
 		From: req.From,
+		Spec: req.Spec.AsMap(),
 	}
 }
 
@@ -35,6 +38,7 @@ func pbSinkToSinkSpec(req *v1.Sink) domain.SinkSpec {
 		Name: req.Name,
 		Type: req.Type,
 		From: req.From,
+		Spec: req.Spec.AsMap(),
 	}
 }
 
@@ -48,25 +52,31 @@ func streamSpecToPBStream(spec domain.StreamSpec) *v1.Stream {
 }
 
 func sourceSpecToPBSource(spec domain.SourceSpec) *v1.Source {
+	pbSpec, _ := structpb.NewValue(spec.Spec)
 	return &v1.Source{
 		Name: spec.Name,
 		Type: spec.Type,
+		Spec: pbSpec.GetStructValue(),
 	}
 }
 
 func stageSpecToPBStage(spec domain.StageSpec) *v1.Stage {
+	pbSpec, _ := structpb.NewValue(spec.Spec)
 	return &v1.Stage{
 		Name: spec.Name,
 		Type: spec.Type,
 		From: spec.From,
+		Spec: pbSpec.GetStructValue(),
 	}
 }
 
 func sinkSpecToPBSink(spec domain.SinkSpec) *v1.Sink {
+	pbSpec, _ := structpb.NewValue(spec.Spec)
 	return &v1.Sink{
 		Name: spec.Name,
 		Type: spec.Type,
 		From: spec.From,
+		Spec: pbSpec.GetStructValue(),
 	}
 }
 
