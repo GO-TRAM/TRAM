@@ -1,44 +1,26 @@
+// internal/adapters/stage/noop/noop.go
 package noop
 
 import (
 	"context"
-	"log"
 
+	"codeberg.org/eljoth/stream/internal/adapters/stage/base"
 	"codeberg.org/eljoth/stream/internal/core/domain"
 )
 
-const (
-	Type = "noop"
-)
+const Type = "noop"
 
 type NoOp struct {
-	spec        domain.StageSpec
-	subscribers []domain.Subscriber
+	*base.Stage
 }
 
 func New(spec domain.StageSpec) *NoOp {
 	return &NoOp{
-		spec: spec,
+		Stage: base.New(spec.Name, spec.From),
 	}
-}
-
-func (n *NoOp) Name() string {
-	return n.spec.Name
-}
-
-func (n *NoOp) From() string {
-	return n.spec.From
-}
-
-func (n *NoOp) Subscribe(sub domain.Subscriber) error {
-	log.Printf("Subscribing %s to %s\n", sub.Name(), n.Name())
-	n.subscribers = append(n.subscribers, sub)
-	return nil
 }
 
 func (n *NoOp) Notify(ctx context.Context, event domain.Event) error {
-	for _, subscriber := range n.subscribers {
-		subscriber.Notify(ctx, event)
-	}
+	n.NotifySubscribers(ctx, event)
 	return nil
 }
