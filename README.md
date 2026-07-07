@@ -12,6 +12,7 @@ Stream is a **cloud-native, in-memory data pipeline framework** for building rea
 - **Real-time Processing**: Event-driven architecture for low-latency data flows
 - **OTLP Support**: Designed for OpenTelemetry Protocol compatibility (future internal representation)
 
+
 ---
 
 ## 🚀 Quick Start
@@ -151,22 +152,7 @@ Stream pipelines follow a **tree structure** with these rules:
 3. **Sinks** must be connected to either the source or a stage
 4. **All leaves must be sinks** (no dangling stages)
 
-```
-                    ┌─────────────┐
-                    │   Source    │
-                    └──────┬──────┘
-                           │
-              ┌────────────┼────────────┐
-              ▼            ▼            ▼
-        ┌─────────┐  ┌─────────┐  ┌─────────┐
-        │  Sink   │  │  Stage  │  │  Sink   │
-        └─────────┘  └─────┬───┘  └─────────┘
-                           │
-                           ▼
-                      ┌─────────┐
-                      │  Sink   │
-                      └─────────┘
-```
+![Simple Stream](./docs/assets/stream.webp)
 
 ### Data Flow
 
@@ -192,6 +178,7 @@ Source → [Stage 1 → Stage 2] → Sink
 
 For detailed documentation on each component and its configuration, see [COMPONENTS.md](COMPONENTS.md).
 
+![Components](docs/assets/components.webp)
 ---
 
 ## 🔧 Advanced Configuration
