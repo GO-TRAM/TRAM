@@ -72,7 +72,7 @@ func TestTreeString(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			tree, err := c.streamSpec.Tree()
+			tree, err := domain.NewTree(c.streamSpec)
 			assert.Equal(t, c.expectedErr, err)
 			actual := tree.String()
 			if actual != c.expected {
@@ -353,7 +353,7 @@ func TestLeafNodes(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			tree, err := c.streamSpec.Tree()
+			tree, err := domain.NewTree(c.streamSpec)
 			assert.NoError(t, err)
 			actual := tree.LeafNodes()
 			if len(actual) != len(c.expected) {
@@ -518,7 +518,7 @@ func TestIsTree(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			tree, err := c.streamSpec.Tree()
+			tree, err := domain.NewTree(c.streamSpec)
 			assert.NoError(t, err)
 			actual := tree.IsTree()
 			if actual != c.expected {
@@ -684,7 +684,7 @@ func TestIsConnected(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			tree, err := c.streamSpec.Tree()
+			tree, err := domain.NewTree(c.streamSpec)
 			assert.NoError(t, err)
 			actual := tree.IsConnected()
 			if actual != c.expected {

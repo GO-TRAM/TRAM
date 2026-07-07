@@ -15,7 +15,7 @@ type Core struct {
 	mutex         sync.RWMutex
 	wg            sync.WaitGroup
 	closed        bool
-	streams       map[string]*domain.Stream
+	streams       map[string]*domain.Tree
 	sourceFactory ports.Factory[domain.SourceSpec, domain.Source]
 	stageFactory  ports.Factory[domain.StageSpec, domain.Stage]
 	sinkFactory   ports.Factory[domain.SinkSpec, domain.Sink]
@@ -30,7 +30,7 @@ func New(
 	return &Core{
 		ctx:           ctx,
 		mutex:         sync.RWMutex{},
-		streams:       map[string]*domain.Stream{},
+		streams:       map[string]*domain.Tree{},
 		sourceFactory: sourceFactory,
 		stageFactory:  stageFactory,
 		sinkFactory:   sinkFactory,
@@ -52,19 +52,24 @@ func (c *Core) UpsertStream(ctx context.Context, spec domain.StreamSpec) (*domai
 		return nil, errors.Join(domain.ErrStreamBuildFailed, err)
 	}
 
-	if err := c.wireStream(builtStream); err != nil {
-		return nil, errors.Join(domain.ErrStreamWireFailed, err)
-	}
-
 	if exists {
-		if err := stream.Source.Stop(); err != nil {
+		source, err := stream.Root().GetSource()
+		if err != nil {
+			return nil, errors.Join(domain.ErrStreamStopFailed, err)
+		}
+		if err := source.Stop(); err != nil {
 			return nil, domain.ErrStreamStopFailed
 		}
 	}
 
 	c.wg.Go(func() {
 		log.Println("Running stream", builtStream.Spec.Name)
-		builtStream.Source.Run(c.ctx)
+		source, err := builtStream.Root().GetSource()
+		if err != nil {
+			log.Println("Failed to get source for stream", builtStream.Spec.Name, err)
+			return
+		}
+		source.Run(c.ctx)
 	})
 
 	c.streams[spec.Name] = builtStream
@@ -85,7 +90,14 @@ func (c *Core) DeleteStream(ctx context.Context, name string) error {
 	}
 
 	log.Println("Stopping stream", name)
-	stream.Source.Stop()
+	source, err := stream.Root().GetSource()
+	if err != nil {
+		return errors.Join(domain.ErrStreamStopFailed, err)
+	}
+	if err := source.Stop(); err != nil {
+		return domain.ErrStreamStopFailed
+	}
+
 	delete(c.streams, name)
 	log.Println("Deleted stream", name)
 
@@ -111,7 +123,12 @@ func (c *Core) Close() error {
 
 	for _, stream := range c.streams {
 		log.Printf("stopping stream %s", stream.Spec.Name)
-		if err := stream.Source.Stop(); err != nil {
+		source, err := stream.Root().GetSource()
+		if err != nil {
+			log.Printf("failed to get source for stream %s: %v", stream.Spec.Name, err)
+			continue
+		}
+		if err := source.Stop(); err != nil {
 			log.Printf("failed to stop stream %s: %v", stream.Spec.Name, err)
 		}
 	}

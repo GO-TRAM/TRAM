@@ -1,55 +1,21 @@
 package domain
 
-import (
-	"fmt"
-	"sort"
-	"strings"
-)
-
-const (
-	KindSource NodeKind = "source"
-	KindStage  NodeKind = "stage"
-	KindSink   NodeKind = "sink"
-)
-
-type NodeKind string
-
-func (k NodeKind) Value() int {
-	switch k {
-	case KindSource:
-		return 0
-	case KindStage:
-		return 1
-	case KindSink:
-		return 2
-	default:
-		return -1
-	}
-}
-
 type Tree struct {
+	Spec    StreamSpec
 	treeMap map[string]*Node
 	root    *Node
 }
 
-type Node struct {
-	Name      string
-	Kind      NodeKind
-	Parent    *Node
-	Children  []*Node
-	Processor Source
-}
-
-func NewTree(s StreamSpec) (*Tree, error) {
+func NewTree(spec StreamSpec) (*Tree, error) {
 	treeMap := make(map[string]*Node)
 	root := &Node{
 		Children: []*Node{},
 		Kind:     KindSource,
-		Name:     s.Source.Name,
+		Name:     spec.Source.Name,
 	}
-	treeMap[s.Source.Name] = root
+	treeMap[spec.Source.Name] = root
 
-	for _, stage := range s.Stages {
+	for _, stage := range spec.Stages {
 		if _, ok := treeMap[stage.Name]; ok {
 			return nil, ErrStageDuplicate
 		}
@@ -60,7 +26,7 @@ func NewTree(s StreamSpec) (*Tree, error) {
 		}
 	}
 
-	for _, stage := range s.Stages {
+	for _, stage := range spec.Stages {
 		from, ok := treeMap[stage.From]
 		if !ok {
 			return nil, ErrStageInvalidFrom
@@ -71,7 +37,7 @@ func NewTree(s StreamSpec) (*Tree, error) {
 		treeMap[stage.From].Children = append(from.Children, node)
 	}
 
-	for _, sink := range s.Sinks {
+	for _, sink := range spec.Sinks {
 		if _, ok := treeMap[sink.Name]; ok {
 			return nil, ErrSinkDuplicate
 		}
@@ -90,13 +56,14 @@ func NewTree(s StreamSpec) (*Tree, error) {
 	}
 
 	tree := Tree{
+		Spec:    spec,
 		treeMap: treeMap,
 		root:    root,
 	}
 	return &tree, nil
 }
 
-func (g Tree) IsTree() bool {
+func (g *Tree) IsTree() bool {
 	if len(g.treeMap) == 0 {
 		return true
 	}
@@ -114,7 +81,7 @@ func (g Tree) IsTree() bool {
 	return true
 }
 
-func (g Tree) isCyclic(name string, visited map[string]bool, recursionStack map[string]bool) bool {
+func (g *Tree) isCyclic(name string, visited map[string]bool, recursionStack map[string]bool) bool {
 	visited[name] = true
 	recursionStack[name] = true
 
@@ -137,7 +104,7 @@ func (g Tree) isCyclic(name string, visited map[string]bool, recursionStack map[
 	return false
 }
 
-func (g Tree) IsConnected() bool {
+func (g *Tree) IsConnected() bool {
 	if len(g.treeMap) == 0 {
 		return true
 	}
@@ -156,7 +123,7 @@ func (g Tree) IsConnected() bool {
 	return len(visited) == len(g.treeMap)
 }
 
-func (g Tree) dfs(name string, visited map[string]bool) {
+func (g *Tree) dfs(name string, visited map[string]bool) {
 	visited[name] = true
 
 	node, ok := g.treeMap[name]
@@ -171,11 +138,11 @@ func (g Tree) dfs(name string, visited map[string]bool) {
 	}
 }
 
-func (g Tree) Root() *Node {
+func (g *Tree) Root() *Node {
 	return g.root
 }
 
-func (g Tree) LeafNodes() []*Node {
+func (g *Tree) LeafNodes() []*Node {
 	var leafNodes []*Node
 	for _, node := range g.treeMap {
 		if len(node.Children) == 0 {
@@ -185,35 +152,18 @@ func (g Tree) LeafNodes() []*Node {
 	return leafNodes
 }
 
-func (g Tree) String() string {
+func (g *Tree) String() string {
 	source := g.Root()
 	if source == nil {
-		return Node{}.String()
+		return (&Node{}).String()
 	}
 	return source.String()
 }
 
-func (n Node) String() string {
-	var children []*Node
-	for _, child := range n.Children {
-		children = append(children, child)
-	}
-	sort.Slice(children, func(i, j int) bool {
-		return children[i].Kind.Value() < children[j].Kind.Value()
-	})
-
-	var childStrings []string
-	for _, child := range children {
-		childStrings = append(childStrings, child.String())
-	}
-
-	return fmt.Sprintf("%s:%s->[%s]", n.Kind, n.Name, strings.Join(childStrings, ","))
-}
-
-func (t Tree) Map() map[string]*Node {
+func (t *Tree) Map() map[string]*Node {
 	return t.treeMap
 }
 
-func (t Tree) GetNode(name string) *Node {
+func (t *Tree) GetNode(name string) *Node {
 	return t.treeMap[name]
 }

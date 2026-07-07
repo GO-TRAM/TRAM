@@ -9,71 +9,81 @@ import (
 
 func (c *Core) buildStream(
 	spec domain.StreamSpec,
-) (*domain.Stream, error) {
-	if err := spec.Validate(); err != nil {
-		return nil, errors.Join(domain.ErrInvalidStreamSpec, err)
+) (*domain.Tree, error) {
+	tree, err := domain.NewTree(spec)
+	if err != nil {
+		return nil, err
+	}
+
+	if !tree.IsTree() {
+		return nil, domain.ErrGraphNotTree
+	}
+
+	if !tree.IsConnected() {
+		return nil, domain.ErrGraphNotConnected
+	}
+
+	for _, node := range tree.LeafNodes() {
+		if node.Kind != domain.KindSink {
+			return nil, errors.Join(domain.ErrInvalidStreamSpec, domain.ErrGraphLeafNotSink)
+		}
+	}
+
+	for _, node := range tree.Map() {
+		if node.Kind == domain.KindSink && len(node.Children) != 0 {
+			return nil, errors.Join(domain.ErrInvalidStreamSpec, domain.ErrGraphSinkHasChildren)
+		}
 	}
 
 	source, err := c.sourceFactory.New(spec.Source)
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, spec.Source.Name), err)
 	}
+	if err := tree.Root().AddSource(source); err != nil {
+		return nil, errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, spec.Source.Name), err)
+	}
 
-	stages := make(map[string]domain.Stage, len(spec.Stages))
 	for _, stageSpec := range spec.Stages {
 		stage, err := c.stageFactory.New(stageSpec)
 		if err != nil {
 			return nil, errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, stageSpec.Name), err)
 		}
-		stages[stageSpec.Name] = stage
+		if err := tree.GetNode(stageSpec.Name).AddStage(stage); err != nil {
+			return nil, errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, stageSpec.Name), err)
+		}
 	}
 
-	sinks := make(map[string]domain.Sink, len(spec.Sinks))
 	for _, sinkSpec := range spec.Sinks {
 		sink, err := c.sinkFactory.New(sinkSpec)
 		if err != nil {
 			return nil, errors.Join(fmt.Errorf("%: %s", domain.ErrInvalidStreamSpec, sinkSpec.Name), err)
 		}
-		sinks[sinkSpec.Name] = sink
+		if err := tree.GetNode(sinkSpec.Name).AddSink(sink); err != nil {
+			return nil, errors.Join(fmt.Errorf("%: %s", domain.ErrInvalidStreamSpec, sinkSpec.Name), err)
+		}
 	}
 
-	return &domain.Stream{
-		Spec:   spec,
-		Source: source,
-		Stages: stages,
-		Sinks:  sinks,
-	}, nil
-}
-
-func (c *Core) wireStream(stream *domain.Stream) error {
-	for _, stage := range stream.Stages {
-		if stage.From() == stream.Source.Name() {
-			stream.Source.Subscribe(stage)
+	nodes := tree.Map()
+	for _, node := range nodes {
+		if node.Parent == nil {
 			continue
 		}
-		input, ok := stream.Stages[stage.From()]
-		if !ok {
-			return fmt.Errorf("%w: %s", domain.ErrStreamWireStages, stage.Name())
+		parent := node.Parent
+		observer, err := parent.GetObserver()
+		if err != nil {
+			return nil, err
 		}
-		input.Subscribe(stage)
+		subscriber, err := node.GetSubscriber()
+		if err != nil {
+			return nil, err
+		}
+		observer.Subscribe(subscriber)
 	}
 
-	for _, sink := range stream.Sinks {
-		if sink.From() == stream.Source.Name() {
-			stream.Source.Subscribe(sink)
-			continue
-		}
-		input, ok := stream.Stages[sink.From()]
-		if !ok {
-			return fmt.Errorf("%w: %s", domain.ErrStreamWireSinks, sink.Name())
-		}
-		input.Subscribe(sink)
-	}
-
-	return nil
+	return tree, nil
 }
 
-func (c *Core) getStream(name string) (*domain.Stream, bool) {
+func (c *Core) getStream(name string) (*domain.Tree, bool) {
 	stream, ok := c.streams[name]
 
 	return stream, ok

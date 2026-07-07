@@ -45,36 +45,3 @@ type StreamSpec struct {
 	Stages []StageSpec
 	Sinks  []SinkSpec
 }
-
-func (s *StreamSpec) Validate() error {
-	tree, err := s.Tree()
-	if err != nil {
-		return err
-	}
-
-	if !tree.IsTree() {
-		return ErrGraphNotTree
-	}
-
-	if !tree.IsConnected() {
-		return ErrGraphNotConnected
-	}
-
-	for _, node := range tree.LeafNodes() {
-		if node.Kind != KindSink {
-			return ErrGraphLeafNotSink
-		}
-	}
-
-	for _, node := range tree.Map() {
-		if node.Kind == KindSink && len(node.Children) != 0 {
-			return ErrGraphSinkHasChildren
-		}
-	}
-
-	return nil
-}
-
-func (s StreamSpec) Tree() (*Tree, error) {
-	return NewTree(s)
-}
