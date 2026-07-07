@@ -33,9 +33,11 @@ type Tree struct {
 }
 
 type Node struct {
-	Name     string
-	Kind     NodeKind
-	Children []*Node
+	Name      string
+	Kind      NodeKind
+	Parent    *Node
+	Children  []*Node
+	Processor Source
 }
 
 func NewTree(s StreamSpec) (*Tree, error) {
@@ -65,6 +67,7 @@ func NewTree(s StreamSpec) (*Tree, error) {
 		}
 
 		node := treeMap[stage.Name]
+		node.Parent = from
 		treeMap[stage.From].Children = append(from.Children, node)
 	}
 
@@ -82,6 +85,7 @@ func NewTree(s StreamSpec) (*Tree, error) {
 			Name:     sink.Name,
 		}
 		treeMap[sink.Name] = node
+		node.Parent = from
 		from.Children = append(from.Children, node)
 	}
 
@@ -208,4 +212,8 @@ func (n Node) String() string {
 
 func (t Tree) Map() map[string]*Node {
 	return t.treeMap
+}
+
+func (t Tree) GetNode(name string) *Node {
+	return t.treeMap[name]
 }
