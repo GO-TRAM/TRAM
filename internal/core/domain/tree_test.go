@@ -1,39 +1,43 @@
-package domain
+package domain_test
 
-import "testing"
+import (
+	"testing"
+
+	"codeberg.org/eljoth/stream/internal/core/domain"
+	"github.com/stretchr/testify/assert"
+)
 
 func TestTreeString(t *testing.T) {
 	cases := []struct {
-		name     string
-		tree     Tree
-		expected string
+		name        string
+		streamSpec  domain.StreamSpec
+		expected    string
+		expectedErr error
 	}{
 		{
-			name:     "empty tree",
-			tree:     Tree{},
-			expected: ":->[]",
+			name:       "empty stream tree",
+			streamSpec: domain.StreamSpec{},
+			expected:   "source:->[]",
 		},
 		{
 			name: "single node",
-			tree: Tree{
-				"a": &Node{
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
 					Name: "testSource",
-					Kind: "source",
 				},
 			},
 			expected: "source:testSource->[]",
 		},
 		{
 			name: "single node with child",
-			tree: Tree{
-				"a": &Node{
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
 					Name: "testSource",
-					Kind: "source",
-					Children: []*Node{
-						&Node{
-							Name: "testSink",
-							Kind: "sink",
-						},
+				},
+				Sinks: []domain.SinkSpec{
+					{
+						Name: "testSink",
+						From: "testSource",
 					},
 				},
 			},
@@ -41,35 +45,36 @@ func TestTreeString(t *testing.T) {
 		},
 		{
 			name: "multiple nodes with children",
-			tree: Tree{
-				"a": &Node{
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
 					Name: "testSource",
-					Kind: "source",
-					Children: []*Node{
-						&Node{
-							Name: "testSink",
-							Kind: "sink",
-						},
-						&Node{
-							Name: "testStage",
-							Kind: "stage",
-							Children: []*Node{
-								&Node{
-									Name: "testSink2",
-									Kind: "sink",
-								},
-							},
-						},
+				},
+				Stages: []domain.StageSpec{
+					{
+						Name: "testStage",
+						From: "testSource",
+					},
+				},
+				Sinks: []domain.SinkSpec{
+					{
+						Name: "testSink",
+						From: "testStage",
+					},
+					{
+						Name: "testSink2",
+						From: "testSource",
 					},
 				},
 			},
-			expected: "source:testSource->[stage:testStage->[sink:testSink2->[]],sink:testSink->[]]",
+			expected: "source:testSource->[stage:testStage->[sink:testSink->[]],sink:testSink2->[]]",
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			actual := c.tree.String()
+			tree, err := c.streamSpec.Tree()
+			assert.Equal(t, c.expectedErr, err)
+			actual := tree.String()
 			if actual != c.expected {
 				t.Errorf("Expected %s, got %s", c.expected, actual)
 			}
@@ -80,17 +85,17 @@ func TestTreeString(t *testing.T) {
 func TestNodeString(t *testing.T) {
 	cases := []struct {
 		name     string
-		node     Node
+		node     domain.Node
 		expected string
 	}{
 		{
 			name:     "empty node",
-			node:     Node{},
+			node:     domain.Node{},
 			expected: ":->[]",
 		},
 		{
 			name: "node with name and kind",
-			node: Node{
+			node: domain.Node{
 				Name: "testSource",
 				Kind: "source",
 			},
@@ -98,11 +103,11 @@ func TestNodeString(t *testing.T) {
 		},
 		{
 			name: "node with name, kind, and children",
-			node: Node{
+			node: domain.Node{
 				Name: "testSource",
 				Kind: "source",
-				Children: []*Node{
-					&Node{
+				Children: []*domain.Node{
+					&domain.Node{
 						Name: "testSink",
 						Kind: "sink",
 					},
@@ -112,19 +117,19 @@ func TestNodeString(t *testing.T) {
 		},
 		{
 			name: "node with name, kind, and nested children",
-			node: Node{
+			node: domain.Node{
 				Name: "testSource",
 				Kind: "source",
-				Children: []*Node{
-					&Node{
+				Children: []*domain.Node{
+					&domain.Node{
 						Name: "testSink",
 						Kind: "sink",
 					},
-					&Node{
+					&domain.Node{
 						Name: "testStage",
 						Kind: "stage",
-						Children: []*Node{
-							&Node{
+						Children: []*domain.Node{
+							&domain.Node{
 								Name: "testSink2",
 								Kind: "sink",
 							},
@@ -136,21 +141,21 @@ func TestNodeString(t *testing.T) {
 		},
 		{
 			name: "node with name, kind, and nested children in different order",
-			node: Node{
+			node: domain.Node{
 				Name: "testSource",
 				Kind: "source",
-				Children: []*Node{
-					&Node{
+				Children: []*domain.Node{
+					&domain.Node{
 						Name: "testStage",
 						Kind: "stage",
-						Children: []*Node{
-							&Node{
+						Children: []*domain.Node{
+							&domain.Node{
 								Name: "testSink2",
 								Kind: "sink",
 							},
 						},
 					},
-					&Node{
+					&domain.Node{
 						Name: "testSink",
 						Kind: "sink",
 					},
@@ -164,6 +169,571 @@ func TestNodeString(t *testing.T) {
 			actual := c.node.String()
 			if actual != c.expected {
 				t.Errorf("Expected %s, got %s", c.expected, actual)
+			}
+		})
+	}
+}
+
+func TestNewTree(t *testing.T) {
+	cases := []struct {
+		name        string
+		streamSpec  domain.StreamSpec
+		expectedErr error
+	}{
+		{
+			name:       "empty stream spec",
+			streamSpec: domain.StreamSpec{},
+		},
+		{
+			name: "stream spec with source",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "stream spec with source and sink",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Sinks: []domain.SinkSpec{
+					{
+						Name: "testSink",
+						From: "testSource",
+					},
+				},
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "stream spec with duplicate stages",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Stages: []domain.StageSpec{
+					{
+						Name: "testStage",
+						From: "testSource",
+					},
+					{
+						Name: "testStage",
+						From: "testSource",
+					},
+				},
+			},
+			expectedErr: domain.ErrStageDuplicate,
+		},
+		{
+			name: "stream spec with invalid stage from",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Stages: []domain.StageSpec{
+					{
+						Name: "testStage",
+						From: "testSource",
+					},
+					{
+						Name: "testStage2",
+						From: "testStage3",
+					},
+				},
+			},
+			expectedErr: domain.ErrStageInvalidFrom,
+		},
+		{
+			name: "stream spec with duplicate sinks",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Sinks: []domain.SinkSpec{
+					{
+						Name: "testSink",
+						From: "testSource",
+					},
+					{
+						Name: "testSink",
+						From: "testSource",
+					},
+				},
+			},
+			expectedErr: domain.ErrSinkDuplicate,
+		},
+		{
+			name: "stream spec with invalid sink from",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Sinks: []domain.SinkSpec{
+					{
+						Name: "testSink",
+						From: "testSource",
+					},
+					{
+						Name: "testSink2",
+						From: "testSink3",
+					},
+				},
+			},
+			expectedErr: domain.ErrSinkInvalidFrom,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := domain.NewTree(c.streamSpec)
+			assert.Equal(t, c.expectedErr, err)
+		})
+	}
+}
+
+func TestLeafNodes(t *testing.T) {
+	cases := []struct {
+		name       string
+		streamSpec domain.StreamSpec
+		expected   []string
+	}{
+		{
+			name: "empty stream tree",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "source",
+				},
+			},
+			expected: []string{"source"},
+		},
+		{
+			name: "single node with child",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Sinks: []domain.SinkSpec{
+					{
+						Name: "testSink",
+						From: "testSource",
+					},
+				},
+			},
+			expected: []string{"testSink"},
+		},
+		{
+			name: "multiple nodes with children",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Stages: []domain.StageSpec{
+					{
+						Name: "testStage",
+						From: "testSource",
+					},
+				},
+				Sinks: []domain.SinkSpec{
+					{
+						Name: "testSink",
+						From: "testStage",
+					},
+					{
+						Name: "testSink2",
+						From: "testSource",
+					},
+				},
+			},
+			expected: []string{"testSink", "testSink2"},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tree, err := c.streamSpec.Tree()
+			assert.NoError(t, err)
+			actual := tree.LeafNodes()
+			if len(actual) != len(c.expected) {
+				t.Errorf("Expected %d leaf nodes, got %d", len(c.expected), len(actual))
+			}
+			for i, v := range actual {
+				if v.Name != c.expected[i] {
+					t.Errorf("Expected leaf node %s at position %d, got %s", c.expected[i], i, v)
+				}
+			}
+		})
+	}
+}
+
+func TestIsTree(t *testing.T) {
+	cases := []struct {
+		name       string
+		streamSpec domain.StreamSpec
+		expected   bool
+	}{
+		{
+			name:       "empty stream spec",
+			streamSpec: domain.StreamSpec{},
+			expected:   true,
+		},
+		{
+			name: "stream spec with source",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "stream spec with source and sink",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Sinks: []domain.SinkSpec{
+					{
+						Name: "testSink",
+						From: "testSource",
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "stream spec with source and stage",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Stages: []domain.StageSpec{
+					{
+						Name: "testStage",
+						From: "testSource",
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "stream spec with source, stage, and sink",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Stages: []domain.StageSpec{
+					{
+						Name: "testStage",
+						From: "testSource",
+					},
+				},
+				Sinks: []domain.SinkSpec{
+					{
+						Name: "testSink",
+						From: "testStage",
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "stream spec with source, stage, and sink from source",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Stages: []domain.StageSpec{
+					{
+						Name: "testStage",
+						From: "testSource",
+					},
+				},
+				Sinks: []domain.SinkSpec{
+					{
+						Name: "testSink",
+						From: "testSource",
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "stream spec with source, stage, and sink from another stage",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Stages: []domain.StageSpec{
+					{
+						Name: "testStage1",
+						From: "testSource",
+					},
+					{
+						Name: "testStage2",
+						From: "testStage1",
+					},
+				},
+				Sinks: []domain.SinkSpec{
+					{
+						Name: "testSink",
+						From: "testStage2",
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "stream spec with source, multiple stages, and sinks",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Stages: []domain.StageSpec{
+					{
+						Name: "testStage1",
+						From: "testSource",
+					},
+					{
+						Name: "testStage2",
+						From: "testStage1",
+					},
+				},
+				Sinks: []domain.SinkSpec{
+					{
+						Name: "testSink1",
+						From: "testStage1",
+					},
+					{
+						Name: "testSink2",
+						From: "testStage2",
+					},
+				},
+			},
+			expected: true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tree, err := c.streamSpec.Tree()
+			assert.NoError(t, err)
+			actual := tree.IsTree()
+			if actual != c.expected {
+				t.Errorf("Expected %t, got %t", c.expected, actual)
+			}
+		})
+	}
+
+}
+
+func TestIsConnected(t *testing.T) {
+	cases := []struct {
+		name       string
+		streamSpec domain.StreamSpec
+		expected   bool
+	}{
+		{
+			name: "stream spec with source and sink",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Sinks: []domain.SinkSpec{
+					{
+						Name: "testSink",
+						From: "testSource",
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "stream spec with source and stage",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Stages: []domain.StageSpec{
+					{
+						Name: "testStage",
+						From: "testSource",
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "stream spec with source and circular stages",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Stages: []domain.StageSpec{
+					{
+						Name: "testStage1",
+						From: "testStage2",
+					},
+					{
+						Name: "testStage2",
+						From: "testStage1",
+					},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "stream spec with source, stage, and sink",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Stages: []domain.StageSpec{
+					{
+						Name: "testStage",
+						From: "testSource",
+					},
+				},
+				Sinks: []domain.SinkSpec{
+					{
+						Name: "testSink",
+						From: "testStage",
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "stream spec with source, stage, and sink from source",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Stages: []domain.StageSpec{
+					{
+						Name: "testStage",
+						From: "testSource",
+					},
+				},
+				Sinks: []domain.SinkSpec{
+					{
+						Name: "testSink",
+						From: "testSource",
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "stream spec with source, stage, and sink from another stage",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Stages: []domain.StageSpec{
+					{
+						Name: "testStage1",
+						From: "testSource",
+					},
+					{
+						Name: "testStage2",
+						From: "testStage1",
+					},
+				},
+				Sinks: []domain.SinkSpec{
+					{
+						Name: "testSink",
+						From: "testStage2",
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "stream spec with source, multiple stages, and sinks",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Stages: []domain.StageSpec{
+					{
+						Name: "testStage1",
+						From: "testSource",
+					},
+					{
+						Name: "testStage2",
+						From: "testStage1",
+					},
+				},
+				Sinks: []domain.SinkSpec{
+					{
+						Name: "testSink1",
+						From: "testStage1",
+					},
+					{
+						Name: "testSink2",
+						From: "testStage2",
+					},
+				},
+			},
+			expected: true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tree, err := c.streamSpec.Tree()
+			assert.NoError(t, err)
+			actual := tree.IsConnected()
+			if actual != c.expected {
+				t.Errorf("Expected %t, got %t", c.expected, actual)
+			}
+		})
+	}
+}
+
+// ------- Benchmarks -------
+//
+
+func BenchmarkNewTree(b *testing.B) {
+	cases := []struct {
+		name       string
+		streamSpec domain.StreamSpec
+	}{
+		{
+			name:       "empty stream spec",
+			streamSpec: domain.StreamSpec{},
+		},
+		{
+			name: "stream spec with source",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+			},
+		},
+		{
+			name: "stream spec with source and sink",
+			streamSpec: domain.StreamSpec{
+				Source: domain.SourceSpec{
+					Name: "testSource",
+				},
+				Sinks: []domain.SinkSpec{
+					{
+						Name: "testSink",
+						From: "testSource",
+					},
+				},
+			},
+		},
+	}
+
+	for _, c := range cases {
+		b.Run(c.name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, _ = domain.NewTree(c.streamSpec)
 			}
 		})
 	}

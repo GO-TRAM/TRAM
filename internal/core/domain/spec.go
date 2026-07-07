@@ -66,7 +66,7 @@ func (s *StreamSpec) Validate() error {
 		}
 	}
 
-	for _, node := range tree {
+	for _, node := range tree.Map() {
 		if node.Kind == KindSink && len(node.Children) != 0 {
 			return ErrGraphSinkHasChildren
 		}
@@ -75,50 +75,6 @@ func (s *StreamSpec) Validate() error {
 	return nil
 }
 
-func (s StreamSpec) Tree() (Tree, error) {
-	tree := make(map[string]*Node)
-	tree[s.Source.Name] = &Node{
-		Children: []*Node{},
-		Kind:     KindSource,
-		Name:     s.Source.Name,
-	}
-
-	for _, stage := range s.Stages {
-		if _, ok := tree[stage.Name]; ok {
-			return nil, ErrStageDuplicate
-		}
-		tree[stage.Name] = &Node{
-			Children: []*Node{},
-			Kind:     KindStage,
-			Name:     stage.Name,
-		}
-	}
-
-	for _, stage := range s.Stages {
-		from, ok := tree[stage.From]
-		if !ok {
-			return nil, ErrStageInvalidFrom
-		}
-
-		node := tree[stage.Name]
-		tree[stage.From].Children = append(from.Children, node)
-	}
-
-	for _, sink := range s.Sinks {
-		if _, ok := tree[sink.Name]; ok {
-			return nil, ErrSinkDuplicate
-		}
-		from, ok := tree[sink.From]
-		if !ok {
-			return nil, ErrSinkInvalidFrom
-		}
-		node := &Node{
-			Children: []*Node{},
-			Kind:     KindSink,
-			Name:     sink.Name,
-		}
-		tree[sink.Name] = node
-		from.Children = append(from.Children, node)
-	}
-	return tree, nil
+func (s StreamSpec) Tree() (*Tree, error) {
+	return NewTree(s)
 }
