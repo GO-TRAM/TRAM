@@ -47,26 +47,26 @@ type StreamSpec struct {
 }
 
 func (s *StreamSpec) Validate() error {
-	graph, err := s.Graph()
+	tree, err := s.Tree()
 	if err != nil {
 		return err
 	}
 
-	if !graph.IsDAG() {
-		return ErrGraphNotDAG
+	if !tree.IsTree() {
+		return ErrGraphNotTree
 	}
 
-	if !graph.IsConnected() {
+	if !tree.IsConnected() {
 		return ErrGraphNotConnected
 	}
 
-	for _, node := range graph.LeafNodes() {
+	for _, node := range tree.LeafNodes() {
 		if node.Kind != KindSink {
 			return ErrGraphLeafNotSink
 		}
 	}
 
-	for _, node := range graph {
+	for _, node := range tree {
 		if node.Kind == KindSink && len(node.Children) != 0 {
 			return ErrGraphSinkHasChildren
 		}
@@ -75,19 +75,19 @@ func (s *StreamSpec) Validate() error {
 	return nil
 }
 
-func (s StreamSpec) Graph() (Graph, error) {
-	graph := make(map[string]*Node)
-	graph[s.Source.Name] = &Node{
+func (s StreamSpec) Tree() (Tree, error) {
+	tree := make(map[string]*Node)
+	tree[s.Source.Name] = &Node{
 		Children: []*Node{},
 		Kind:     KindSource,
 		Name:     s.Source.Name,
 	}
 
 	for _, stage := range s.Stages {
-		if _, ok := graph[stage.Name]; ok {
+		if _, ok := tree[stage.Name]; ok {
 			return nil, ErrStageDuplicate
 		}
-		graph[stage.Name] = &Node{
+		tree[stage.Name] = &Node{
 			Children: []*Node{},
 			Kind:     KindStage,
 			Name:     stage.Name,
@@ -95,20 +95,20 @@ func (s StreamSpec) Graph() (Graph, error) {
 	}
 
 	for _, stage := range s.Stages {
-		from, ok := graph[stage.From]
+		from, ok := tree[stage.From]
 		if !ok {
 			return nil, ErrStageInvalidFrom
 		}
 
-		node := graph[stage.Name]
-		graph[stage.From].Children = append(from.Children, node)
+		node := tree[stage.Name]
+		tree[stage.From].Children = append(from.Children, node)
 	}
 
 	for _, sink := range s.Sinks {
-		if _, ok := graph[sink.Name]; ok {
+		if _, ok := tree[sink.Name]; ok {
 			return nil, ErrSinkDuplicate
 		}
-		from, ok := graph[sink.From]
+		from, ok := tree[sink.From]
 		if !ok {
 			return nil, ErrSinkInvalidFrom
 		}
@@ -117,8 +117,8 @@ func (s StreamSpec) Graph() (Graph, error) {
 			Kind:     KindSink,
 			Name:     sink.Name,
 		}
-		graph[sink.Name] = node
+		tree[sink.Name] = node
 		from.Children = append(from.Children, node)
 	}
-	return graph, nil
+	return tree, nil
 }

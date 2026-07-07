@@ -6,11 +6,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGraph(t *testing.T) {
+func TestTree(t *testing.T) {
 	cases := []struct {
 		name        string
 		stream      StreamSpec
-		expected    Graph
+		expected    Tree
 		expectedErr error
 	}{
 		{
@@ -29,7 +29,7 @@ func TestGraph(t *testing.T) {
 					},
 				},
 			},
-			expected: Graph{
+			expected: Tree{
 				"a": &Node{
 					Name: "testSource",
 					Kind: "source",
@@ -69,7 +69,7 @@ func TestGraph(t *testing.T) {
 					},
 				},
 			},
-			expected: Graph{
+			expected: Tree{
 				"a": &Node{
 					Name: "testSource",
 					Kind: "source",
@@ -124,7 +124,7 @@ func TestGraph(t *testing.T) {
 					},
 				},
 			},
-			expected: Graph{
+			expected: Tree{
 				"a": &Node{
 					Name: "testSource",
 					Kind: "source",
@@ -156,9 +156,9 @@ func TestGraph(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			graph, err := c.stream.Graph()
+			tree, err := c.stream.Tree()
 			assert.Equal(t, c.expectedErr, err)
-			assert.Equal(t, c.expected.String(), graph.String())
+			assert.Equal(t, c.expected.String(), tree.String())
 		})
 	}
 }
