@@ -158,10 +158,6 @@ Stream pipelines follow a **tree structure** with these rules:
 
 ```
 Source → [Stage] → Sink
- 
-Source → Sink
- 
-Source → [Stage 1 → Stage 2] → Sink
 ```
 
 *Arrows represent the direction of data flow, from source to sinks.*
