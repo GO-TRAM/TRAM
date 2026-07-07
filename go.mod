@@ -14,10 +14,12 @@ require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260415201107-50325440f8f2.1
 	buf.build/go/protovalidate v1.2.0
 	github.com/go-playground/validator/v10 v10.30.3
+	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
+	go.opentelemetry.io/proto/otlp v1.10.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260610212136-7ab31c22f7ad
 	google.golang.org/grpc v1.81.0
 	google.golang.org/protobuf v1.36.11
