@@ -3,12 +3,6 @@ package domain
 
 import "context"
 
-// TODO switch to OTLP
-type Event struct {
-	Data     []byte
-	Metadata map[string]string
-}
-
 type Namable interface {
 	Name() string
 }
