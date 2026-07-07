@@ -44,8 +44,7 @@ func (g *Generator) Run(ctx context.Context) error {
 			return ctx.Err()
 		case <-time.After(g.interval):
 			event := domain.Event{
-				Metadata: map[string]string{},
-				Data:     []byte(uuid.NewString()),
+				Data: []byte(uuid.NewString()),
 			}
 			g.NotifySubscribers(ctx, event)
 		}

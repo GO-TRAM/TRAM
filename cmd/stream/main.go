@@ -13,7 +13,7 @@ var rootCmd = &cobra.Command{
 	collect, process, and forward logs, metrics, and traces to various
 	backends.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Help()
+		_ = cmd.Help()
 	},
 }
 

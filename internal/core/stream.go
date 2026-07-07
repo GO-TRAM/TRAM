@@ -56,10 +56,10 @@ func (c *Core) buildStream(
 	for _, sinkSpec := range spec.Sinks {
 		sink, err := c.sinkFactory.New(sinkSpec)
 		if err != nil {
-			return nil, errors.Join(fmt.Errorf("%: %s", domain.ErrInvalidStreamSpec, sinkSpec.Name), err)
+			return nil, errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, sinkSpec.Name), err)
 		}
 		if err := tree.GetNode(sinkSpec.Name).AddSink(sink); err != nil {
-			return nil, errors.Join(fmt.Errorf("%: %s", domain.ErrInvalidStreamSpec, sinkSpec.Name), err)
+			return nil, errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, sinkSpec.Name), err)
 		}
 	}
 
@@ -77,7 +77,9 @@ func (c *Core) buildStream(
 		if err != nil {
 			return nil, err
 		}
-		observer.Subscribe(subscriber)
+		if err := observer.Subscribe(subscriber); err != nil {
+			return nil, err
+		}
 	}
 
 	return tree, nil

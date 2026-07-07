@@ -30,6 +30,7 @@ func New[T any](name, from string, spec map[string]any, validator *validator.Val
 	return &Stage[T]{
 		name: name,
 		from: from,
+		spec: parsedSpec,
 	}, nil
 }
 
@@ -54,13 +55,13 @@ func (s *Stage[T]) NotifySubscribers(ctx context.Context, event domain.Event) {
 	copy(subs, s.subscribers)
 	s.mu.RUnlock()
 
-	p := ctx.Value("path")
+	p := ctx.Value(domain.ContextKeyPath)
 	path, ok := p.(string)
 	if !ok {
 		path = ""
 	}
 	path += " -> " + s.Name()
-	ctx = context.WithValue(ctx, "path", path)
+	ctx = context.WithValue(ctx, domain.ContextKeyPath, path)
 
 	for _, sub := range subs {
 		go func(c domain.Subscriber) {

@@ -69,7 +69,7 @@ func (s *Source[T]) NotifySubscribers(ctx context.Context, event domain.Event) {
 	copy(subs, s.subscribers)
 	s.mu.RUnlock()
 
-	ctx = context.WithValue(ctx, "path", s.Name())
+	ctx = context.WithValue(ctx, domain.ContextKeyPath, s.Name())
 
 	for _, sub := range subs {
 		go func(c domain.Subscriber) {

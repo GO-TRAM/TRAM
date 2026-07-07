@@ -95,9 +95,9 @@ func (n Node) GetSubscriber() (Subscriber, error) {
 }
 
 func (n *Node) String() string {
-	var children []*Node
+	var children []Node
 	for _, child := range n.Children {
-		children = append(children, child)
+		children = append(children, *child)
 	}
 	sort.Slice(children, func(i, j int) bool {
 		return children[i].Kind.Value() < children[j].Kind.Value()

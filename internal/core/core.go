@@ -69,7 +69,10 @@ func (c *Core) UpsertStream(ctx context.Context, spec domain.StreamSpec) (*domai
 			log.Println("Failed to get source for stream", builtStream.Spec.Name, err)
 			return
 		}
-		source.Run(c.ctx)
+		if err := source.Run(c.ctx); err != nil {
+			log.Println("Failed to run stream", builtStream.Spec.Name, err)
+			return
+		}
 	})
 
 	c.streams[spec.Name] = builtStream
