@@ -45,13 +45,12 @@ func New(source domain.SourceSpec, validator *validator.Validate) (*OTLP, error)
 func (o *OTLP) Run(ctx context.Context) error {
 	go o.runHTTPServer()
 
-	for {
-		select {
-		case <-o.Context().Done():
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+	select {
+	case <-o.Context().Done():
+	case <-ctx.Done():
 	}
+
+	return nil
 }
 
 func (o *OTLP) runHTTPServer() {

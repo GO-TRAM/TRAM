@@ -52,6 +52,8 @@ func (c *Core) UpsertStream(ctx context.Context, spec domain.StreamSpec) (*domai
 		return nil, errors.Join(domain.ErrStreamBuildFailed, err)
 	}
 
+	// TODO instead of stopping and starting a stream, modify its nodes while running.
+
 	if exists {
 		source, err := stream.Root().GetSource()
 		if err != nil {
