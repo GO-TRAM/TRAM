@@ -38,10 +38,6 @@ func New(source domain.SourceSpec, validator *validator.Validate) (*OTLP, error)
 		return nil, fmt.Errorf("%w: %d", domain.ErrPortUnavailable, spec.HttpPort)
 	}
 
-	if !isPortAvailableUnix(base.Spec().GRPCPort) {
-		return nil, fmt.Errorf("%w: %d", domain.ErrPortUnavailable, spec.GRPCPort)
-	}
-
 	return &OTLP{
 		Source: base,
 	}, nil
