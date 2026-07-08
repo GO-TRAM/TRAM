@@ -26,4 +26,5 @@ var (
 	ErrNodeNotSink          = errors.New("node is not a sink")
 	ErrNodeNotObserver      = errors.New("node is not an observer")
 	ErrNodeNotSubscriber    = errors.New("node is not a subscriber")
+	ErrPortUnavailable      = errors.New("port unavailable")
 )

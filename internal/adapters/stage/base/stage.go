@@ -7,6 +7,7 @@ import (
 
 	"codeberg.org/eljoth/stream/internal/core/domain"
 	"github.com/go-playground/validator/v10"
+	"golang.org/x/sync/errgroup"
 )
 
 type Stage[T any] struct {
@@ -42,6 +43,10 @@ func (s *Stage[T]) From() string {
 	return s.from
 }
 
+func (s *Stage[T]) Spec() *T {
+	return s.spec
+}
+
 func (s *Stage[T]) Subscribe(c domain.Subscriber) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -49,7 +54,7 @@ func (s *Stage[T]) Subscribe(c domain.Subscriber) error {
 	return nil
 }
 
-func (s *Stage[T]) NotifySubscribers(ctx context.Context, event domain.Event) {
+func (s *Stage[T]) NotifySubscribers(ctx context.Context, event domain.Event) error {
 	s.mu.RLock()
 	subs := make([]domain.Subscriber, len(s.subscribers))
 	copy(subs, s.subscribers)
@@ -63,9 +68,14 @@ func (s *Stage[T]) NotifySubscribers(ctx context.Context, event domain.Event) {
 	path += " -> " + s.Name()
 	ctx = context.WithValue(ctx, domain.ContextKeyPath, path)
 
+	eg := errgroup.Group{}
 	for _, sub := range subs {
-		go func(c domain.Subscriber) {
-			_ = c.Notify(ctx, event)
-		}(sub)
+		eg.Go(func() error {
+			return sub.Notify(ctx, event)
+		})
 	}
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+	return nil
 }

@@ -46,7 +46,7 @@ func (g *Generator) Run(ctx context.Context) error {
 			event := domain.Event{
 				Data: []byte(uuid.NewString()),
 			}
-			g.NotifySubscribers(ctx, event)
+			_ = g.NotifySubscribers(ctx, event)
 		}
 	}
 }
