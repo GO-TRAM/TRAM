@@ -54,7 +54,7 @@ func (s *Stage[T]) Subscribe(c domain.Subscriber) error {
 	return nil
 }
 
-func (s *Stage[T]) NotifySubscribers(ctx context.Context, event domain.Event) error {
+func (s *Stage[T]) NotifySubscribers(ctx context.Context, event *domain.Event) error {
 	s.mu.RLock()
 	subs := make([]domain.Subscriber, len(s.subscribers))
 	copy(subs, s.subscribers)

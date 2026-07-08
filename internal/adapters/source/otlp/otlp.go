@@ -3,6 +3,7 @@ package otlp
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -10,6 +11,10 @@ import (
 	"codeberg.org/eljoth/stream/internal/adapters/source/base"
 	"codeberg.org/eljoth/stream/internal/core/domain"
 	"github.com/go-playground/validator/v10"
+	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
+	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
+	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -56,9 +61,9 @@ func (o *OTLP) Run(ctx context.Context) error {
 func (o *OTLP) runHTTPServer() {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("POST /v1/traces", o.handleRequest)
-	mux.HandleFunc("POST /v1/metrics", o.handleRequest)
-	mux.HandleFunc("POST /v1/logs", o.handleRequest)
+	mux.HandleFunc("POST /v1/traces", o.handleTraces)
+	mux.HandleFunc("POST /v1/metrics", o.handleMetrics)
+	mux.HandleFunc("POST /v1/logs", o.handleLogs)
 
 	o.httpServer = &http.Server{
 		Addr:         fmt.Sprintf(":%d", o.Spec().HttpPort),
@@ -74,8 +79,61 @@ func (o *OTLP) runHTTPServer() {
 	}
 }
 
-func (o *OTLP) handleRequest(w http.ResponseWriter, r *http.Request) {
-	_ = o.NotifySubscribers(r.Context(), domain.Event{})
+func (o *OTLP) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Error reading request body", http.StatusBadRequest)
+		return
+	}
+
+	defer r.Body.Close()
+
+	metrics := metricspb.MetricsData{}
+	if err := proto.Unmarshal(body, &metrics); err != nil {
+		http.Error(w, "Error parsing request body", http.StatusBadRequest)
+	}
+
+	_ = o.NotifySubscribers(r.Context(), &domain.Event{
+		Metrics: &metrics,
+	})
+}
+
+func (o *OTLP) handleLogs(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Error reading request body", http.StatusBadRequest)
+		return
+	}
+
+	defer r.Body.Close()
+
+	logs := logspb.LogsData{}
+	if err := proto.Unmarshal(body, &logs); err != nil {
+		http.Error(w, "Error parsing request body", http.StatusBadRequest)
+	}
+
+	_ = o.NotifySubscribers(r.Context(), &domain.Event{
+		Logs: &logs,
+	})
+}
+
+func (o *OTLP) handleTraces(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Error reading request body", http.StatusBadRequest)
+		return
+	}
+
+	defer r.Body.Close()
+
+	traces := tracepb.TracesData{}
+	if err := proto.Unmarshal(body, &traces); err != nil {
+		http.Error(w, "Error parsing request body", http.StatusBadRequest)
+	}
+
+	_ = o.NotifySubscribers(r.Context(), &domain.Event{
+		Traces: &traces,
+	})
 }
 
 func (o *OTLP) Stop() error {

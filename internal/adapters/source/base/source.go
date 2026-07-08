@@ -64,7 +64,7 @@ func (s *Source[T]) Stop() error {
 	return nil
 }
 
-func (s *Source[T]) NotifySubscribers(ctx context.Context, event domain.Event) error {
+func (s *Source[T]) NotifySubscribers(ctx context.Context, event *domain.Event) error {
 	s.mu.RLock()
 	subs := make([]domain.Subscriber, len(s.subscribers))
 	copy(subs, s.subscribers)

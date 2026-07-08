@@ -31,7 +31,7 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*NoOp, error) {
 	}, nil
 }
 
-func (n *NoOp) Notify(ctx context.Context, event domain.Event) error {
+func (n *NoOp) Notify(ctx context.Context, event *domain.Event) error {
 	<-time.After(n.delay)
 	n.NotifySubscribers(ctx, event)
 	return nil

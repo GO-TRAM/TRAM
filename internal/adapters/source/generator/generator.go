@@ -43,7 +43,7 @@ func (g *Generator) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(g.interval):
-			event := domain.Event{
+			event := &domain.Event{
 				Data: []byte(uuid.NewString()),
 			}
 			_ = g.NotifySubscribers(ctx, event)

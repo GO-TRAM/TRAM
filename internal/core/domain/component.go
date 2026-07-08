@@ -11,7 +11,7 @@ type Subscriber interface {
 	Namable
 
 	From() string
-	Notify(ctx context.Context, event Event) error
+	Notify(ctx context.Context, event *Event) error
 	// TODO Drain(ctx context.Context) error
 }
 

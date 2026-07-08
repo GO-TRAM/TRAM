@@ -9,7 +9,7 @@ import (
 // Event represents stream data with OTLP support
 type Event struct {
 	Data    []byte
-	Logs    []*logspb.ResourceLogs
-	Metrics []*metricspb.ResourceMetrics
-	Traces  []*tracepb.ResourceSpans
+	Logs    *logspb.LogsData
+	Metrics *metricspb.MetricsData
+	Traces  *tracepb.TracesData
 }
