@@ -3,11 +3,13 @@ package celfilter
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/ext"
 
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
@@ -36,21 +38,23 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELFilter, err
 			metricspb.File_opentelemetry_proto_metrics_v1_metrics_proto,
 			tracepb.File_opentelemetry_proto_trace_v1_trace_proto,
 		),
-		cel.Variable("event", cel.DynType),
-	)
 
+		ext.NativeTypes(reflect.TypeOf(&domain.Event{})),
+
+		cel.Variable("event", cel.ObjectType("domain.Event")),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
-	ast, issues := celEnv.Parse(base.Spec().Expression)
+	ast, issues := celEnv.Compile(base.Spec().Expression)
 	if issues != nil && issues.Err() != nil {
-		return nil, fmt.Errorf("failed to parse CEL expression: %w", issues.Err())
+		return nil, fmt.Errorf("failed to compile CEL expression: %w", issues.Err())
 	}
 
 	celProgram, err := celEnv.Program(ast)
 	if err != nil {
-		return nil, fmt.Errorf("failed to compile CEL program: %w", err)
+		return nil, fmt.Errorf("failed to build CEL program: %w", err)
 	}
 
 	return &CELFilter{
@@ -61,26 +65,15 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELFilter, err
 }
 
 func (n *CELFilter) Notify(ctx context.Context, event *domain.Event) error {
-	eventMap := map[string]any{}
-	if event.Logs != nil {
-		eventMap["Logs"] = event.Logs
-	}
-	if event.Metrics != nil {
-		eventMap["Metrics"] = event.Metrics
-	}
-	if event.Traces != nil {
-		eventMap["Traces"] = event.Traces
-	}
-	result, _, err := n.celProgram.Eval(map[string]any{"event": eventMap})
+	result, _, err := n.celProgram.Eval(map[string]any{
+		"event": event,
+	})
 
 	if err != nil {
 		return fmt.Errorf("CEL evaluation error: %w", err)
 	}
-	isMatch, ok := result.Value().(bool)
 
-	if !ok {
-		return fmt.Errorf("CEL expression did not return a boolean value, got: %T", result.Value())
-	}
+	isMatch := result.Value().(bool)
 
 	if !isMatch {
 		switch n.Stage.Spec().OnMismatch {
@@ -92,5 +85,6 @@ func (n *CELFilter) Notify(ctx context.Context, event *domain.Event) error {
 			return fmt.Errorf("event did not match the CEL filter criteria")
 		}
 	}
+
 	return n.NotifySubscribers(ctx, event)
 }
