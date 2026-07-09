@@ -152,7 +152,7 @@ Stream pipelines follow a **tree structure** with these rules:
 3. **Sinks** must be connected to either the source or a stage
 4. **All leaves must be sinks** (no dangling stages)
 
-![Simple Stream](./docs/assets/stream.webp)
+![Simple Stream](./docs/assets/tram.webp)
 
 ### Data Flow
 
@@ -259,6 +259,10 @@ curl -X PUT http://localhost:8080/v1/streams/processing-pipeline \
     }
   }'
 ```
+
+### Example Setup
+
+![Components](docs/assets/example.webp)
 
 ---
 
