@@ -26,6 +26,5 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*NoOp, error) {
 }
 
 func (n *NoOp) Notify(ctx context.Context, event *domain.Event) error {
-	n.NotifySubscribers(ctx, event)
-	return nil
+	return n.NotifySubscribers(ctx, event)
 }

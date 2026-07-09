@@ -89,9 +89,11 @@ func (o *OTLP) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error parsing request body", http.StatusBadRequest)
 	}
 
-	_ = o.NotifySubscribers(r.Context(), &domain.Event{
+	if err := o.NotifySubscribers(r.Context(), &domain.Event{
 		Metrics: &metrics,
-	})
+	}); err != nil {
+		http.Error(w, "Error notifying subscribers", http.StatusInternalServerError)
+	}
 }
 
 func (o *OTLP) handleLogs(w http.ResponseWriter, r *http.Request) {
@@ -108,9 +110,11 @@ func (o *OTLP) handleLogs(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error parsing request body", http.StatusBadRequest)
 	}
 
-	_ = o.NotifySubscribers(r.Context(), &domain.Event{
+	if err := o.NotifySubscribers(r.Context(), &domain.Event{
 		Logs: &logs,
-	})
+	}); err != nil {
+		http.Error(w, "Error notifying subscribers", http.StatusInternalServerError)
+	}
 }
 
 func (o *OTLP) handleTraces(w http.ResponseWriter, r *http.Request) {
@@ -127,9 +131,11 @@ func (o *OTLP) handleTraces(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error parsing request body", http.StatusBadRequest)
 	}
 
-	_ = o.NotifySubscribers(r.Context(), &domain.Event{
+	if err := o.NotifySubscribers(r.Context(), &domain.Event{
 		Traces: &traces,
-	})
+	}); err != nil {
+		http.Error(w, "Error notifying subscribers", http.StatusInternalServerError)
+	}
 }
 
 func (o *OTLP) Stop() error {

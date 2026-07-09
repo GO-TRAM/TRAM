@@ -1,6 +1,7 @@
 package stage
 
 import (
+	"codeberg.org/eljoth/tram/internal/adapters/stage/celfilter"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/delay"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/noop"
 	"codeberg.org/eljoth/tram/internal/core/domain"
@@ -21,6 +22,8 @@ func (f *Factory) New(spec domain.StageSpec) (domain.Stage, error) {
 	switch spec.Type {
 	case noop.Type:
 		return noop.New(spec, f.validator)
+	case celfilter.Type:
+		return celfilter.New(spec, f.validator)
 	case delay.Type:
 		return delay.New(spec, f.validator)
 	default:
