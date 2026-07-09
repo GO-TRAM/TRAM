@@ -169,7 +169,7 @@ Source → [Stage] → Sink
 | Type | Components |
 |------|-------------|
 | **Sources** | `generator`, `nats`, `otlp` |
-| **Stages** | `noop` |
+| **Stages** | `cel_filter`, `delay`, `noop` |
 | **Sinks** | `debug`, `nats`, `otlp`, `s3` |
 
 For detailed documentation on each component and its configuration, see [COMPONENTS.md](COMPONENTS.md).
