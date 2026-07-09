@@ -7,13 +7,13 @@ import (
 	"os/signal"
 	"syscall"
 
-	"codeberg.org/eljoth/stream/internal/adapters/api"
-	"codeberg.org/eljoth/stream/internal/adapters/sink"
-	"codeberg.org/eljoth/stream/internal/adapters/source"
-	"codeberg.org/eljoth/stream/internal/adapters/stage"
+	"codeberg.org/eljoth/tram/internal/adapters/api"
+	"codeberg.org/eljoth/tram/internal/adapters/sink"
+	"codeberg.org/eljoth/tram/internal/adapters/source"
+	"codeberg.org/eljoth/tram/internal/adapters/stage"
 	"github.com/spf13/cobra"
 
-	"codeberg.org/eljoth/stream/internal/core"
+	"codeberg.org/eljoth/tram/internal/core"
 )
 
 var (

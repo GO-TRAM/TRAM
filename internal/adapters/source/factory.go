@@ -1,9 +1,9 @@
 package source
 
 import (
-	"codeberg.org/eljoth/stream/internal/adapters/source/generator"
-	"codeberg.org/eljoth/stream/internal/adapters/source/otlp"
-	"codeberg.org/eljoth/stream/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/adapters/source/generator"
+	"codeberg.org/eljoth/tram/internal/adapters/source/otlp"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 )
 

@@ -1,8 +1,8 @@
 package sink
 
 import (
-	"codeberg.org/eljoth/stream/internal/adapters/sink/debug"
-	"codeberg.org/eljoth/stream/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/adapters/sink/debug"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 )
 

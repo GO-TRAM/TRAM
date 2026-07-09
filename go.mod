@@ -1,4 +1,4 @@
-module codeberg.org/eljoth/stream
+module codeberg.org/eljoth/tram
 
 go 1.26.4
 

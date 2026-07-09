@@ -4,8 +4,8 @@ import (
 	"context"
 	"log"
 
-	"codeberg.org/eljoth/stream/internal/adapters/sink/base"
-	"codeberg.org/eljoth/stream/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/adapters/sink/base"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 )
 

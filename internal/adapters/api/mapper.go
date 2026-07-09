@@ -1,8 +1,8 @@
 package api
 
 import (
-	"codeberg.org/eljoth/stream/internal/core/domain"
-	v1 "codeberg.org/eljoth/stream/pkg/gen/go/api/proto/stream/v1"
+	"codeberg.org/eljoth/tram/internal/core/domain"
+	v1 "codeberg.org/eljoth/tram/pkg/gen/go/api/proto/stream/v1"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 

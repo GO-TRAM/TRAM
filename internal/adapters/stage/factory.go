@@ -1,9 +1,9 @@
 package stage
 
 import (
-	"codeberg.org/eljoth/stream/internal/adapters/stage/delay"
-	"codeberg.org/eljoth/stream/internal/adapters/stage/noop"
-	"codeberg.org/eljoth/stream/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/adapters/stage/delay"
+	"codeberg.org/eljoth/tram/internal/adapters/stage/noop"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 )
 

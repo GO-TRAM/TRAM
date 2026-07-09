@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	"codeberg.org/eljoth/stream/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 type Core interface {

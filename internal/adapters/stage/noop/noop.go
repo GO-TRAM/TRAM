@@ -4,8 +4,8 @@ package noop
 import (
 	"context"
 
-	"codeberg.org/eljoth/stream/internal/adapters/stage/base"
-	"codeberg.org/eljoth/stream/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 )
 

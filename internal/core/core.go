@@ -6,8 +6,8 @@ import (
 	"log"
 	"sync"
 
-	"codeberg.org/eljoth/stream/internal/core/domain"
-	"codeberg.org/eljoth/stream/internal/ports"
+	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/ports"
 )
 
 type Core struct {

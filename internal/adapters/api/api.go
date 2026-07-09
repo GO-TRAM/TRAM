@@ -14,8 +14,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"codeberg.org/eljoth/stream/internal/ports"
-	v1 "codeberg.org/eljoth/stream/pkg/gen/go/api/proto/stream/v1"
+	"codeberg.org/eljoth/tram/internal/ports"
+	v1 "codeberg.org/eljoth/tram/pkg/gen/go/api/proto/stream/v1"
 )
 
 type API struct {

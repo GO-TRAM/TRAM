@@ -28,7 +28,7 @@ Thank you for your interest in contributing to Stream! This document provides gu
 
 ```bash
 # Clone the repository
-git clone https://codeberg.org/eljoth/stream.git
+git clone https://codeberg.org/eljoth/tram.git
 cd stream
 
 # Install Go dependencies
@@ -182,8 +182,8 @@ import (
 	"log"
 	"time"
 
-	"codeberg.org/eljoth/stream/internal/adapters/source/base"
-	"codeberg.org/eljoth/stream/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/adapters/source/base"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -253,7 +253,7 @@ package config
 
 import (
     "github.com/go-playground/validator/v10"
-    mysource "codeberg.org/eljoth/stream/internal/adapters/source/my-source"
+    mysource "codeberg.org/eljoth/tram/internal/adapters/source/my-source"
 )
 
 func (f *Factory) registerComponents() {
@@ -294,8 +294,8 @@ package mystage
 import (
 	"context"
 
-	"codeberg.org/eljoth/stream/internal/adapters/stage/base"
-	"codeberg.org/eljoth/stream/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -332,7 +332,7 @@ func (s *MyStage) Notify(ctx context.Context, event domain.Event) error {
 ```go
 // internal/core/config/factory.go
 import (
-    mystage "codeberg.org/eljoth/stream/internal/adapters/stage/my-stage"
+    mystage "codeberg.org/eljoth/tram/internal/adapters/stage/my-stage"
 )
 
 func (f *Factory) registerComponents() {
@@ -373,8 +373,8 @@ package mysink
 import (
 	"context"
 
-	"codeberg.org/eljoth/stream/internal/adapters/sink/base"
-	"codeberg.org/eljoth/stream/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/adapters/sink/base"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -412,7 +412,7 @@ func (s *MySink) Notify(ctx context.Context, event domain.Event) error {
 ```go
 // internal/core/config/factory.go
 import (
-    mysink "codeberg.org/eljoth/stream/internal/adapters/sink/my-sink"
+    mysink "codeberg.org/eljoth/tram/internal/adapters/sink/my-sink"
 )
 
 func (f *Factory) registerComponents() {

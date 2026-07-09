@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"codeberg.org/eljoth/stream/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 	"golang.org/x/sync/errgroup"
 )

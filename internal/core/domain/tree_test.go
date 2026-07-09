@@ -3,7 +3,7 @@ package domain_test
 import (
 	"testing"
 
-	"codeberg.org/eljoth/stream/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -5,7 +5,7 @@ import "buf/validate/validate.proto";
 import "google/api/annotations.proto";
 import "google/protobuf/struct.proto";
 
-option go_package = "codeberg.org/eljoth/stream/pkg/gen/go/stream/service/v1";
+option go_package = "codeberg.org/eljoth/tram/pkg/gen/go/stream/service/v1";
 
 //------------------------------------------------------------------------------
 // Domain definitions

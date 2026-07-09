@@ -1,6 +1,6 @@
-# Stream: A Lightweight, Extensible Data Pipeline Framework
+# Tram: A Lightweight, Extensible Data Pipeline Framework
 
-Stream is a **cloud-native, in-memory data pipeline framework** for building real-time data processing flows. It enables developers to create, transform, and route data through **tree-structured pipelines** where each tree contains a source, optional stages, and sinks as leaves.
+Tram is a **cloud-native, in-memory data pipeline framework** for building real-time data processing flows. It enables developers to create, transform, and route data through **tree-structured pipelines** where each tree contains a source, optional stages, and sinks as leaves.
 
 ---
 
@@ -20,9 +20,9 @@ Stream is a **cloud-native, in-memory data pipeline framework** for building rea
 ### Installation
 
 ```bash
-git clone https://codeberg.org/eljoth/stream.git
-cd stream
-go build -o stream ./cmd/stream
+git clone https://codeberg.org/eljoth/tram.git
+cd tram
+go build -o tram ./cmd/tram
 ```
 
 ### API Endpoints
