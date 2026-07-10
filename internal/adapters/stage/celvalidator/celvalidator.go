@@ -50,30 +50,17 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELFilter, err
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
-	logsEnv, err := baseEnv.Extend(cel.Variable("logs", cel.ObjectType("opentelemetry.proto.logs.v1.LogsData")))
-	if err != nil {
-		return nil, err
-	}
-
-	logs, err := initCEL(logsEnv, base.Spec().LogsFilter)
+	logs, err := initCEL(baseEnv, base.Spec().LogsFilter, cel.Variable("logs", cel.ObjectType("opentelemetry.proto.logs.v1.LogsData")))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
-	metricsEnv, err := baseEnv.Extend(cel.Variable("metrics", cel.ObjectType("opentelemetry.proto.metrics.v1.MetricsData")))
-	if err != nil {
-		return nil, err
-	}
-	metrics, err := initCEL(metricsEnv, base.Spec().MetricsFilter)
+	metrics, err := initCEL(baseEnv, base.Spec().MetricsFilter, cel.Variable("metrics", cel.ObjectType("opentelemetry.proto.metrics.v1.MetricsData")))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
-	tracesEnv, err := baseEnv.Extend(cel.Variable("traces", cel.ObjectType("opentelemetry.proto.trace.v1.TracesData")))
-	if err != nil {
-		return nil, err
-	}
-	traces, err := initCEL(tracesEnv, base.Spec().TracesFilter)
+	traces, err := initCEL(baseEnv, base.Spec().TracesFilter, cel.Variable("traces", cel.ObjectType("opentelemetry.proto.trace.v1.TracesData")))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
@@ -86,16 +73,20 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELFilter, err
 	}, nil
 }
 
-func initCEL(celEnv *cel.Env, expression string) (cel.Program, error) {
+func initCEL(celEnv *cel.Env, expression string, opts ...cel.EnvOption) (cel.Program, error) {
+	env, err := celEnv.Extend(opts...)
+	if err != nil {
+		return nil, err
+	}
 	if expression == "" {
 		expression = "true"
 	}
-	ast, issues := celEnv.Compile(expression)
+	ast, issues := env.Compile(expression)
 	if issues != nil && issues.Err() != nil {
 		return nil, fmt.Errorf("failed to compile CEL expression: %w", issues.Err())
 	}
 
-	celProgram, err := celEnv.Program(ast)
+	celProgram, err := env.Program(ast)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build CEL program: %w", err)
 	}
