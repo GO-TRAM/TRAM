@@ -51,17 +51,17 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELValidator, 
 		return nil, errors.Join(ErrCELEnvironmenInitialization, err)
 	}
 
-	logs, err := initCEL(baseEnv, base.Spec().LogsFilter, cel.Variable("logs", cel.ObjectType("opentelemetry.proto.logs.v1.LogsData")))
+	logs, err := initCEL(baseEnv, base.Spec().Logs, cel.Variable("logs", cel.ObjectType("opentelemetry.proto.logs.v1.LogsData")))
 	if err != nil {
 		return nil, errors.Join(ErrCELInvalidLogsExpression, err)
 	}
 
-	metrics, err := initCEL(baseEnv, base.Spec().MetricsFilter, cel.Variable("metrics", cel.ObjectType("opentelemetry.proto.metrics.v1.MetricsData")))
+	metrics, err := initCEL(baseEnv, base.Spec().Metrics, cel.Variable("metrics", cel.ObjectType("opentelemetry.proto.metrics.v1.MetricsData")))
 	if err != nil {
 		return nil, errors.Join(ErrCELInvalidMetricsExpression, err)
 	}
 
-	traces, err := initCEL(baseEnv, base.Spec().TracesFilter, cel.Variable("traces", cel.ObjectType("opentelemetry.proto.trace.v1.TracesData")))
+	traces, err := initCEL(baseEnv, base.Spec().Traces, cel.Variable("traces", cel.ObjectType("opentelemetry.proto.trace.v1.TracesData")))
 	if err != nil {
 		return nil, errors.Join(ErrCELInvalidTracesExpression, err)
 	}

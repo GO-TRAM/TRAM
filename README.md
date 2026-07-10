@@ -46,7 +46,7 @@ The Stream service provides the following HTTP endpoints:
 This example creates a pipeline with:
 - **Source**: `generator` (emits events every 5 seconds)
 - **Stages**: None
-- **Sinks**: `debug` (logs to stdout), `nats` (publishes to NATS), `otlp` (sends to OTLP endpoint)
+- **Sinks**: `debug` (logs to stdout)
 
 ```bash
 curl -X PUT http://localhost:8080/v1/streams/my-pipeline \
@@ -66,24 +66,6 @@ curl -X PUT http://localhost:8080/v1/streams/my-pipeline \
           "name": "console",
           "type": "debug",
           "from": "event-generator"
-        },
-        {
-          "name": "nats-publisher",
-          "type": "nats",
-          "from": "event-generator",
-          "spec": {
-            "url": "nats://localhost:4222",
-            "subject": "my-pipeline.events"
-          }
-        },
-        {
-          "name": "otlp-exporter",
-          "type": "otlp",
-          "from": "event-generator",
-          "spec": {
-            "endpoint": "http://localhost:4318",
-            "insecure": true
-          }
         }
       ]
     }
@@ -172,7 +154,7 @@ Source → [Stage] → Sink
 |------|-------------|
 | **Sources** | `generator`, `nats`, `otlp` |
 | **Stages** | `cel_validator`, `delay`, `noop` |
-| **Sinks** | `debug`, `nats`, `otlp`, `s3` |
+| **Sinks** | `debug` |
 
 For detailed documentation on each component and its configuration, see [COMPONENTS.md](COMPONENTS.md).
 
@@ -202,23 +184,7 @@ curl -X PUT http://localhost:8080/v1/streams/fanout-example \
           "type": "debug",
           "from": "generator"
         },
-        {
-          "name": "nats",
-          "type": "nats",
-          "from": "generator",
-          "spec": {
-            "url": "nats://localhost:4222",
-            "subject": "fanout.events"
-          }
-        },
-        {
-          "name": "otlp",
-          "type": "otlp",
-          "from": "generator",
-          "spec": {
-            "endpoint": "http://localhost:4318"
-          }
-        }
+
       ]
     }
   }'
