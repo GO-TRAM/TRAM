@@ -14,6 +14,7 @@ import (
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
+	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
@@ -21,7 +22,6 @@ const Type = "cel_validator"
 
 type CELFilter struct {
 	*base.Stage[Spec]
-	celEnv  *cel.Env
 	metrics cel.Program
 	logs    cel.Program
 	traces  cel.Program
@@ -33,9 +33,10 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELFilter, err
 		return nil, err
 	}
 
-	celEnv, err := cel.NewEnv(
+	baseEnv, err := cel.NewEnv(
 		cel.TypeDescs(
 			commonpb.File_opentelemetry_proto_common_v1_common_proto,
+			resourcepb.File_opentelemetry_proto_resource_v1_resource_proto,
 			logspb.File_opentelemetry_proto_logs_v1_logs_proto,
 			metricspb.File_opentelemetry_proto_metrics_v1_metrics_proto,
 			tracepb.File_opentelemetry_proto_trace_v1_trace_proto,
@@ -49,24 +50,36 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELFilter, err
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
-	logs, err := initCEL(celEnv, base.Spec().LogsFilter)
+	logsEnv, err := baseEnv.Extend(cel.Variable("logs", cel.ObjectType("opentelemetry.proto.logs.v1.LogsData")))
+	if err != nil {
+		return nil, err
+	}
+
+	logs, err := initCEL(logsEnv, base.Spec().LogsFilter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
-	metrics, err := initCEL(celEnv, base.Spec().MetricsFilter)
+	metricsEnv, err := baseEnv.Extend(cel.Variable("metrics", cel.ObjectType("opentelemetry.proto.metrics.v1.MetricsData")))
+	if err != nil {
+		return nil, err
+	}
+	metrics, err := initCEL(metricsEnv, base.Spec().MetricsFilter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
-	traces, err := initCEL(celEnv, base.Spec().TracesFilter)
+	tracesEnv, err := baseEnv.Extend(cel.Variable("traces", cel.ObjectType("opentelemetry.proto.trace.v1.TracesData")))
+	if err != nil {
+		return nil, err
+	}
+	traces, err := initCEL(tracesEnv, base.Spec().TracesFilter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
 	return &CELFilter{
 		Stage:   base,
-		celEnv:  celEnv,
 		logs:    logs,
 		metrics: metrics,
 		traces:  traces,
@@ -89,9 +102,9 @@ func initCEL(celEnv *cel.Env, expression string) (cel.Program, error) {
 	return celProgram, nil
 }
 
-func (n *CELFilter) filter(_ context.Context, event *domain.Event, filter cel.Program, dropper func(*domain.Event)) error {
+func (n *CELFilter) filter(_ context.Context, varName string, data any, filter cel.Program, event *domain.Event, dropper func(*domain.Event)) error {
 	result, _, err := filter.Eval(map[string]any{
-		"event": event,
+		varName: data,
 	})
 
 	if err != nil {
@@ -116,19 +129,19 @@ func (n *CELFilter) filter(_ context.Context, event *domain.Event, filter cel.Pr
 
 func (n *CELFilter) Notify(ctx context.Context, event *domain.Event) error {
 	if event.Logs != nil {
-		if err := n.filter(ctx, event, n.logs, func(e *domain.Event) { e.Logs = nil }); err != nil {
+		if err := n.filter(ctx, "logs", event.Logs, n.logs, event, func(e *domain.Event) { e.Logs = nil }); err != nil {
 			return err
 		}
 	}
 
 	if event.Metrics != nil {
-		if err := n.filter(ctx, event, n.metrics, func(e *domain.Event) { e.Metrics = nil }); err != nil {
+		if err := n.filter(ctx, "metrics", event.Metrics, n.metrics, event, func(e *domain.Event) { e.Metrics = nil }); err != nil {
 			return err
 		}
 	}
 
 	if event.Traces != nil {
-		if err := n.filter(ctx, event, n.traces, func(e *domain.Event) { e.Traces = nil }); err != nil {
+		if err := n.filter(ctx, "traces", event.Traces, n.traces, event, func(e *domain.Event) { e.Traces = nil }); err != nil {
 			return err
 		}
 	}

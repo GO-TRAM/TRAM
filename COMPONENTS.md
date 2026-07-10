@@ -104,7 +104,7 @@ Filters incoming events using Common Expression Language (CEL) expressions. Sinc
   "type": "cel_validator",
   "from": "source",
   "spec": {
-    "logs": "resource_logs.all(resLog, resLog.scope_logs.all(scopeLog, scopeLog.log_records.exists(record, record.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test')))",
+    "logs": "logs.resource_logs.all(resLog, resLog.scope_logs.all(scopeLog, scopeLog.log_records.exists(record, record.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test')))",
     "on_mismatch": "reject"
   }
 }
