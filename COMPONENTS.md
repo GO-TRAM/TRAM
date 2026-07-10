@@ -13,6 +13,7 @@ Sources are the entry points of a pipeline that produce or receive data events.
 | Name | Type | Description |
 |------|------|-------------|
 | `generator` | `generator` | Generates synthetic events at a specified interval for testing |
+| `nats` | `nats` | Consumes messages from NATS JetStream |
 | `otlp` | `otlp` | Receives OpenTelemetry Protocol data via HTTP or gRPC |
 
 ### Generator Source
@@ -59,6 +60,54 @@ Receives OpenTelemetry Protocol data. Supports both HTTP and gRPC endpoints.
   "type": "otlp",
   "spec": {
     "http_port": 4318
+  }
+}
+```
+
+### NATS Source
+
+Consumes OTLP-encoded messages from a NATS JetStream stream.
+
+**Type:** `nats`
+
+**Configuration:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `url` | string | Yes | - | NATS server URL (e.g., `"nats://localhost:4222"`) |
+| `stream` | string | Yes | - | JetStream stream name to consume from |
+| `subject` | string | Yes | - | Subject filter for the consumer |
+| `queue` | string | No | - | Queue group name for load balancing |
+| `durable` | string | No | - | Durable consumer name for resumption |
+| `workers` | int | No | 1 | Number of concurrent worker goroutines (1-100) |
+
+**Example:**
+
+```json
+{
+  "name": "nats-consumer",
+  "type": "nats",
+  "spec": {
+    "url": "nats://localhost:4222",
+    "stream": "otlp-data",
+    "subject": "logs.*"
+  }
+}
+```
+
+**Example with durable consumer and multiple workers:**
+
+```json
+{
+  "name": "nats-consumer",
+  "type": "nats",
+  "spec": {
+    "url": "nats://localhost:4222",
+    "stream": "otlp-data",
+    "subject": "logs.*",
+    "durable": "tram-consumer",
+    "queue": "tram-queue",
+    "workers": 5
   }
 }
 ```
