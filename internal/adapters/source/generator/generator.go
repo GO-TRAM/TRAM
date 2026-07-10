@@ -7,7 +7,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/adapters/source/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
-	"github.com/google/uuid"
 )
 
 const (
@@ -17,6 +16,7 @@ const (
 type Generator struct {
 	*base.Source[Spec]
 	interval time.Duration
+	shutdown chan struct{}
 }
 
 func New(source domain.SourceSpec, validator *validator.Validate) (*Generator, error) {
@@ -39,14 +39,17 @@ func New(source domain.SourceSpec, validator *validator.Validate) (*Generator, e
 func (g *Generator) Run(ctx context.Context) error {
 	for {
 		select {
-		case <-g.Context().Done():
+		case <-g.shutdown:
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(g.interval):
-			event := &domain.Event{
-				Data: []byte(uuid.NewString()),
-			}
+			event := &domain.Event{}
 			_ = g.NotifySubscribers(ctx, event)
 		}
 	}
+}
+
+func (g *Generator) Stop() error {
+	close(g.shutdown)
+	return nil
 }

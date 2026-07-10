@@ -10,33 +10,26 @@ import (
 )
 
 type Source[T any] struct {
-	ctx         context.Context
-	cancel      context.CancelFunc
 	name        string
+	streamName  string
 	subscribers []domain.Subscriber
 	mu          sync.RWMutex
 	spec        *T
 }
 
 func New[T any](name string, spec map[string]any, validator *validator.Validate) (*Source[T], error) {
-	ctx, cancel := context.WithCancel(context.Background())
-
 	parsedSpec, err := domain.ParseSpec(spec, new(T))
 	if err != nil {
-		cancel()
 		return nil, err
 	}
 
 	if err := validator.Struct(parsedSpec); err != nil {
-		cancel()
 		return nil, err
 	}
 
 	return &Source[T]{
-		name:   name,
-		ctx:    ctx,
-		cancel: cancel,
-		spec:   parsedSpec,
+		name: name,
+		spec: parsedSpec,
 	}, nil
 }
 
@@ -52,15 +45,6 @@ func (s *Source[T]) Subscribe(c domain.Subscriber) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.subscribers = append(s.subscribers, c)
-	return nil
-}
-
-func (s *Source[T]) Context() context.Context {
-	return s.ctx
-}
-
-func (s *Source[T]) Stop() error {
-	s.cancel()
 	return nil
 }
 

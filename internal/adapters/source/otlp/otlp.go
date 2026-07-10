@@ -43,18 +43,7 @@ func New(source domain.SourceSpec, validator *validator.Validate) (*OTLP, error)
 	}, nil
 }
 
-func (o *OTLP) Run(ctx context.Context) error {
-	go o.runHTTPServer()
-
-	select {
-	case <-o.Context().Done():
-	case <-ctx.Done():
-	}
-
-	return nil
-}
-
-func (o *OTLP) runHTTPServer() {
+func (o *OTLP) Run(_ context.Context) error {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /v1/traces", o.handleTraces)
@@ -73,6 +62,7 @@ func (o *OTLP) runHTTPServer() {
 	if err := o.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Printf("OTLP HTTP server error: %v", err)
 	}
+	return nil
 }
 
 func (o *OTLP) handleMetrics(w http.ResponseWriter, r *http.Request) {
@@ -139,7 +129,6 @@ func (o *OTLP) handleTraces(w http.ResponseWriter, r *http.Request) {
 }
 
 func (o *OTLP) Stop() error {
-	o.Source.Stop()
 	o.httpServer.Close()
 	return nil
 }
