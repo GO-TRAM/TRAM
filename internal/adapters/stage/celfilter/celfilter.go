@@ -21,8 +21,10 @@ const Type = "cel_filter"
 
 type CELFilter struct {
 	*base.Stage[Spec]
-	celEnv     *cel.Env
-	celProgram cel.Program
+	celEnv  *cel.Env
+	metrics cel.Program
+	logs    cel.Program
+	traces  cel.Program
 }
 
 func New(stage domain.StageSpec, validator *validator.Validate) (*CELFilter, error) {
@@ -47,7 +49,35 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELFilter, err
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
-	ast, issues := celEnv.Compile(base.Spec().Expression)
+	logs, err := initCEL(celEnv, base.Spec().Logs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
+	}
+
+	metrics, err := initCEL(celEnv, base.Spec().Metrics)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
+	}
+
+	traces, err := initCEL(celEnv, base.Spec().Traces)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
+	}
+
+	return &CELFilter{
+		Stage:   base,
+		celEnv:  celEnv,
+		logs:    logs,
+		metrics: metrics,
+		traces:  traces,
+	}, nil
+}
+
+func initCEL(celEnv *cel.Env, expression string) (cel.Program, error) {
+	if expression == "" {
+		expression = "true"
+	}
+	ast, issues := celEnv.Compile(expression)
 	if issues != nil && issues.Err() != nil {
 		return nil, fmt.Errorf("failed to compile CEL expression: %w", issues.Err())
 	}
@@ -56,16 +86,11 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELFilter, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to build CEL program: %w", err)
 	}
-
-	return &CELFilter{
-		Stage:      base,
-		celEnv:     celEnv,
-		celProgram: celProgram,
-	}, nil
+	return celProgram, nil
 }
 
-func (n *CELFilter) Notify(ctx context.Context, event *domain.Event) error {
-	result, _, err := n.celProgram.Eval(map[string]any{
+func (n *CELFilter) filter(_ context.Context, event *domain.Event, filter cel.Program, dropper func(*domain.Event)) error {
+	result, _, err := filter.Eval(map[string]any{
 		"event": event,
 	})
 
@@ -78,12 +103,38 @@ func (n *CELFilter) Notify(ctx context.Context, event *domain.Event) error {
 	if !isMatch {
 		switch n.Stage.Spec().OnMismatch {
 		case "drop":
+			dropper(event)
 			return nil
 		case "reject":
 			fallthrough
 		default:
 			return fmt.Errorf("event did not match the CEL filter criteria")
 		}
+	}
+	return nil
+}
+
+func (n *CELFilter) Notify(ctx context.Context, event *domain.Event) error {
+	if event.Logs != nil {
+		if err := n.filter(ctx, event, n.logs, func(e *domain.Event) { e.Logs = nil }); err != nil {
+			return err
+		}
+	}
+
+	if event.Metrics != nil {
+		if err := n.filter(ctx, event, n.metrics, func(e *domain.Event) { e.Metrics = nil }); err != nil {
+			return err
+		}
+	}
+
+	if event.Traces != nil {
+		if err := n.filter(ctx, event, n.traces, func(e *domain.Event) { e.Traces = nil }); err != nil {
+			return err
+		}
+	}
+
+	if event.Logs == nil && event.Metrics == nil && event.Traces == nil {
+		return nil
 	}
 
 	return n.NotifySubscribers(ctx, event)

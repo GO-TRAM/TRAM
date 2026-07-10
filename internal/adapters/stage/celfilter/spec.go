@@ -1,6 +1,8 @@
 package celfilter
 
 type Spec struct {
-	Expression string `json:"expression" validate:"required"`
+	Logs       string `json:"logs"`
+	Metrics    string `json:"metrics"`
+	Traces     string `json:"traces"`
 	OnMismatch string `json:"on_mismatch" validate:"required,oneof=drop reject"`
 }
