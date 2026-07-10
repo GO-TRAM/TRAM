@@ -1,4 +1,4 @@
-![Tram Logo](docs/assets/colored-logo-small.webp)
+![Tram Logo](docs/assets/colored-logo-very-small.webp)
 
 # Tram: A Lightweight, Extensible Data Pipeline Framework
 
