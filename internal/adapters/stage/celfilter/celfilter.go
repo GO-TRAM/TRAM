@@ -17,7 +17,7 @@ import (
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
-const Type = "cel_filter"
+const Type = "cel_validator"
 
 type CELFilter struct {
 	*base.Stage[Spec]

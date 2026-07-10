@@ -73,7 +73,7 @@ Stages process, transform, or filter data between sources and sinks.
 
 | Name | Type | Description |
 |------|------|-------------|
-| `cel_filter` | `cel_filter` | Filters events using Common Expression Language (CEL) |
+| `cel_validator` | `cel_validator` | Filters events using Common Expression Language (CEL) |
 | `delay` | `delay` | Delays events by a specified duration |
 | `noop` | `noop` | Pass-through stage that does no processing (useful for testing) |
 
@@ -81,7 +81,7 @@ Stages process, transform, or filter data between sources and sinks.
 
 Filters incoming events using Common Expression Language (CEL) expressions. Since an event contains only one of logs, metrics, or traces, separate expressions can be specified for each signal type. Events can be either dropped or rejected based on the evaluation result.
 
-**Type:** `cel_filter`
+**Type:** `cel_validator`
 
 **Configuration:**
 
@@ -101,7 +101,7 @@ Filters incoming events using Common Expression Language (CEL) expressions. Sinc
 ```json
 {
   "name": "filter-stage",
-  "type": "cel_filter",
+  "type": "cel_validator",
   "from": "source",
   "spec": {
     "logs": "resource_logs.all(resLog, resLog.scope_logs.all(scopeLog, scopeLog.log_records.exists(record, record.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test')))",
@@ -219,6 +219,6 @@ Outputs events to stdout in a human-readable format. Useful for development, tes
 
 ## 📝 Notes
 
-- **Component Type vs Name:** The `type` field in configuration refers to the component implementation type (e.g., `generator`, `cel_filter`), while the `name` field is a user-defined identifier for the component instance within a stream.
+- **Component Type vs Name:** The `type` field in configuration refers to the component implementation type (e.g., `generator`, `cel_validator`), while the `name` field is a user-defined identifier for the component instance within a stream.
 - **Connections:** The `from` field in stages and sinks specifies which component they receive data from.
 - **Tree Structure:** Pipelines form a tree with the source as root, stages as intermediate nodes, and sinks as leaves.
