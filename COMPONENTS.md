@@ -14,7 +14,7 @@ Sources are the entry points of a pipeline that produce or receive data events.
 |------|------|-------------|
 | `generator` | `generator` | Generates synthetic events at a specified interval for testing |
 | `nats` | `nats` | Consumes messages from NATS JetStream |
-| `otlp` | `otlp` | Receives OpenTelemetry Protocol data via HTTP or gRPC |
+| `otlp` | `otlp` | Receives protobuf encoded OpenTelemetry Protocol data via HTTP |
 
 ### Generator Source
 
