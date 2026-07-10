@@ -1,3 +1,354 @@
 package celvalidator
 
-// TODO
+import (
+	"testing"
+
+	"codeberg.org/eljoth/tram/internal/core/domain"
+	"github.com/go-playground/validator/v10"
+	"github.com/stretchr/testify/assert"
+
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
+	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
+	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
+	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
+	tracespb "go.opentelemetry.io/proto/otlp/trace/v1"
+)
+
+func TestCELValidator(t *testing.T) {
+	validator := validator.New()
+	cases := []struct {
+		name        string
+		spec        domain.StageSpec
+		event       domain.Event
+		initErr     error
+		validateErr error
+	}{
+		{ // --------- LOGS ----------
+			name: "invalid logs cel",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"logs":        "invalid",
+					"on_mismatch": "drop",
+				},
+			},
+			initErr:     ErrCELInvalidLogsExpression,
+			validateErr: ErrCELEnvironmenInitialization,
+		},
+		{
+			name: "valid logs without cel",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"on_mismatch": "drop",
+				},
+			},
+			event: domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test"}}}}}}}}}}}},
+		},
+		{
+			name: "valid logs with cel",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"logs":        "logs.resource_logs.all(resLog, resLog.scope_logs.all(scopeLog, scopeLog.log_records.exists(record, record.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))))",
+					"on_mismatch": "drop",
+				},
+			},
+			event: domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test"}}}}}}}}}}}},
+		},
+		{
+			name: "drop logs",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"logs":        "logs.resource_logs.all(resLog, resLog.scope_logs.all(scopeLog, scopeLog.log_records.exists(record, record.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test2'))))",
+					"on_mismatch": "drop",
+				},
+			},
+			event: domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test"}}}}}}}}}}}},
+		},
+		{
+			name: "reject logs",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"logs":        "logs.resource_logs.all(resLog, resLog.scope_logs.all(scopeLog, scopeLog.log_records.exists(record, record.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))))",
+					"on_mismatch": "reject",
+				},
+			},
+			event:       domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test2"}}}}}}}}}}}},
+			validateErr: ErrCELRejectingLogs,
+		},
+		{ // --------- METRICS ----------
+			name: "invalid metrics cel",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"metrics":     "invalid",
+					"on_mismatch": "drop",
+				},
+			},
+			initErr:     ErrCELInvalidMetricsExpression,
+			validateErr: ErrCELEnvironmenInitialization,
+		},
+		{
+			name: "valid metrics without cel",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"on_mismatch": "drop",
+				},
+			},
+			event: domain.Event{Metrics: &metricspb.MetricsData{ResourceMetrics: []*metricspb.ResourceMetrics{{ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{}}}}}}},
+		},
+		{
+			name: "valid metrics with cel",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"metrics":     "metrics.resource_metrics.all(resMetric, resMetric.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))",
+					"on_mismatch": "drop",
+				},
+			},
+			event: domain.Event{Metrics: &metricspb.MetricsData{ResourceMetrics: []*metricspb.ResourceMetrics{{Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test"}}}}}, ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{}}}}}}},
+		},
+		{
+			name: "drop metrics",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"metrics":     "metrics.resource_metrics.all(resMetric, resMetric.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))",
+					"on_mismatch": "drop",
+				},
+			},
+			event: domain.Event{Metrics: &metricspb.MetricsData{ResourceMetrics: []*metricspb.ResourceMetrics{{Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test2"}}}}}, ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{}}}}}}},
+		},
+		{
+			name: "reject metrics",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"metrics":     "metrics.resource_metrics.all(resMetric, resMetric.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))",
+					"on_mismatch": "reject",
+				},
+			},
+			event:       domain.Event{Metrics: &metricspb.MetricsData{ResourceMetrics: []*metricspb.ResourceMetrics{{Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test2"}}}}}, ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{}}}}}}},
+			validateErr: ErrCELRejectingMetrics,
+		},
+		{ // --------- TRACES ----------
+			name: "invalid traces cel",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"traces":      "invalid",
+					"on_mismatch": "drop",
+				},
+			},
+			initErr:     ErrCELInvalidTracesExpression,
+			validateErr: ErrCELEnvironmenInitialization,
+		},
+		{
+			name: "valid traces without cel",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"on_mismatch": "drop",
+				},
+			},
+			event: domain.Event{Traces: &tracespb.TracesData{ResourceSpans: []*tracespb.ResourceSpans{{ScopeSpans: []*tracespb.ScopeSpans{{Spans: []*tracespb.Span{}}}}}}},
+		},
+		{
+			name: "valid traces with cel",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"traces":      "traces.resource_spans.all(resSpan, resSpan.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))",
+					"on_mismatch": "drop",
+				},
+			},
+			event: domain.Event{Traces: &tracespb.TracesData{ResourceSpans: []*tracespb.ResourceSpans{{Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test"}}}}}, ScopeSpans: []*tracespb.ScopeSpans{{Spans: []*tracespb.Span{}}}}}}},
+		},
+		{
+			name: "drop traces",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"traces":      "traces.resource_spans.all(resSpan, resSpan.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))",
+					"on_mismatch": "drop",
+				},
+			},
+			event: domain.Event{Traces: &tracespb.TracesData{ResourceSpans: []*tracespb.ResourceSpans{{Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test2"}}}}}, ScopeSpans: []*tracespb.ScopeSpans{{Spans: []*tracespb.Span{}}}}}}},
+		},
+		{
+			name: "reject traces",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"traces":      "traces.resource_spans.all(resSpan, resSpan.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))",
+					"on_mismatch": "reject",
+				},
+			},
+			event:       domain.Event{Traces: &tracespb.TracesData{ResourceSpans: []*tracespb.ResourceSpans{{Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test2"}}}}}, ScopeSpans: []*tracespb.ScopeSpans{{Spans: []*tracespb.Span{}}}}}}},
+			validateErr: ErrCELRejectingTraces,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cel, err := New(c.spec, validator)
+			assert.ErrorIs(t, err, c.initErr)
+			assert.ErrorIs(t, cel.Notify(t.Context(), &c.event), c.validateErr)
+		})
+	}
+}
+
+// ------- Benchmarks -------
+//
+
+func BenchmarkCELValidator(b *testing.B) {
+	validator := validator.New()
+	cases := []struct {
+		name  string
+		spec  domain.StageSpec
+		event domain.Event
+	}{
+		{ // --------- LOGS ----------
+			name: "invalid logs cel",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"logs":        "invalid",
+					"on_mismatch": "drop",
+				},
+			},
+		},
+		{
+			name: "valid logs without cel",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"on_mismatch": "drop",
+				},
+			},
+			event: domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test"}}}}}}}}}}}},
+		},
+		{
+			name: "valid logs with cel",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"logs":        "logs.resource_logs.all(resLog, resLog.scope_logs.all(scopeLog, scopeLog.log_records.exists(record, record.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))))",
+					"on_mismatch": "drop",
+				},
+			},
+			event: domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test"}}}}}}}}}}}},
+		},
+		{
+			name: "drop logs",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"logs":        "logs.resource_logs.all(resLog, resLog.scope_logs.all(scopeLog, scopeLog.log_records.exists(record, record.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test2'))))",
+					"on_mismatch": "drop",
+				},
+			},
+			event: domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test"}}}}}}}}}}}},
+		},
+		{
+			name: "reject logs",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"logs":        "logs.resource_logs.all(resLog, resLog.scope_logs.all(scopeLog, scopeLog.log_records.exists(record, record.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))))",
+					"on_mismatch": "reject",
+				},
+			},
+			event: domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test2"}}}}}}}}}}}},
+		},
+		{ // --------- METRICS ----------
+			name: "invalid metrics cel",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"metrics":     "invalid",
+					"on_mismatch": "drop",
+				},
+			},
+		},
+		{
+			name: "valid metrics without cel",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"on_mismatch": "drop",
+				},
+			},
+			event: domain.Event{Metrics: &metricspb.MetricsData{ResourceMetrics: []*metricspb.ResourceMetrics{{ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{}}}}}}},
+		},
+		{
+			name: "valid metrics with cel",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"metrics":     "metrics.resource_metrics.all(resMetric, resMetric.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))",
+					"on_mismatch": "drop",
+				},
+			},
+			event: domain.Event{Metrics: &metricspb.MetricsData{ResourceMetrics: []*metricspb.ResourceMetrics{{Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test"}}}}}, ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{}}}}}}},
+		},
+		{
+			name: "drop metrics",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"metrics":     "metrics.resource_metrics.all(resMetric, resMetric.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))",
+					"on_mismatch": "drop",
+				},
+			},
+			event: domain.Event{Metrics: &metricspb.MetricsData{ResourceMetrics: []*metricspb.ResourceMetrics{{Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test2"}}}}}, ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{}}}}}}},
+		},
+		{
+			name: "reject metrics",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"metrics":     "metrics.resource_metrics.all(resMetric, resMetric.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))",
+					"on_mismatch": "reject",
+				},
+			},
+			event: domain.Event{Metrics: &metricspb.MetricsData{ResourceMetrics: []*metricspb.ResourceMetrics{{Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test2"}}}}}, ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{}}}}}}},
+		},
+		{ // --------- TRACES ----------
+			name: "invalid traces cel",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"traces":      "invalid",
+					"on_mismatch": "drop",
+				},
+			},
+		},
+		{
+			name: "valid traces without cel",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"on_mismatch": "drop",
+				},
+			},
+			event: domain.Event{Traces: &tracespb.TracesData{ResourceSpans: []*tracespb.ResourceSpans{{ScopeSpans: []*tracespb.ScopeSpans{{Spans: []*tracespb.Span{}}}}}}},
+		},
+		{
+			name: "valid traces with cel",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"traces":      "traces.resource_spans.all(resSpan, resSpan.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))",
+					"on_mismatch": "drop",
+				},
+			},
+			event: domain.Event{Traces: &tracespb.TracesData{ResourceSpans: []*tracespb.ResourceSpans{{Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test"}}}}}, ScopeSpans: []*tracespb.ScopeSpans{{Spans: []*tracespb.Span{}}}}}}},
+		},
+		{
+			name: "drop metrics",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"traces":      "traces.resource_spans.all(resSpan, resSpan.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))",
+					"on_mismatch": "drop",
+				},
+			},
+			event: domain.Event{Traces: &tracespb.TracesData{ResourceSpans: []*tracespb.ResourceSpans{{Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test2"}}}}}, ScopeSpans: []*tracespb.ScopeSpans{{Spans: []*tracespb.Span{}}}}}}},
+		},
+		{
+			name: "reject metrics",
+			spec: domain.StageSpec{
+				Spec: map[string]any{
+					"traces":      "traces.resource_spans.all(resSpan, resSpan.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))",
+					"on_mismatch": "reject",
+				},
+			},
+			event: domain.Event{Traces: &tracespb.TracesData{ResourceSpans: []*tracespb.ResourceSpans{{Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test2"}}}}}, ScopeSpans: []*tracespb.ScopeSpans{{Spans: []*tracespb.Span{}}}}}}},
+		},
+	}
+
+	for _, c := range cases {
+		cel, _ := New(c.spec, validator)
+		b.Run(c.name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_ = cel.Notify(b.Context(), &c.event)
+			}
+		})
+	}
+}
