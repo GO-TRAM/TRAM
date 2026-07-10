@@ -1,4 +1,4 @@
-package celfilter
+package celvalidator
 
 type Spec struct {
 	LogsFilter    string `json:"logs"`

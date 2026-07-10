@@ -1,4 +1,4 @@
-package celfilter
+package celvalidator
 
 import (
 	"context"
