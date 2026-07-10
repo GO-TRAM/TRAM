@@ -1,3 +1,5 @@
+![Tram Logo](docs/assets/colored-logo-small.webp)
+
 # Tram: A Lightweight, Extensible Data Pipeline Framework
 
 Tram is a **cloud-native, in-memory data pipeline framework** for building real-time data processing flows. It enables developers to create, transform, and route data through **tree-structured pipelines** where each tree contains a source, optional stages, and sinks as leaves.
