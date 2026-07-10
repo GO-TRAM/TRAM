@@ -49,17 +49,17 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELFilter, err
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
-	logs, err := initCEL(celEnv, base.Spec().Logs)
+	logs, err := initCEL(celEnv, base.Spec().LogsFilter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
-	metrics, err := initCEL(celEnv, base.Spec().Metrics)
+	metrics, err := initCEL(celEnv, base.Spec().MetricsFilter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
-	traces, err := initCEL(celEnv, base.Spec().Traces)
+	traces, err := initCEL(celEnv, base.Spec().TracesFilter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}

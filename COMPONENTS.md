@@ -79,7 +79,7 @@ Stages process, transform, or filter data between sources and sinks.
 
 ### CEL Filter Stage
 
-Filters incoming events using a Common Expression Language (CEL) expression. Events can be either dropped or rejected based on the evaluation result.
+Filters incoming events using Common Expression Language (CEL) expressions. Since an event contains only one of logs, metrics, or traces, separate expressions can be specified for each signal type. Events can be either dropped or rejected based on the evaluation result.
 
 **Type:** `cel_filter`
 
@@ -87,12 +87,14 @@ Filters incoming events using a Common Expression Language (CEL) expression. Eve
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `expression` | string | Yes | - | CEL expression to evaluate. Must return a boolean. The `event` variable is available in the expression context |
+| `logs` | string | No | `"true"` | CEL expression to evaluate for log events. Must return a boolean. Empty string defaults to accepting all logs |
+| `metrics` | string | No | `"true"` | CEL expression to evaluate for metric events. Must return a boolean. Empty string defaults to accepting all metrics |
+| `traces` | string | No | `"true"` | CEL expression to evaluate for trace events. Must return a boolean. Empty string defaults to accepting all traces |
 | `on_mismatch` | string | Yes | - | Action to take when expression evaluates to false. Must be either `"drop"` or `"reject"` |
 
 **CEL Expression Context:**
-- `event` - The event object (domain.Event)
-- Access nested fields like `event.Logs`, `event.Metrics`, etc.
+- The expression has access to the specific signal data (e.g., for logs: `resource_logs`, `scope_logs`, `log_records`)
+- Each expression operates only on its respective signal type
 
 **Example:**
 
@@ -102,7 +104,7 @@ Filters incoming events using a Common Expression Language (CEL) expression. Eve
   "type": "cel_filter",
   "from": "source",
   "spec": {
-    "expression": "!has(event.Logs) || (event.Logs != null && event.Logs.resource_logs.all(resLog, resLog.scope_logs.all(scopeLog, scopeLog.log_records.exists(record, record.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test')))))",
+    "logs": "resource_logs.all(resLog, resLog.scope_logs.all(scopeLog, scopeLog.log_records.exists(record, record.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test')))",
     "on_mismatch": "reject"
   }
 }
@@ -114,18 +116,28 @@ Filters incoming events using a Common Expression Language (CEL) expression. Eve
 
 **Additional Examples:**
 
-Filter for events with specific severity:
+Filter logs by severity:
 ```json
 {
-  "expression": "event.Logs.resource_logs[0].scope_logs[0].log_records[0].severity_text == 'ERROR'",
+  "logs": "resource_logs[0].scope_logs[0].log_records[0].severity_text == 'ERROR'",
   "on_mismatch": "drop"
 }
 ```
 
-Filter for events with a specific attribute:
+Filter metrics by name:
 ```json
 {
-  "expression": "event.Logs.resource_logs[0].scope_logs[0].log_records[0].attributes.exists(attr, attr.key == 'environment' && attr.value.string_value == 'production')",
+  "metrics": "resource_metrics[0].scope_metrics[0].metrics.exists(m, m.name == 'http.request.duration')",
+  "on_mismatch": "drop"
+}
+```
+
+Accept all, reject nothing (pass-through):
+```json
+{
+  "logs": "",
+  "metrics": "",
+  "traces": "",
   "on_mismatch": "drop"
 }
 ```
