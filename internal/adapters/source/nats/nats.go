@@ -96,7 +96,7 @@ func (n *NATS) worker(ctx context.Context, cons jetstream.Consumer) {
 			}
 
 			for msg := range msgs.Messages() {
-				event, err := parseOTLPData(msg.Data())
+				event, err := domain.UnmarshalOTLPData(msg.Data())
 				if err != nil {
 					log.Printf("Error parsing OTLP data: %v", err)
 					continue
