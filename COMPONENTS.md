@@ -142,8 +142,9 @@ Filters incoming events using Common Expression Language (CEL) expressions. Sinc
 | `on_mismatch` | string | Yes | - | Action to take when expression evaluates to false. Must be either `"drop"` or `"reject"` |
 
 **CEL Expression Context:**
-- The expression has access to the specific signal data (e.g., for logs: `resource_logs`, `scope_logs`, `log_records`)
-- Each expression operates only on its respective signal type
+- Each expression receives the full signal data object: `logs` (LogsData), `metrics` (MetricsData), or `traces` (TracesData)
+- Each expression operates only on its respective signal type and must return a boolean
+- Use the full protobuf structure, e.g., `logs.resource_logs.all(...)`, `metrics.resource_metrics.all(...)`
 
 **Example:**
 
@@ -168,7 +169,7 @@ Filters incoming events using Common Expression Language (CEL) expressions. Sinc
 Filter logs by severity:
 ```json
 {
-  "logs": "resource_logs[0].scope_logs[0].log_records[0].severity_text == 'ERROR'",
+  "logs": "logs.resource_logs.all(resLog, resLog.scope_logs.all(scopeLog, scopeLog.log_records.exists(record, record.severity_text == 'ERROR')))",
   "on_mismatch": "drop"
 }
 ```
@@ -176,7 +177,7 @@ Filter logs by severity:
 Filter metrics by name:
 ```json
 {
-  "metrics": "resource_metrics[0].scope_metrics[0].metrics.exists(m, m.name == 'http.request.duration')",
+  "metrics": "metrics.resource_metrics.all(resMet, resMet.scope_metrics.all(scopeMet, scopeMet.metrics.exists(m, m.name == 'http.request.duration')))",
   "on_mismatch": "drop"
 }
 ```
