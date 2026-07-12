@@ -245,6 +245,7 @@ Sinks are the terminal points of a pipeline that consume or export data.
 | Name | Type | Description |
 |------|------|-------------|
 | `debug` | `debug` | Logs events to stdout for debugging and development |
+| `nats` | `nats` | Publishes OTLP-encoded events to NATS JetStream with dynamic subject mapping |
 
 ### Debug Sink
 
@@ -264,7 +265,90 @@ Outputs events to stdout in a human-readable format. Useful for development, tes
 }
 ```
 
+### NATS Sink
+
+Publishes OTLP-encoded events to NATS JetStream. Uses dynamic subject mapping with CEL expressions to route different telemetry data to appropriate subjects. Automatically creates or updates the specified stream with the configured settings.
+
+**Type:** `nats`
+
+**Configuration:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `url` | string | Yes | - | NATS server URL (e.g., `"nats://localhost:4222"`) |
+| `stream` | string | Yes | - | JetStream stream name to publish to |
+| `subject` | object | Yes | - | Subject configuration for dynamic subject mapping |
+| `retention` | string | No | - | Stream message retention duration (e.g., `"24h"`, `"7d"`) |
+| `size` | int | No | - | Maximum stream size in bytes |
+
+**Subject Configuration:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `register` | array[string] | Yes | - | List of subject patterns to register with the stream |
+| `logs` | string | Yes | - | CEL expression to generate subject for log events. Must return a string. Has access to the `logs` variable |
+| `metrics` | string | Yes | - | CEL expression to generate subject for metric events. Must return a string. Has access to the `metrics` variable |
+| `traces` | string | Yes | - | CEL expression to generate subject for trace events. Must return a string. Has access to the `traces` variable |
+
+**CEL Expression Context:**
+- The CEL expressions have access to a custom `get_attr(attributes, key)` function for extracting attribute values
+- Each expression operates on its respective signal type and receives a single record/metric/span at a time
+- Must return a string that will be used as the NATS subject
+
+**Example:**
+
+```json
+{
+  "name": "nats_sink",
+  "type": "nats",
+  "from": "cel_stage",
+  "spec": {
+    "url": "nats://localhost:4222",
+    "stream": "tram-stream",
+    "subject": {
+      "register": [
+        "logs.audit.*",
+        "metrics.*",
+        "traces.*"
+      ],
+      "logs": "'logs.audit.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
+      "metrics": "'metrics.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')",
+      "traces": "'traces.' + traces.resource_spans[0].resource.attributes.get_attr('service.name')"
+    }
+  }
+}
+```
+
+**Example with retention and size limits:**
+
+```json
+{
+  "name": "nats_sink_with_limits",
+  "type": "nats",
+  "from": "filter_stage",
+  "spec": {
+    "url": "nats://localhost:4222",
+    "stream": "tram-data",
+    "retention": "24h",
+    "size": 1073741824,
+    "subject": {
+      "register": ["logs.*", "metrics.*"],
+      "logs": "'logs.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
+      "metrics": "'metrics.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')",
+      "traces": "'traces.default'"
+    }
+  }
+}
+```
+
+**Behavior Notes:**
+- The sink automatically creates or updates the stream with the specified configuration
+- Events are grouped by their resolved subjects and published as individual OTLP messages
+- The `register` subjects are used to configure the stream, while the CEL expressions dynamically determine the actual publish subjects per event
+- If a CEL expression fails to evaluate or returns a non-string value, the event will be dropped with an error log
+
 ---
+
 
 ## 📝 Notes
 
