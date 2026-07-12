@@ -40,3 +40,7 @@ func (s *Sink[T]) From() string {
 func (s *Sink[T]) Spec() *T {
 	return s.spec
 }
+
+func (s *Sink[T]) Stop() error {
+	return nil
+}

@@ -3,6 +3,7 @@ package base
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"codeberg.org/eljoth/tram/internal/core/domain"
@@ -55,11 +56,6 @@ func (s *Stage[T]) Subscribe(c domain.Subscriber) error {
 }
 
 func (s *Stage[T]) NotifySubscribers(ctx context.Context, event *domain.Event) error {
-	s.mu.RLock()
-	subs := make([]domain.Subscriber, len(s.subscribers))
-	copy(subs, s.subscribers)
-	s.mu.RUnlock()
-
 	p := ctx.Value(domain.ContextKeyPath)
 	path, ok := p.(string)
 	if !ok {
@@ -69,7 +65,7 @@ func (s *Stage[T]) NotifySubscribers(ctx context.Context, event *domain.Event) e
 	ctx = context.WithValue(ctx, domain.ContextKeyPath, path)
 
 	eg := errgroup.Group{}
-	for _, sub := range subs {
+	for _, sub := range s.subscribers {
 		eg.Go(func() error {
 			return sub.Notify(ctx, event)
 		})
@@ -78,4 +74,18 @@ func (s *Stage[T]) NotifySubscribers(ctx context.Context, event *domain.Event) e
 		return err
 	}
 	return nil
+}
+
+func (s *Stage[T]) Stop() error {
+	var returnError error
+	for _, sub := range s.subscribers {
+		if err := sub.Stop(); err != nil {
+			if returnError == nil {
+				returnError = err
+				continue
+			}
+			err = errors.Join(returnError, err)
+		}
+	}
+	return returnError
 }

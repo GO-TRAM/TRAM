@@ -11,12 +11,13 @@ import (
 
 const Type = "delay"
 
-type NoOp struct {
+type Delay struct {
 	*base.Stage[Spec]
-	delay time.Duration
+	delay   time.Duration
+	stopped bool
 }
 
-func New(stage domain.StageSpec, validator *validator.Validate) (*NoOp, error) {
+func New(stage domain.StageSpec, validator *validator.Validate) (*Delay, error) {
 	base, err := base.New[Spec](stage.Name, stage.From, stage.Spec, validator)
 	if err != nil {
 		return nil, err
@@ -25,13 +26,22 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*NoOp, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &NoOp{
+	return &Delay{
 		Stage: base,
 		delay: delay,
 	}, nil
 }
 
-func (n *NoOp) Notify(ctx context.Context, event *domain.Event) error {
-	<-time.After(n.delay)
-	return n.NotifySubscribers(ctx, event)
+func (d *Delay) Notify(ctx context.Context, event *domain.Event) error {
+	if d.stopped {
+		return ErrDelayStopped
+	}
+	<-time.After(d.delay)
+	return d.NotifySubscribers(ctx, event)
+}
+
+func (d *Delay) Stop() error {
+	d.stopped = true
+	<-time.After(d.delay)
+	return d.Stage.Stop()
 }

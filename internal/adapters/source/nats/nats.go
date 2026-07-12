@@ -66,7 +66,7 @@ func (n *NATS) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to create consumer: %w", err)
 	}
 
-	workers := 1
+	workers := uint(1)
 	if n.Spec().Workers > 0 {
 		workers = n.Spec().Workers
 	}
