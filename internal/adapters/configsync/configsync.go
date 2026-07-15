@@ -32,18 +32,20 @@ func New(c *core.Core, dir string) (*ConfigSync, error) {
 	}
 
 	if err := watcher.Add(dir); err != nil {
+		watcher.Close()
 		return nil, fmt.Errorf("failed to watch directory %q: %w", dir, err)
 	}
 
 	cs := &ConfigSync{
 		dir:              dir,
 		core:             c,
-		fsEvents:         make(chan fsnotify.Event, 10),
-		debounceDuration: 100 * time.Millisecond,
 		watcher:          watcher,
+		fsEvents:         make(chan fsnotify.Event, 100),
+		debounceDuration: 100 * time.Millisecond,
 	}
 
 	if err := cs.sync(); err != nil {
+		watcher.Close()
 		return nil, err
 	}
 
@@ -73,7 +75,7 @@ func (c *ConfigSync) Run(ctx context.Context) error {
 
 		case event := <-ch:
 			if err := c.onCoreChange(event); err != nil {
-				log.Printf("Error during sync: %v", err)
+				log.Printf("Error during core change: %v", err)
 			}
 
 		case event := <-c.fsEvents:
@@ -83,7 +85,7 @@ func (c *ConfigSync) Run(ctx context.Context) error {
 			if filepath.Ext(event.Name) == ".json" {
 				c.debouncer = time.AfterFunc(c.debounceDuration, func() {
 					if err := c.sync(); err != nil {
-						log.Printf("Error during sync: %v", err)
+						log.Printf("Error during file sync: %v", err)
 					}
 				})
 			}
@@ -110,11 +112,7 @@ func (c *ConfigSync) sync() error {
 	streamSpecs := make([]Stream, 0, len(files))
 
 	for _, file := range files {
-		if file.IsDir() {
-			continue
-		}
-
-		if filepath.Ext(file.Name()) != ".json" {
+		if file.IsDir() || filepath.Ext(file.Name()) != ".json" {
 			continue
 		}
 
@@ -123,12 +121,10 @@ func (c *ConfigSync) sync() error {
 			continue
 		}
 
-		fileName := file.Name()
-		nameWithoutExt := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+		nameWithoutExt := strings.TrimSuffix(file.Name(), filepath.Ext(file.Name()))
 		config.Stream.Name = nameWithoutExt
 		streamSpecs = append(streamSpecs, config)
 		delete(toDelete, nameWithoutExt)
-
 	}
 
 	for _, spec := range streamSpecs {
@@ -138,9 +134,9 @@ func (c *ConfigSync) sync() error {
 		}
 	}
 
-	for name, stream := range toDelete {
+	for name := range toDelete {
 		log.Printf("Deleting stream %q", name)
-		if err := c.core.DeleteStream(context.Background(), stream.Name); err != nil {
+		if err := c.core.DeleteStream(context.Background(), name); err != nil {
 			log.Printf("Error deleting stream %q: %v", name, err)
 		}
 	}
@@ -152,45 +148,44 @@ func (c *ConfigSync) onCoreChange(event domain.StreamSpecWatchEvent) error {
 	switch event.EventType {
 	case domain.StreamSpecWatchEventTypeDelete:
 		path := filepath.Join(c.dir, event.StreamSpec.Name+".json")
-		if _, err := os.Stat(path); err != nil {
-			if os.IsNotExist(err) {
-				return nil
-			}
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return nil
+		} else if err != nil {
 			return err
 		}
-		if err := os.Remove(path); err != nil {
-			return err
-		}
+		return os.Remove(path)
+
 	case domain.StreamSpecWatchEventTypeUpsert:
 		path := filepath.Join(c.dir, event.StreamSpec.Name+".json")
 		stored, err := c.StreamFromFile(event.StreamSpec.Name + ".json")
-		if err != nil {
+		if err != nil && !os.IsNotExist(err) {
 			return err
 		}
+
 		stream := StreamFromDomain(event.StreamSpec)
 		if stored.Equals(stream) {
 			return nil
 		}
+
 		content, err := json.MarshalIndent(stream, "", "  ")
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(path, content, 0644); err != nil {
-			return err
-		}
+		return os.WriteFile(path, content, 0644)
 	}
 	return nil
 }
 
 func (c ConfigSync) StreamFromFile(fileName string) (Stream, error) {
 	filePath := filepath.Join(c.dir, fileName)
-	var stream Stream
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		return stream, err
+		return Stream{}, err
 	}
+
+	var stream Stream
 	if err := json.Unmarshal(content, &stream); err != nil {
-		return stream, err
+		return Stream{}, err
 	}
 	return stream, nil
 }
