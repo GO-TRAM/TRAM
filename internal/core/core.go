@@ -19,6 +19,7 @@ type Core struct {
 	sourceFactory ports.Factory[domain.SourceSpec, domain.Source]
 	stageFactory  ports.Factory[domain.StageSpec, domain.Stage]
 	sinkFactory   ports.Factory[domain.SinkSpec, domain.Sink]
+	watchers      []chan domain.StreamSpecWatchEvent
 }
 
 func New(
@@ -78,6 +79,17 @@ func (c *Core) UpsertStream(ctx context.Context, spec domain.StreamSpec) (*domai
 	})
 
 	c.streams[spec.Name] = builtStream
+
+	for _, ch := range c.watchers {
+		if ch == nil {
+			continue
+		}
+		ch <- domain.StreamSpecWatchEvent{
+			EventType:  domain.StreamSpecWatchEventTypeUpsert,
+			StreamSpec: builtStream.Spec,
+		}
+	}
+
 	return &builtStream.Spec, nil
 }
 
@@ -104,6 +116,16 @@ func (c *Core) DeleteStream(ctx context.Context, name string) error {
 	}
 
 	delete(c.streams, name)
+
+	for _, ch := range c.watchers {
+		if ch == nil {
+			continue
+		}
+		ch <- domain.StreamSpecWatchEvent{
+			EventType:  domain.StreamSpecWatchEventTypeDelete,
+			StreamSpec: stream.Spec,
+		}
+	}
 	log.Println("Deleted stream", name)
 
 	return nil
@@ -118,6 +140,17 @@ func (c *Core) GetStream(ctx context.Context, name string) (*domain.StreamSpec, 
 		return nil, domain.ErrStreamNotFound
 	}
 	return &stream.Spec, nil
+}
+
+func (c *Core) GetStreams(ctx context.Context) ([]domain.StreamSpec, error) {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+
+	streams := make([]domain.StreamSpec, 0, len(c.streams))
+	for _, stream := range c.streams {
+		streams = append(streams, stream.Spec)
+	}
+	return streams, nil
 }
 
 func (c *Core) Close() error {
@@ -139,6 +172,19 @@ func (c *Core) Close() error {
 	}
 
 	c.wg.Wait()
+
+	return nil
+}
+
+func (c *Core) Watch(ctx context.Context, ch chan domain.StreamSpecWatchEvent) error {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	if c.closed {
+		return domain.ErrCoreClosed
+	}
+
+	c.watchers = append(c.watchers, ch)
 
 	return nil
 }

@@ -25,15 +25,17 @@ type API struct {
 	core               ports.Core
 }
 
-func New(core ports.Core, grpcServerEndpoint, httpServerEndpoint string) *API {
+func New(core ports.Core, grpcServerEndpoint, httpServerEndpoint string) (*API, error) {
 	return &API{
 		grpcServerEndpoint: grpcServerEndpoint,
 		httpServerEndpoint: httpServerEndpoint,
 		core:               core,
-	}
+	}, nil
 }
 
 func (a *API) Run(ctx context.Context) error {
+	log.Printf("Starting gRPC Gateway server on %s, forwarding to gRPC at %s", a.httpServerEndpoint, a.grpcServerEndpoint)
+
 	a.grpcServer = grpc.NewServer()
 
 	v1.RegisterStreamServiceServer(a.grpcServer, &streamServer{core: a.core})

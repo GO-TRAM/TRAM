@@ -45,3 +45,15 @@ type StreamSpec struct {
 	Stages []StageSpec
 	Sinks  []SinkSpec
 }
+
+type StreamSpecWatchEventType string
+
+const (
+	StreamSpecWatchEventTypeUpsert StreamSpecWatchEventType = "update"
+	StreamSpecWatchEventTypeDelete StreamSpecWatchEventType = "delete"
+)
+
+type StreamSpecWatchEvent struct {
+	StreamSpec StreamSpec
+	EventType  StreamSpecWatchEventType
+}

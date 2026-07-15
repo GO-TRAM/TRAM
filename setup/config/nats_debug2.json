@@ -1,0 +1,25 @@
+{
+  "stream": {
+    "name": "nats_debug2",
+    "source": {
+      "name": "nats_source2",
+      "type": "nats",
+      "spec": {
+        "durable": "tram-test2",
+        "stream": "tram-stream",
+        "subject": "logs.audit.test2",
+        "url": "nats://localhost:4222",
+        "workers": 1
+      }
+    },
+    "stages": [],
+    "sinks": [
+      {
+        "name": "debug_sink2",
+        "type": "debug",
+        "from": "nats_source2",
+        "spec": {}
+      }
+    ]
+  }
+}

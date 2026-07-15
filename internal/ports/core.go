@@ -10,4 +10,6 @@ type Core interface {
 	UpsertStream(ctx context.Context, stream domain.StreamSpec) (*domain.StreamSpec, error)
 	DeleteStream(ctx context.Context, name string) error
 	GetStream(ctx context.Context, name string) (*domain.StreamSpec, error)
+	GetStreams(ctx context.Context) ([]domain.StreamSpec, error)
+	Watch(ctx context.Context, ch chan domain.StreamSpecWatchEvent) error
 }

@@ -8,10 +8,12 @@ import (
 	"syscall"
 
 	"codeberg.org/eljoth/tram/internal/adapters/api"
+	"codeberg.org/eljoth/tram/internal/adapters/configsync"
 	"codeberg.org/eljoth/tram/internal/adapters/sink"
 	"codeberg.org/eljoth/tram/internal/adapters/source"
 	"codeberg.org/eljoth/tram/internal/adapters/stage"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 
 	"codeberg.org/eljoth/tram/internal/core"
 )
@@ -19,6 +21,7 @@ import (
 var (
 	grpcEndpoint string
 	httpEndpoint string
+	configDir    string
 )
 
 var serverCmd = &cobra.Command{
@@ -61,11 +64,27 @@ func runServer(ctx context.Context) {
 	}()
 
 	// driver
-	a := api.New(c, grpcEndpoint, httpEndpoint)
+	a, err := api.New(c, grpcEndpoint, httpEndpoint)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	log.Printf("Starting gRPC Gateway server on %s, forwarding to gRPC at %s", httpEndpoint, grpcEndpoint)
-	if err := a.Run(ctx); err != nil {
-		log.Fatalf("Failed to run server: %v", err)
+	cs, err := configsync.New(c, configDir)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer cs.Close()
+
+	eg := errgroup.Group{}
+	eg.Go(func() error {
+		return cs.Run(ctx)
+	})
+	eg.Go(func() error {
+		return a.Run(ctx)
+	})
+
+	if err := eg.Wait(); err != nil {
+		log.Printf("Failed to run server: %v", err)
 	}
 }
 
@@ -74,4 +93,5 @@ func init() {
 
 	serverCmd.Flags().StringVar(&grpcEndpoint, "grpc-endpoint", "localhost:50051", "gRPC server endpoint")
 	serverCmd.Flags().StringVar(&httpEndpoint, "http-endpoint", "localhost:8080", "HTTP server endpoint")
+	serverCmd.Flags().StringVarP(&configDir, "config-directory", "c", "config", "Configuration directory")
 }
