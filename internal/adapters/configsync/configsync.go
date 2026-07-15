@@ -3,6 +3,7 @@ package configsync
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -129,6 +130,16 @@ func (c *ConfigSync) sync() error {
 
 	for _, spec := range streamSpecs {
 		log.Printf("Upserting stream %q", spec.Stream.Name)
+		configured, err := c.core.GetStream(context.Background(), spec.Stream.Name)
+		if err != nil && !errors.Is(err, domain.ErrStreamNotFound) {
+			log.Printf("Error getting stream %q: %v", spec.Stream.Name, err)
+			continue
+		}
+
+		if configured != nil && spec.Equals(StreamFromDomain(*configured)) {
+			continue
+		}
+
 		if _, err := c.core.UpsertStream(context.Background(), *spec.AsDomain()); err != nil {
 			log.Printf("Error upserting stream %q: %v", spec.Stream.Name, err)
 		}

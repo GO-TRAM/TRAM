@@ -1,5 +1,6 @@
 {
   "stream": {
+    "name": "otlp_cel_nats",
     "source": {
       "name": "otlp_source",
       "type": "otlp",
@@ -13,9 +14,9 @@
         "type": "cel_validator",
         "from": "otlp_source",
         "spec": {
-          "on_mismatch": "reject",
           "logs:": "logs.resource_logs.all(resLog, resLog.scope_logs.all(scopeLog, schopeLog.log_records.exist(record, record.attributes.exists(attr, attr.key=='service.name'))))",
           "metrics:": "metrics.resource_metrics.all(resMetric, resMetric.resource.attributes.exists(attr, attr.key == 'service.name')",
+          "on_mismatch": "reject",
           "traces:": "traces.resource_spans.all(resSpan, respSPan.resource.attributes.exists(attr, attr.key = 'service.name'))"
         }
       }
@@ -26,18 +27,18 @@
         "type": "nats",
         "from": "cel_stage",
         "spec": {
-          "url": "nats://localhost:4222",
           "stream": "tram-stream",
           "subject": {
+            "logs": "'logs.audit.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
+            "metrics": "'metrics.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')",
             "register": [
               "logs.audit.*",
               "metrics.*",
               "traces.*"
             ],
-"logs": "'logs.audit.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
-      "metrics": "'metrics.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')",
-      "traces": "'traces.' + traces.resource_spans[0].resource.attributes.get_attr('service.name')"
-          }
+            "traces": "'traces.' + traces.resource_spans[0].resource.attributes.get_attr('service.name')"
+          },
+          "url": "nats://localhost:4222"
         }
       }
     ]
