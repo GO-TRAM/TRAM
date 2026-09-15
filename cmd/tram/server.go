@@ -9,6 +9,7 @@ import (
 
 	"codeberg.org/eljoth/tram/internal/adapters/api"
 	"codeberg.org/eljoth/tram/internal/adapters/configsync"
+	"codeberg.org/eljoth/tram/internal/adapters/k8scrd"
 	"codeberg.org/eljoth/tram/internal/adapters/sink"
 	"codeberg.org/eljoth/tram/internal/adapters/source"
 	"codeberg.org/eljoth/tram/internal/adapters/stage"
@@ -19,9 +20,12 @@ import (
 )
 
 var (
-	grpcEndpoint string
-	httpEndpoint string
-	configDir    string
+	grpcEndpoint      string
+	httpEndpoint      string
+	configDir         string
+	enableK8sOperator bool
+	kubeconfig        string
+	enableFileSync    bool
 )
 
 var serverCmd = &cobra.Command{
@@ -64,21 +68,35 @@ func runServer(ctx context.Context) {
 	}()
 
 	// driver
+
+	eg := errgroup.Group{}
+
+	if enableFileSync {
+		eg.Go(func() error {
+			cs, err := configsync.New(c, configDir)
+			if err != nil {
+				return err
+			}
+			defer cs.Close()
+			return cs.Run(ctx)
+		})
+	}
+
+	if enableK8sOperator {
+		eg.Go(func() error {
+			op, err := k8scrd.New(c, kubeconfig)
+			if err != nil {
+				return err
+			}
+			return op.Run(ctx)
+		})
+	}
+
 	a, err := api.New(c, grpcEndpoint, httpEndpoint)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	cs, err := configsync.New(c, configDir)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer cs.Close()
-
-	eg := errgroup.Group{}
-	eg.Go(func() error {
-		return cs.Run(ctx)
-	})
 	eg.Go(func() error {
 		return a.Run(ctx)
 	})
@@ -94,4 +112,7 @@ func init() {
 	serverCmd.Flags().StringVar(&grpcEndpoint, "grpc-endpoint", "localhost:50051", "gRPC server endpoint")
 	serverCmd.Flags().StringVar(&httpEndpoint, "http-endpoint", "localhost:8080", "HTTP server endpoint")
 	serverCmd.Flags().StringVarP(&configDir, "config-directory", "c", "config", "Configuration directory")
+	serverCmd.Flags().BoolVar(&enableK8sOperator, "enable-k8s-operator", false, "Enable the Kubernetes operator")
+	serverCmd.Flags().BoolVar(&enableFileSync, "enable-file-sync", false, "Enable the file sync")
+	serverCmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Kubernetes config file")
 }

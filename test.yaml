@@ -1,0 +1,22 @@
+# test-stream.yaml
+apiVersion: io.tram.core/v1
+kind: Stream
+metadata:
+  name: test-stream
+spec:
+  name: test-stream
+  source:
+    type: generator
+    name: generator
+    spec:
+      interval: 5s
+  stages:
+    - type: delay
+      name: delay
+      from: generator
+      spec:
+        delay: 2s
+  sinks:
+    - type: debug
+      name: debug
+      from: delay
