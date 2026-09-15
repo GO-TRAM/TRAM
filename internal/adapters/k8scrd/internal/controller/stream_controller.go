@@ -64,7 +64,7 @@ func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, nil
 	}
 
-	domainSpec := toDomain(stream.Spec)
+	domainSpec := toDomain(stream)
 	_, err := r.Core.UpsertStream(ctx, *domainSpec)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("upsert into core: %w", err)
@@ -80,7 +80,7 @@ func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	return ctrl.Result{}, nil
 }
 
-func toDomain(s tramv1.StreamSpec) *domain.StreamSpec {
+func toDomain(s tramv1.Stream) *domain.StreamSpec {
 	// Convert map[string]string to map[string]any
 	convertSpec := func(m map[string]string) map[string]any {
 		result := make(map[string]any, len(m))
@@ -92,14 +92,14 @@ func toDomain(s tramv1.StreamSpec) *domain.StreamSpec {
 
 	// Map source (single)
 	sourceSpec := domain.SourceSpec{
-		Name: s.Source.Name,
-		Type: s.Source.Type,
-		Spec: convertSpec(s.Source.Spec),
+		Name: s.Spec.Source.Name,
+		Type: s.Spec.Source.Type,
+		Spec: convertSpec(s.Spec.Source.Spec),
 	}
 
 	// Map stages (list)
 	var stageSpecs []domain.StageSpec
-	for _, stage := range s.Stages {
+	for _, stage := range s.Spec.Stages {
 		stageSpecs = append(stageSpecs, domain.StageSpec{
 			Name: stage.Name,
 			Type: stage.Type,
@@ -110,7 +110,7 @@ func toDomain(s tramv1.StreamSpec) *domain.StreamSpec {
 
 	// Map sinks (list)
 	var sinkSpecs []domain.SinkSpec
-	for _, sink := range s.Sinks {
+	for _, sink := range s.Spec.Sinks {
 		sinkSpecs = append(sinkSpecs, domain.SinkSpec{
 			Name: sink.Name,
 			Type: sink.Type,

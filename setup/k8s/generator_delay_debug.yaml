@@ -4,18 +4,17 @@ kind: Stream
 metadata:
   name: test-stream
 spec:
-  name: test-stream
   source:
     type: generator
     name: generator
     spec:
-      interval: 5s
+      interval: 2s
   stages:
     - type: delay
       name: delay
       from: generator
       spec:
-        delay: 2s
+        delay: 1s
   sinks:
     - type: debug
       name: debug

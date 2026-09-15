@@ -33,6 +33,7 @@ func New(source domain.SourceSpec, validator *validator.Validate) (*Generator, e
 	return &Generator{
 		Source:   base,
 		interval: interval,
+		shutdown: make(chan struct{}),
 	}, nil
 }
 

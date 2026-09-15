@@ -37,8 +37,6 @@ spec:
             type: object
           spec:
             properties:
-              name:
-                type: string
               sinks:
                 items:
                   properties:
@@ -92,7 +90,6 @@ spec:
                   type: object
                 type: array
             required:
-            - name
             - sinks
             - source
             type: object

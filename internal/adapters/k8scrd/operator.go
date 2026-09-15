@@ -8,6 +8,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	stdlog "log"
+	"log/slog"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -26,6 +28,9 @@ type Operator struct {
 }
 
 func New(core ports.Core, kubeconfig string) (*Operator, error) {
+	// Set slog as the logger for controller-runtime
+	ctlrlog.SetLogger(&slogLogger{logger: slog.Default()})
+
 	cfg, err := ctrl.GetConfig()
 
 	if kubeconfig != "" {
@@ -44,7 +49,7 @@ func New(core ports.Core, kubeconfig string) (*Operator, error) {
 		return nil, err
 	}
 
-	log.Printf("Kube host = %q", cfg.Host)
+	stdlog.Printf("Kube host = %q", cfg.Host)
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:         scheme,
@@ -66,14 +71,14 @@ func New(core ports.Core, kubeconfig string) (*Operator, error) {
 		return nil, err
 	}
 
-	log.Println("Controller setup complete, waiting for cache sync...")
+	stdlog.Println("Controller setup complete, waiting for cache sync...")
 
 	return &Operator{mgr: mgr, core: core}, nil
 }
 
 func (o *Operator) Run(ctx context.Context) error {
-	log.Println("Starting controller-manager...")
+	stdlog.Println("Starting controller-manager...")
 	err := o.mgr.Start(ctx)
-	log.Printf("Controller-manager stopped: %v", err)
+	stdlog.Printf("Controller-manager stopped: %v", err)
 	return err
 }

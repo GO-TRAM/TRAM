@@ -35,7 +35,6 @@ type ReceiverSpec struct {
 }
 
 type StreamSpec struct {
-	Name   string         `json:"name"`
 	Source Spec           `json:"source"`
 	Stages []ReceiverSpec `json:"stages,omitempty"`
 	Sinks  []ReceiverSpec `json:"sinks"`
