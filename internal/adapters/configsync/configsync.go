@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,10 +54,11 @@ func New(c *core.Core, dir string) (*ConfigSync, error) {
 }
 
 func (c *ConfigSync) Run(ctx context.Context) error {
-	log.Printf("Starting configuration sync on directory: %q", c.dir)
+	slog.Info("Starting configuration sync", "directory", c.dir)
 
 	go func() {
 		for event := range c.watcher.Events {
+			slog.Debug("File system event received", "path", event.Name, "op", event.Op)
 			c.fsEvents <- event
 		}
 	}()
@@ -72,11 +73,12 @@ func (c *ConfigSync) Run(ctx context.Context) error {
 			return nil
 
 		case err := <-c.watcher.Errors:
+			slog.Error("Watcher error", "error", err)
 			return fmt.Errorf("watcher error: %w", err)
 
 		case event := <-ch:
 			if err := c.onCoreChange(event); err != nil {
-				log.Printf("Error during core change: %v", err)
+				slog.Error("Error during core change", "error", err)
 			}
 
 		case event := <-c.fsEvents:
@@ -86,7 +88,7 @@ func (c *ConfigSync) Run(ctx context.Context) error {
 			if filepath.Ext(event.Name) == ".json" {
 				c.debouncer = time.AfterFunc(c.debounceDuration, func() {
 					if err := c.sync(); err != nil {
-						log.Printf("Error during file sync: %v", err)
+						slog.Error("Error during file sync", "error", err)
 					}
 				})
 			}
@@ -129,26 +131,28 @@ func (c *ConfigSync) sync() error {
 	}
 
 	for _, spec := range streamSpecs {
-		log.Printf("Upserting stream %q", spec.Stream.Name)
+		slog.Debug("Processing stream", "name", spec.Stream.Name)
 		configured, err := c.core.GetStream(context.Background(), spec.Stream.Name)
 		if err != nil && !errors.Is(err, domain.ErrStreamNotFound) {
-			log.Printf("Error getting stream %q: %v", spec.Stream.Name, err)
+			slog.Error("Failed to get stream", "name", spec.Stream.Name, "error", err)
 			continue
 		}
 
 		if configured != nil && spec.Equals(StreamFromDomain(*configured)) {
+			slog.Debug("Stream unchanged, skipping", "name", spec.Stream.Name)
 			continue
 		}
 
+		slog.Debug("Upserting stream", "name", spec.Stream.Name)
 		if _, err := c.core.UpsertStream(context.Background(), *spec.AsDomain()); err != nil {
-			log.Printf("Error upserting stream %q: %v", spec.Stream.Name, err)
+			slog.Error("Failed to upsert stream", "name", spec.Stream.Name, "error", err)
 		}
 	}
 
 	for name := range toDelete {
-		log.Printf("Deleting stream %q", name)
+		slog.Debug("Deleting stream", "name", name)
 		if err := c.core.DeleteStream(context.Background(), name); err != nil {
-			log.Printf("Error deleting stream %q: %v", name, err)
+			slog.Error("Failed to delete stream", "name", name, "error", err)
 		}
 	}
 
@@ -191,11 +195,13 @@ func (c ConfigSync) StreamFromFile(fileName string) (Stream, error) {
 	filePath := filepath.Join(c.dir, fileName)
 	content, err := os.ReadFile(filePath)
 	if err != nil {
+		slog.Error("Failed to read config file", "path", filePath, "error", err)
 		return Stream{}, err
 	}
 
 	var stream Stream
 	if err := json.Unmarshal(content, &stream); err != nil {
+		slog.Error("Failed to parse config file", "path", filePath, "error", err)
 		return Stream{}, err
 	}
 	return stream, nil
