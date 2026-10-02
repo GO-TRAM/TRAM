@@ -596,10 +596,20 @@ Benchmarks cover the per-event hot path:
 | `BenchmarkPipeline` | `core` | A full stream with real stages, in records/s |
 | `BenchmarkCELValidator` | `stage/celvalidator` | Expression evaluation per payload size |
 | `BenchmarkCELFilter` | `stage/celfilter` | Per-record filtering for different keep ratios |
+| `BenchmarkFilter` | `core/domain` | The record filtering helpers without CEL |
 | `BenchmarkGroupEventsBySubjects`, `BenchmarkAppendLogRecord` | `sink/nats` | Splitting batches by subject |
+| `BenchmarkNotify` | `sink/nats` | Grouping and publishing to NATS (container) |
+| `BenchmarkConsume` | `source/nats` | Fetching, decoding and acknowledging from NATS (container) |
 | `BenchmarkBatch` | `stage/batch` | Batch overhead and merging with concurrent callers |
 | `BenchmarkHandleLogs` | `source/otlp` | Reading and decoding OTLP requests |
 | `BenchmarkOTLPDataRoundTrip` | `core/domain` | Serializing events for NATS |
+
+Benchmarks marked "container" start a NATS server with [Testcontainers](https://golang.testcontainers.org/) via `internal/testutil/natstest`. They need Docker or Podman and are skipped if neither is running. With Podman on macOS, point Testcontainers to the socket inside the Podman VM:
+
+```bash
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/run/podman/podman.sock
+export TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED=true
+```
 
 Build payloads with `internal/testutil/otlpgen` and use `otlpgen.Shapes` so results are comparable across benchmarks. Use `b.Loop()`, call `b.ReportAllocs()`, and report `records/s` for payload-dependent benchmarks.
 

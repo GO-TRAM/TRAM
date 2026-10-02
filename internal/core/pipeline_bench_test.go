@@ -3,6 +3,9 @@ package core_test
 import (
 	"context"
 	"fmt"
+	"io"
+	"log"
+	"os"
 	"sync/atomic"
 	"testing"
 
@@ -120,6 +123,11 @@ func (t topology) spec() domain.StreamSpec {
 // BenchmarkPipeline measures a whole stream built by the core with real
 // stages, reporting throughput in records/s so payload sizes are comparable.
 func BenchmarkPipeline(b *testing.B) {
+	// The core logs every stream it starts and stops, which would break up the
+	// benchmark output.
+	log.SetOutput(io.Discard)
+	b.Cleanup(func() { log.SetOutput(os.Stderr) })
+
 	for _, topo := range topologies {
 		for _, shape := range otlpgen.Shapes {
 			b.Run(topo.name+"/"+shape.String(), func(b *testing.B) {
