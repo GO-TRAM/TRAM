@@ -183,20 +183,20 @@ func compileSubjects(subject SubjectSpec) (logs, metrics, traces cel.Program, er
 }
 
 func (n *NATS) Notify(ctx context.Context, event *domain.Event) error {
-	mappedEvents, err := n.groupEventsBySubjects(event)
+	messages, err := n.groupEventsBySubjects(event)
 	if err != nil {
 		log.Printf("Failed to resolve subject template: %v. Dropping event.", err)
 		return nil
 	}
 
-	for k, v := range mappedEvents {
-		signal, data, err := v.MarshalOTLPData()
+	for _, m := range messages {
+		signal, data, err := m.event.MarshalOTLPData()
 		if err != nil {
 			log.Println(err)
 			return fmt.Errorf("failed to marshal event: %w", err)
 		}
 		msg := &nats.Msg{
-			Subject: k,
+			Subject: m.subject,
 			Data:    data,
 			Header:  nats.Header{SignalHeader: []string{string(signal)}},
 		}

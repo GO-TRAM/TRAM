@@ -597,7 +597,7 @@ Benchmarks cover the per-event hot path:
 | `BenchmarkCELValidator` | `stage/celvalidator` | Expression evaluation per payload size |
 | `BenchmarkCELFilter` | `stage/celfilter` | Per-record filtering for different keep ratios |
 | `BenchmarkFilter` | `core/domain` | The record filtering helpers without CEL |
-| `BenchmarkGroupEventsBySubjects`, `BenchmarkAppendLogRecord` | `sink/nats` | Splitting batches by subject |
+| `BenchmarkGroupEventsBySubjects` | `sink/nats` | Splitting batches by subject |
 | `BenchmarkNotify` | `sink/nats` | Grouping and publishing to NATS (container) |
 | `BenchmarkConsume` | `source/nats` | Fetching, decoding and acknowledging from NATS (container) |
 | `BenchmarkBatch` | `stage/batch` | Batch overhead and merging with concurrent callers |

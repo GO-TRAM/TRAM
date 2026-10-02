@@ -412,7 +412,6 @@ Signals without an expression are not published by this sink.
 - Each expression is evaluated once per log record, metric and span. It receives a payload of its signal type (`logs`, `metrics` or `traces`) that contains only that one entry with its resource and scope, so `[0]` indexes address it, e.g. `logs.resource_logs[0].scope_logs[0].log_records[0]`
 - Metrics are routed per metric, not per data point: all data points of a metric go to the same subject
 - The custom function `get_attr(key)` on an attribute list returns the string value of an attribute, or `""` if it is missing, e.g. `logs.resource_logs[0].resource.attributes.get_attr('service.name')`
-- The expressions of different signal types must never return the same subject, e.g. by using a prefix per type (`'logs.'`, `'metrics.'`, `'traces.'`). An event that contains several signal types, e.g. after a `batch` stage, would otherwise crash Tram
 - Must return a string that will be used as the NATS subject
 
 **Example:**
@@ -462,7 +461,8 @@ Signals without an expression are not published by this sink.
 
 **Behavior Notes:**
 - The sink creates the JetStream stream or updates it with `register`, `retention` and `size` when the stream is created in Tram. Settings changed elsewhere are overwritten
-- Records are grouped by their resolved subject and published as one OTLP message per subject and signal type. Each message has a `Tram-Signal` header with the signal type, which the [NATS Source](#nats-source) needs to decode it
+- Records are grouped by their resolved subject and published as one OTLP message per subject and signal type, so different signal types may share a subject. Each message has a `Tram-Signal` header with the signal type, which the [NATS Source](#nats-source) needs to decode it
+- Records keep their resource and scope. If all records of a signal type resolve to the same subject, the payload is published unchanged. Resources that appear in several entries of an event, e.g. after a `batch` stage, stay separate entries in the message, which OTLP allows
 - The `register` subjects configure the stream, while the CEL expressions determine the subject of each record. Records whose subject is not covered by `register` cannot be published
 - If a CEL expression fails to evaluate or returns a non-string value, the whole event is dropped with an error log and nothing of it is published
 - If publishing fails, the error is reported back to the source, e.g. the NATS source redelivers the message

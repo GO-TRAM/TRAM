@@ -7,7 +7,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 	"github.com/go-playground/validator/v10"
-	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 )
 
 // groupingShapes vary the dimensions grouping cost depends on: records to
@@ -25,7 +24,7 @@ var groupingShapes = []otlpgen.Shape{
 
 // newGroupingSink builds a sink without a NATS connection, which grouping
 // does not need.
-func newGroupingSink(b *testing.B, logsSubject string) *NATS {
+func newGroupingSink(b testing.TB, logsSubject string) *NATS {
 	b.Helper()
 	subject := map[string]any{"register": []any{"logs.>"}, "logs": logsSubject}
 	sinkBase, err := base.New[Spec]("nats", "in", map[string]any{
@@ -64,32 +63,6 @@ func BenchmarkGroupEventsBySubjects(b *testing.B) {
 			for b.Loop() {
 				if _, err := sink.groupEventsBySubjects(event); err != nil {
 					b.Fatal(err)
-				}
-			}
-			b.ReportMetric(float64(shape.Records*b.N)/b.Elapsed().Seconds(), "records/s")
-		})
-	}
-}
-
-// BenchmarkAppendLogRecord isolates rebuilding the resource and scope
-// structure, which looks up the matching resource and scope by comparing them.
-func BenchmarkAppendLogRecord(b *testing.B) {
-	for _, shape := range groupingShapes {
-		if shape.Teams != 1 {
-			continue
-		}
-		logs := otlpgen.Logs(shape)
-
-		b.Run(shape.String(), func(b *testing.B) {
-			b.ReportAllocs()
-			for b.Loop() {
-				target := &logspb.LogsData{}
-				for _, rl := range logs.ResourceLogs {
-					for _, sl := range rl.ScopeLogs {
-						for _, record := range sl.LogRecords {
-							appendLogRecord(target, rl, sl, record)
-						}
-					}
 				}
 			}
 			b.ReportMetric(float64(shape.Records*b.N)/b.Elapsed().Seconds(), "records/s")
