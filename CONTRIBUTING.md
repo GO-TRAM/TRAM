@@ -1,6 +1,6 @@
-# Contributing to Stream
+# Contributing to Tram
 
-Thank you for your interest in contributing to Stream! This document provides guidelines for contributing to the project.
+Thank you for your interest in contributing to Tram! This document provides guidelines for contributing to the project.
 
 ---
 
@@ -21,21 +21,34 @@ Thank you for your interest in contributing to Stream! This document provides gu
 
 ### Prerequisites
 
-- Go 1.21+
-- [bufbuild/buf](https://buf.build/) for protobuf management
+- Go 1.26+
+- Docker, optional, to run a NATS server for the `nats` source and sink
+
+Only needed to regenerate code (`go generate ./...`):
+
+- [buf](https://buf.build/) and the protoc plugins used in `buf.gen.yaml`
+- [controller-gen](https://book.kubebuilder.io/reference/controller-gen) v0.22.0 for the Kubernetes CRD and deepcopy code
 
 ### Install Dependencies
 
 ```bash
 # Clone the repository
 git clone https://codeberg.org/eljoth/tram.git
-cd stream
+cd tram
 
 # Install Go dependencies
 go mod download
 
-# Install buf
-buf curl --sh | sh
+# Code generators (only needed for go generate)
+go install github.com/bufbuild/buf/cmd/buf@latest
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@latest
+go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.22.0
+
+# Optional: NATS with JetStream for the nats source and sink
+docker compose -f setup/nats/docker-compose.yaml up -d
 ```
 
 ---
@@ -65,7 +78,7 @@ go build ./...
 ### Generate Code
 
 ```bash
-# Generate all code (protobuf, etc.)
+# Generate all code: protobuf and swagger (buf), Kubernetes CRD and deepcopy (controller-gen)
 go generate ./...
 ```
 
@@ -78,218 +91,196 @@ When updating the API:
    ```bash
    go generate ./...
    ```
-3. The swagger file will be automatically updated
+3. The swagger file in `api/swagger/` is updated automatically
 
 ---
 
 ## 🗂️ Project Structure
 
 ```
-stream/
-├── api/                      # API definitions (protobuf)
-│   └── proto/
-│       └── stream/
-│           └── v1/
-│               ├── stream.proto    # Main service definitions
-│               └── ...
-├── cmd/                     # Command-line applications
-│   └── stream/
-│       └── main.go         # Main application entry point
-├── internal/               # Private application code
-│   ├── adapters/           # Component implementations
-│   │   ├── source/
-│   │   │   ├── base/        # Base source implementations
-│   │   │   └── generator/   # Generator source
-│   │   ├── stage/
-│   │   │   ├── base/        # Base stage implementations
-│   │   │   └── noop/        # NoOp stage
-│   │   └── sink/
-│   │       ├── base/        # Base sink implementations
-│   │       ├── debug/       # Debug sink
-│   │       └── ...
-│   └── core/               # Core pipeline logic
-│       ├── config/         # Configuration parsing
-│       ├── domain/         # Domain models and interfaces
-│       └── ...
-├── pkg/                     # Public library code
-│   └── gen/                # Generated code
-│       └── go/
-│           └── stream/
-│               └── v1/       # Generated protobuf code
-├── go.mod                  # Go module definition
-├── go.sum                  # Go module checksums
-├── buf.yaml                # Buf configuration
-├── buf.lock                # Buf dependencies lock file
-└── README.md               # Project readme
+tram/
+├── api/
+│   ├── proto/stream/v1/stream.proto  # API definition
+│   └── swagger/                      # Generated OpenAPI description
+├── cmd/tram/                         # CLI entry point and `tram server`
+├── internal/                         # Private application code
+│   ├── adapters/
+│   │   ├── api/                      # gRPC API and HTTP gateway
+│   │   ├── configsync/               # File sync (--enable-file-sync)
+│   │   ├── k8scrd/                   # Kubernetes operator (--enable-k8s-operator)
+│   │   ├── source/                   # Sources, base/ and factory.go
+│   │   ├── stage/                    # Stages, base/ and factory.go
+│   │   └── sink/                     # Sinks, base/ and factory.go
+│   ├── core/                         # Builds, runs and stops streams
+│   │   └── domain/                   # Events, specs, the stream tree, record filtering
+│   ├── ports/                        # Interfaces between core and adapters
+│   └── testutil/otlpgen/             # OTLP payload generator for tests and benchmarks
+├── pkg/gen/go/api/proto/stream/v1/   # Generated protobuf, gRPC and gateway code
+├── setup/                            # Example configurations: config/, k8s/, nats/
+├── docs/assets/                      # Images used in the documentation
+├── buf.yaml, buf.gen.yaml, buf.lock  # Protobuf generation
+├── generate.go                       # Entry point for go generate
+└── README.md
 ```
 
 ---
 
 ## 🧩 Adding New Components
 
-Tram is designed to be easily extensible. Follow these steps to add a new source, stage, or sink.
+Tram is designed to be easily extensible. Each component is a package in `internal/adapters/{source|stage|sink}/<name>/` that embeds the matching base type and is registered in the factory next to it.
 
 ### Common Patterns
 
-All components follow a consistent pattern using the factory:
+1. **Define a `Spec` type** for the configuration. `base.New` decodes the stream's `spec` into it and checks its `validate` tags ([go-playground/validator](https://github.com/go-playground/validator)); there is no `Validate()` method
+2. **Implement the component** by embedding `base.Source[Spec]`, `base.Stage[Spec]` or `base.Sink[Spec]`. Checks the tags cannot express, like parsing durations, belong into `New`, so an invalid spec fails when the stream is created
+3. **Register it** in the `switch` of `factory.go` in a new branch
+4. **Document it** in [COMPONENTS.md](COMPONENTS.md)
 
-1. **Define a Spec type** for configuration
-2. **Implement the component** using the base class
-3. **Add to factory** in a new branch
+Rules all components follow:
+
+- **Events are read-only.** One event is passed to all branches concurrently. To change data, build a new event, e.g. with `domain.FilterLogs`, `FilterMetrics` and `FilterSpans`, which share unchanged records instead of copying them
+- **`Notify` returns the delivery result.** Return an error wrapping `domain.ErrEventRejected` when retrying the same data cannot succeed; sources then reject it (OTLP: HTTP 400, NATS: terminate). Any other error is treated as temporary (OTLP: HTTP 500, NATS: redelivery)
+- **`Notify` may block** while it delivers the event downstream, or when waiting is its documented purpose (`batch`, `delay`). It has to return when `ctx` is done
+- **Lifecycle:** `New` may acquire resources such as connections. `Stop` is called exactly once and must release them; it may be called without `Run`, e.g. when building the stream failed. The core stops the source first, waits for its `Run` to return, and then stops stages and sinks from the root down
 
 ### Adding a New Source
+
+Sources have no `Notify`; they implement `Run` and `Stop`. The base type provides `Name`, `Spec`, `Subscribe` and `NotifySubscribers`.
 
 #### 1. Create the Spec
 
 ```go
-// internal/adapters/source/my-source/spec.go
-package mysource
-
-import (
-	"errors"
-	"time"
-)
+// internal/adapters/source/heartbeat/spec.go
+package heartbeat
 
 type Spec struct {
 	Interval string `json:"interval" validate:"required"`
-	URL      string `json:"url" validate:"required,url"`
-	// Add other configuration fields
-}
-
-// Validate implements the validator interface
-func (s *Spec) Validate() error {
-	if s.Interval == "" {
-		return errors.New("interval is required")
-	}
-	if _, err := time.ParseDuration(s.Interval); err != nil {
-		return fmt.Errorf("invalid interval: %w", err)
-	}
-	if s.URL == "" {
-		return errors.New("URL is required")
-	}
-	return nil
+	Message  string `json:"message" validate:"required"`
 }
 ```
 
 #### 2. Implement the Source
 
 ```go
-// internal/adapters/source/my-source/my-source.go
-package mysource
+// internal/adapters/source/heartbeat/heartbeat.go
+package heartbeat
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"codeberg.org/eljoth/tram/internal/adapters/source/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
+	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 )
 
-const Type = "my-source"
+const Type = "heartbeat"
 
-type MySource struct {
+type Heartbeat struct {
 	*base.Source[Spec]
 	interval time.Duration
-	client   *http.Client
+	shutdown chan struct{}
+	stopOnce sync.Once
 }
 
-func New(source domain.SourceSpec, validator *validator.Validate) (*MySource, error) {
-	// Create base with validation
-	baseSource, err := base.New[Spec](source.Name, source.Spec, validator)
+func New(source domain.SourceSpec, validator *validator.Validate) (*Heartbeat, error) {
+	// Decodes the spec and checks its validate tags.
+	base, err := base.New[Spec](source.Name, source.Spec, validator)
 	if err != nil {
 		return nil, err
 	}
 
-	// Parse the interval from validated spec
-	interval, err := time.ParseDuration(baseSource.Spec().Interval)
+	// Checks the tags cannot express belong here too, so an invalid spec
+	// fails when the stream is created.
+	interval, err := time.ParseDuration(base.Spec().Interval)
 	if err != nil {
 		return nil, fmt.Errorf("invalid interval: %w", err)
 	}
 
-	return &MySource{
-		Source:   baseSource,
+	return &Heartbeat{
+		Source:   base,
 		interval: interval,
-		client:   &http.Client{Timeout: 10 * time.Second},
+		shutdown: make(chan struct{}),
 	}, nil
 }
 
-func (s *MySource) Run(ctx context.Context) error {
-	ticker := time.NewTicker(s.interval)
+// Run produces events until Stop is called or ctx is cancelled.
+func (h *Heartbeat) Run(ctx context.Context) error {
+	ticker := time.NewTicker(h.interval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-s.Context().Done():
+		case <-h.shutdown:
 			return nil
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			// Fetch or generate data
-			data, err := s.fetchData(ctx)
-			if err != nil {
-				log.Printf("Error fetching data: %v", err)
-				continue
-			}
+			event := &domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{
+				ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{
+					TimeUnixNano: uint64(time.Now().UnixNano()),
+					Body:         &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: h.Spec().Message}},
+				}}}},
+			}}}}
 
-			event := domain.Event{
-				Metadata: map[string]string{"source": s.Name()},
-				Data:     data,
+			// Returns once all children have processed the event.
+			if err := h.NotifySubscribers(ctx, event); err != nil {
+				log.Printf("heartbeat %s: %v", h.Name(), err)
 			}
-			s.NotifySubscribers(ctx, event)
 		}
 	}
 }
+
+// Stop makes Run return. It may be called without Run, e.g. when building
+// the stream failed, and must release everything New acquired.
+func (h *Heartbeat) Stop() error {
+	h.stopOnce.Do(func() { close(h.shutdown) })
+	return nil
+}
+
+var _ domain.Source = (*Heartbeat)(nil)
 ```
 
 #### 3. Register in Factory
 
-Add to the factory in your feature branch:
-
 ```go
-// internal/core/config/factory.go
-package config
-
-import (
-    "github.com/go-playground/validator/v10"
-    mysource "codeberg.org/eljoth/tram/internal/adapters/source/my-source"
-)
-
-func (f *Factory) registerComponents() {
-    // ... existing registrations
-
-    // Register new source
-    f.sources["my-source"] = func(spec domain.SourceSpec, v *validator.Validate) (domain.Source, error) {
-        return mysource.New(spec, v)
-    }
+// internal/adapters/source/factory.go
+func (f *Factory) New(spec domain.SourceSpec) (domain.Source, error) {
+	switch spec.Type {
+	// ... existing sources
+	case heartbeat.Type:
+		return heartbeat.New(spec, f.validator)
+	default:
+		return nil, fmt.Errorf("%w: %q", domain.ErrInvalidSourceType, spec.Type)
+	}
 }
 ```
 
 ### Adding a New Stage
 
+Stages implement `Notify` and pass events on with `NotifySubscribers`. The base type provides `Name`, `From`, `Spec`, `Subscribe` and a `Stop` that does nothing.
+
 #### 1. Create the Spec
 
 ```go
-// internal/adapters/stage/my-stage/spec.go
-package mystage
+// internal/adapters/stage/severity/spec.go
+package severity
 
 type Spec struct {
-	Filter string `json:"filter"`
-	// Add other fields
-}
-
-func (s *Spec) Validate() error {
-	// Add validation logic
-	return nil
+	Min int `json:"min" validate:"min=0,max=24"`
 }
 ```
 
 #### 2. Implement the Stage
 
 ```go
-// internal/adapters/stage/my-stage/my-stage.go
-package mystage
+// internal/adapters/stage/severity/severity.go
+package severity
 
 import (
 	"context"
@@ -297,133 +288,162 @@ import (
 	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
+	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
+	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 )
 
-const Type = "my-stage"
+const Type = "severity"
 
-type MyStage struct {
+type Severity struct {
 	*base.Stage[Spec]
 }
 
-func New(stage domain.StageSpec, validator *validator.Validate) (*MyStage, error) {
-	baseStage, err := base.New[Spec](stage.Name, stage.From, stage.Spec, validator)
+func New(stage domain.StageSpec, validator *validator.Validate) (*Severity, error) {
+	base, err := base.New[Spec](stage.Name, stage.From, stage.Spec, validator)
 	if err != nil {
 		return nil, err
 	}
-
-	return &MyStage{
-		Stage: baseStage,
-	}, nil
+	return &Severity{Stage: base}, nil
 }
 
-func (s *MyStage) Notify(ctx context.Context, event domain.Event) error {
-	// Process the event based on spec
-	if s.Spec().Filter != "" {
-		// Apply filter logic
+// Notify keeps the log records with at least the configured severity. The
+// event is shared with sibling branches, so it is never modified; FilterLogs
+// builds a new payload and shares the kept records.
+func (s *Severity) Notify(ctx context.Context, event *domain.Event) error {
+	logs, err := domain.FilterLogs(event.Logs, func(_ *resourcepb.Resource, _ *commonpb.InstrumentationScope, record *logspb.LogRecord) (bool, error) {
+		return int(record.SeverityNumber) >= s.Spec().Min, nil
+	})
+	if err != nil {
+		return err
 	}
 
-	// Pass to next component
-	return s.NotifySubscribers(ctx, event)
+	filtered := *event
+	filtered.Logs = logs
+	if filtered.RecordCount() == 0 {
+		return nil
+	}
+	return s.NotifySubscribers(ctx, &filtered)
 }
+
+var _ domain.Stage = (*Severity)(nil)
 ```
 
 #### 3. Register in Factory
 
 ```go
-// internal/core/config/factory.go
-import (
-    mystage "codeberg.org/eljoth/tram/internal/adapters/stage/my-stage"
-)
-
-func (f *Factory) registerComponents() {
-    // ... existing registrations
-
-    // Register new stage
-    f.stages["my-stage"] = func(spec domain.StageSpec, v *validator.Validate) (domain.Stage, error) {
-        return mystage.New(spec, v)
-    }
-}
+// internal/adapters/stage/factory.go
+	case severity.Type:
+		return severity.New(spec, f.validator)
 ```
 
 ### Adding a New Sink
 
+Sinks implement `Notify`. The base type provides `Name`, `From`, `Spec` and a `Stop` that does nothing.
+
 #### 1. Create the Spec
 
 ```go
-// internal/adapters/sink/my-sink/spec.go
-package mysink
+// internal/adapters/sink/webhook/spec.go
+package webhook
 
 type Spec struct {
-	Endpoint string `json:"endpoint" validate:"required,url"`
-	// Add other fields
-}
-
-func (s *Spec) Validate() error {
-	// Add validation logic
-	return nil
+	URL string `json:"url" validate:"required,url"`
 }
 ```
 
 #### 2. Implement the Sink
 
 ```go
-// internal/adapters/sink/my-sink/my-sink.go
-package mysink
+// internal/adapters/sink/webhook/webhook.go
+package webhook
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"net/http"
+	"time"
 
 	"codeberg.org/eljoth/tram/internal/adapters/sink/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
+	"google.golang.org/protobuf/proto"
 )
 
-const Type = "my-sink"
+const Type = "webhook"
 
-type MySink struct {
+type Webhook struct {
 	*base.Sink[Spec]
 	client *http.Client
 }
 
-func New(sink domain.SinkSpec, validator *validator.Validate) (*MySink, error) {
-	baseSink, err := base.New[Spec](sink.Name, sink.From, sink.Spec, validator)
+func New(sink domain.SinkSpec, validator *validator.Validate) (*Webhook, error) {
+	base, err := base.New[Spec](sink.Name, sink.From, sink.Spec, validator)
 	if err != nil {
 		return nil, err
 	}
-
-	return &MySink{
-		Sink:   baseSink,
+	return &Webhook{
+		Sink:   base,
 		client: &http.Client{Timeout: 10 * time.Second},
 	}, nil
 }
 
-func (s *MySink) Notify(ctx context.Context, event domain.Event) error {
-	// Send event to destination
-	// err := s.client.Post(s.Spec().Endpoint, "application/json", event.Data)
-	// if err != nil {
-	//     return fmt.Errorf("failed to send event: %w", err)
-	// }
+// Notify posts the logs of an event as OTLP/HTTP protobuf. The returned
+// error tells the source whether retrying can help.
+func (w *Webhook) Notify(ctx context.Context, event *domain.Event) error {
+	if event.Logs == nil {
+		return nil
+	}
+	body, err := proto.Marshal(event.Logs)
+	if err != nil {
+		return fmt.Errorf("marshal logs: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.Spec().URL, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-protobuf")
+
+	resp, err := w.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("send logs: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch {
+	case resp.StatusCode >= 500:
+		// Temporary: the source may retry, e.g. the NATS source redelivers.
+		return fmt.Errorf("send logs: %s", resp.Status)
+	case resp.StatusCode >= 400:
+		// Permanent: retrying the same data cannot succeed.
+		return fmt.Errorf("%w: %s", domain.ErrEventRejected, resp.Status)
+	}
 	return nil
 }
+
+func (w *Webhook) Stop() error {
+	w.client.CloseIdleConnections()
+	return nil
+}
+
+var _ domain.Sink = (*Webhook)(nil)
 ```
 
 #### 3. Register in Factory
 
 ```go
-// internal/core/config/factory.go
-import (
-    mysink "codeberg.org/eljoth/tram/internal/adapters/sink/my-sink"
-)
-
-func (f *Factory) registerComponents() {
-    // ... existing registrations
-
-    // Register new sink
-    f.sinks["my-sink"] = func(spec domain.SinkSpec, v *validator.Validate) (domain.Sink, error) {
-        return mysink.New(spec, v)
-    }
-}
+// internal/adapters/sink/factory.go
+	case webhook.Type:
+		return webhook.New(spec, f.validator)
 ```
+
+### Tests and Benchmarks
+
+- Test valid and invalid specs, and `Notify` with payloads from `internal/testutil/otlpgen`
+- Check that `Notify` leaves the incoming event unchanged
+- Add a benchmark for the per-event path (see [Benchmarks](#benchmarks))
 
 ---
 
@@ -574,6 +594,7 @@ Benchmarks cover the per-event hot path:
 | `BenchmarkNotifySubscribers` | `source/base`, `stage/base` | Fan-out cost per event and child |
 | `BenchmarkPipeline` | `core` | A full stream with real stages, in records/s |
 | `BenchmarkCELValidator` | `stage/celvalidator` | Expression evaluation per payload size |
+| `BenchmarkCELFilter` | `stage/celfilter` | Per-record filtering for different keep ratios |
 | `BenchmarkGroupEventsBySubjects`, `BenchmarkAppendLogRecord` | `sink/nats` | Splitting batches by subject |
 | `BenchmarkBatch` | `stage/batch` | Batch overhead and merging with concurrent callers |
 | `BenchmarkHandleLogs` | `source/otlp` | Reading and decoding OTLP requests |
@@ -646,4 +667,4 @@ We're happy to help you get started with contributing!
 
 ## 📜 License
 
-By contributing to Stream, you agree that your contributions will be licensed under the same [MIT License](LICENSE) as the project.
+By contributing to Tram, you agree that your contributions will be licensed under the same [MIT License](LICENSE) as the project.

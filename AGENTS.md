@@ -6,7 +6,7 @@ This file contains project-specific guidelines for AI coding assistants working 
 
 Tram is a cloud-native, in-memory data pipeline framework that:
 - Uses tree-structured pipelines (1 source → N stages → M sinks)
-- Manages configuration entirely via API (no file-based config)
+- Manages streams through the API, optionally synced with JSON files (`configsync`) and Kubernetes custom resources (`k8scrd`); all processing is in memory
 - Uses protobuf for API definitions (swagger auto-generated)
 - Follows clean architecture with clear separation between core and adapters
 
@@ -25,7 +25,7 @@ Tram is a cloud-native, in-memory data pipeline framework that:
 - Use `base.Source[Spec]`, `base.Stage[Spec]`, `base.Sink[Spec]` for components
 - Use `base.New[Spec]()` pattern for base instantiation
 - Pass `validator *validator.Validate` to New functions
-- Register new components in the factory (in feature branches)
+- Register new components in the `switch` of the matching `factory.go` (in feature branches)
 
 ### Development Workflow
 
@@ -81,28 +81,37 @@ When creating new components (sources, stages, sinks), all AI agents should:
    }
    ```
 
-2. **Component Implementation**:
+2. **Component Implementation** (a stage; sources use `base.New[Spec](spec.Name, spec.Spec, validator)` without `From` and implement `Run` and `Stop`):
    ```go
-   type MyComponent struct {
-       *base.Component[Spec]
+   type MyStage struct {
+       *base.Stage[Spec]
        // Additional fields
    }
-   
-   func New(spec domain.ComponentSpec, validator *validator.Validate) (*MyComponent, error) {
+
+   func New(spec domain.StageSpec, validator *validator.Validate) (*MyStage, error) {
        base, err := base.New[Spec](spec.Name, spec.From, spec.Spec, validator)
        if err != nil {
            return nil, err
        }
-       return &MyComponent{Component: base}, nil
+       return &MyStage{Stage: base}, nil
+   }
+
+   // Notify must not modify event; it is shared with sibling branches.
+   func (s *MyStage) Notify(ctx context.Context, event *domain.Event) error {
+       return s.NotifySubscribers(ctx, event)
    }
    ```
 
 3. **Factory Registration**:
    ```go
-   // In factory.go (in feature branch)
-   func (f *Factory) registerComponents() {
-       f.components["my-component"] = func(spec domain.ComponentSpec, v *validator.Validate) (domain.Component, error) {
-           return mycomponent.New(spec, v)
+   // internal/adapters/stage/factory.go (in feature branch)
+   func (f *Factory) New(spec domain.StageSpec) (domain.Stage, error) {
+       switch spec.Type {
+       // ... existing stages
+       case mystage.Type:
+           return mystage.New(spec, f.validator)
+       default:
+           return nil, fmt.Errorf("%w: %q", domain.ErrInvalidStageType, spec.Type)
        }
    }
    ```
@@ -133,7 +142,10 @@ All AI agents must follow these protobuf rules:
 All AI agents should respect this project structure:
 - All new components go in `internal/adapters/{source|stage|sink}/`
 - Base classes are in `internal/adapters/{source|stage|sink}/base/`
-- Core logic is in `internal/core/`
+- Core logic is in `internal/core/`, domain types and record filtering in `internal/core/domain/`
+- Interfaces between core and adapters are in `internal/ports/`
+- Configuration drivers are in `internal/adapters/api/`, `configsync/` and `k8scrd/`
+- Test helpers are in `internal/testutil/`
 - API definitions are in `api/proto/`
 - Generated code goes in `pkg/gen/`
 
@@ -142,9 +154,10 @@ All AI agents should respect this project structure:
 All AI agents should be aware of these common issues:
 1. **Circular Dependencies**: Don't create circular imports between packages
 2. **Global State**: Avoid global variables; use dependency injection
-3. **Blocking Operations**: Don't block in Notify methods
-4. **Memory Leaks**: Always clean up goroutines and resources
-5. **Inconsistent Error Handling**: Always wrap errors with context
+3. **Blocking Operations**: Only block in Notify while delivering downstream or when waiting is the component's documented purpose (`batch`, `delay`); always return when the context is done
+4. **Shared Events**: Never modify an incoming event; build a new one (e.g. with `domain.FilterLogs`) instead
+5. **Memory Leaks**: Always clean up goroutines and resources in Stop
+6. **Inconsistent Error Handling**: Always wrap errors with context; wrap `domain.ErrEventRejected` for permanent failures
 
 ## Example Commands
 

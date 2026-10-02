@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"codeberg.org/eljoth/tram/internal/adapters/stage/batch"
+	"codeberg.org/eljoth/tram/internal/adapters/stage/celfilter"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/celvalidator"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/delay"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/noop"
@@ -27,6 +28,8 @@ func (f *Factory) New(spec domain.StageSpec) (domain.Stage, error) {
 		return noop.New(spec, f.validator)
 	case celvalidator.Type:
 		return celvalidator.New(spec, f.validator)
+	case celfilter.Type:
+		return celfilter.New(spec, f.validator)
 	case delay.Type:
 		return delay.New(spec, f.validator)
 	case batch.Type:

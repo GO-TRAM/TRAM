@@ -12,13 +12,13 @@ Sources are the entry points of a pipeline that produce or receive data events.
 
 | Name | Type | Description |
 |------|------|-------------|
-| `generator` | `generator` | Generates synthetic events at a specified interval for testing |
-| `nats` | `nats` | Consumes messages from NATS JetStream |
-| `otlp` | `otlp` | Receives protobuf encoded OpenTelemetry Protocol data via HTTP |
+| `generator` | `generator` | Emits empty events at a fixed interval, for testing pipelines |
+| `nats` | `nats` | Consumes events published by Tram's `nats` sink from NATS JetStream |
+| `otlp` | `otlp` | Receives protobuf-encoded OpenTelemetry Protocol (OTLP) data via HTTP |
 
 ### Generator Source
 
-Generates events at a regular interval. Useful for testing and development.
+Emits an event at a regular interval. The events are empty: they contain no logs, metrics or traces. Useful for testing how a pipeline is wired; stages that count or inspect records, like `batch` or `cel_filter`, ignore them.
 
 **Type:** `generator`
 
@@ -42,7 +42,7 @@ Generates events at a regular interval. Useful for testing and development.
 
 ### OTLP Source
 
-Receives OpenTelemetry Protocol data. Supports both HTTP and gRPC endpoints.
+Receives OpenTelemetry Protocol data over HTTP (OTLP/HTTP). OTLP over gRPC is not supported.
 
 **Type:** `otlp`
 
@@ -50,9 +50,9 @@ Receives OpenTelemetry Protocol data. Supports both HTTP and gRPC endpoints.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `http_port` | int | No | - | HTTP port to listen on for OTLP/HTTP |
+| `http_port` | int | Yes | - | Port to listen on, on all network interfaces |
 
-**Example (HTTP):**
+**Example:**
 
 ```json
 {
@@ -64,9 +64,15 @@ Receives OpenTelemetry Protocol data. Supports both HTTP and gRPC endpoints.
 }
 ```
 
+**Behavior Notes:**
+- Accepts `POST` requests on `/v1/logs`, `/v1/metrics` and `/v1/traces` with a protobuf-encoded body. JSON-encoded OTLP is not supported
+- Each request becomes one event and is passed on as a whole
+- Responses: `200` with an empty body once all sinks have accepted the data, `400` for a malformed body or data rejected by a stage (e.g. `cel_validator` with `on_mismatch: reject`), `413` for bodies larger than 20 MiB, `500` if passing the data on failed
+- The port is opened when the stream is created, so a port that is already in use fails the stream creation
+
 ### NATS Source
 
-Consumes OTLP-encoded messages from a NATS JetStream stream.
+Consumes events from a NATS JetStream stream that were published by Tram's [NATS Sink](#nats-sink).
 
 **Type:** `nats`
 
@@ -75,11 +81,10 @@ Consumes OTLP-encoded messages from a NATS JetStream stream.
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `url` | string | Yes | - | NATS server URL (e.g., `"nats://localhost:4222"`) |
-| `stream` | string | Yes | - | JetStream stream name to consume from |
-| `subject` | string | Yes | - | Subject filter for the consumer |
-| `queue` | string | No | - | Queue group name for load balancing |
-| `durable` | string | No | - | Durable consumer name for resumption |
-| `workers` | int | No | 1 | Number of concurrent worker goroutines (1-100) |
+| `stream` | string | Yes | - | JetStream stream to consume from. It must exist when the Tram stream is created; otherwise the source logs an error and stays idle until the Tram stream is updated |
+| `subject` | string | Yes | - | Subject filter of the consumer; wildcards like `logs.*` are allowed |
+| `durable` | string | No | - | Name of a durable consumer. Without it, a temporary consumer is created |
+| `workers` | int | No | `1` | Number of messages processed concurrently (1-100) |
 
 **Example:**
 
@@ -106,11 +111,18 @@ Consumes OTLP-encoded messages from a NATS JetStream stream.
     "stream": "otlp-data",
     "subject": "logs.*",
     "durable": "tram-consumer",
-    "queue": "tram-queue",
     "workers": 5
   }
 }
 ```
+
+**Behavior Notes:**
+- Only messages with a `Tram-Signal` header, which Tram's NATS sink sets, can be decoded. Other messages are terminated and not redelivered
+- Each message becomes one event
+- A message is acknowledged once all sinks have accepted it. If passing it on fails, it is redelivered after 5 seconds; data rejected by a stage is terminated instead
+- Delivery is at-least-once: when one branch of a stream fails, the redelivered message reaches all branches again
+- The consumer starts at the beginning of the stream. A durable consumer continues where it stopped; a temporary consumer starts from the beginning again whenever the stream is (re)created
+- Each worker processes one message at a time; use several workers to let a `batch` stage merge messages
 
 ---
 
@@ -123,13 +135,86 @@ Stages process, transform, or filter data between sources and sinks.
 | Name | Type | Description |
 |------|------|-------------|
 | `batch` | `batch` | Merges concurrently arriving events into larger batches |
-| `cel_validator` | `cel_validator` | Filters events using Common Expression Language (CEL) |
-| `delay` | `delay` | Delays events by a specified duration |
+| `cel_filter` | `cel_filter` | Keeps only the records that match a Common Expression Language (CEL) expression |
+| `cel_validator` | `cel_validator` | Accepts, drops or rejects whole events using Common Expression Language (CEL) |
+| `delay` | `delay` | Holds every event back for a fixed duration |
 | `noop` | `noop` | Pass-through stage that does no processing (useful for testing) |
 
 ### CEL Filter Stage
 
-Filters incoming events using Common Expression Language (CEL) expressions. Since an event contains only one of logs, metrics, or traces, separate expressions can be specified for each signal type. Events can be either dropped or rejected based on the evaluation result.
+Keeps only the records for which a Common Expression Language (CEL) expression returns true, and passes on a batch containing just those. It decides per log record, metric data point and span, so records with different attribute values that arrive in the same request, resource or scope can be separated. To accept or reject whole events instead, use the [CEL Validator Stage](#cel-validator-stage).
+
+**Type:** `cel_filter`
+
+**Configuration:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `logs` | string | One of `logs`, `metrics`, `traces` | - | CEL expression evaluated per log record. Must return a boolean |
+| `metrics` | string | One of `logs`, `metrics`, `traces` | - | CEL expression evaluated per metric data point. Must return a boolean |
+| `traces` | string | One of `logs`, `metrics`, `traces` | - | CEL expression evaluated per span. Must return a boolean |
+
+Signal types without an expression are passed on unfiltered. Use `"false"` to remove a signal type completely.
+
+**CEL Expression Context:**
+
+| Expression | Variables |
+|------------|-----------|
+| `logs` | `resource` (Resource), `scope` (InstrumentationScope), `record` (LogRecord) |
+| `metrics` | `resource`, `scope`, `metric` (Metric), `datapoint` (the data point; its type depends on the metric type) |
+| `traces` | `resource`, `scope`, `span` (Span) |
+
+`resource` and `scope` are empty messages when the payload has none, so their fields can be accessed without checks. Field names follow the OTLP protobuf definitions, e.g. `record.severity_text`, `span.name`, `datapoint.attributes`.
+
+**Example:** split logs by customer into two branches:
+
+```json
+"stages": [
+  {
+    "name": "customer-a",
+    "type": "cel_filter",
+    "from": "otlp-in",
+    "spec": {
+      "logs": "record.attributes.exists(a, a.key == 'customer' && a.value.string_value == 'A')"
+    }
+  },
+  {
+    "name": "other-customers",
+    "type": "cel_filter",
+    "from": "otlp-in",
+    "spec": {
+      "logs": "!record.attributes.exists(a, a.key == 'customer' && a.value.string_value == 'A')"
+    }
+  }
+]
+```
+
+**Additional Examples:**
+
+Keep only ERROR logs:
+```json
+{ "logs": "record.severity_text == 'ERROR'" }
+```
+
+Keep only the data points of one metric:
+```json
+{ "metrics": "metric.name == 'http.server.request.duration'" }
+```
+
+Keep only spans of one service:
+```json
+{ "traces": "resource.attributes.exists(a, a.key == 'service.name' && a.value.string_value == 'checkout')" }
+```
+
+**Behavior Notes:**
+- Kept records are passed on in their original resource and scope; nothing is copied, and containers without remaining records are removed. If no record is kept, nothing is passed on
+- When splitting into branches, write the last branch as the negation of the others, so every record ends up in exactly one branch
+- An expression that fails for a record, e.g. by accessing a missing list index, rejects the whole event. The OTLP source answers with HTTP 400, the NATS source terminates the message instead of redelivering it
+- Place a batch stage before the filters to merge many small requests first; each branch then receives one filtered batch
+
+### CEL Validator Stage
+
+Checks each incoming event as a whole with Common Expression Language (CEL) expressions and passes it on, drops it, or rejects it. An event is one delivery from the stage's parent: one OTLP request, one NATS message, or one batch. The stage never removes individual records; to keep only matching records, use the [CEL Filter Stage](#cel-filter-stage).
 
 **Type:** `cel_validator`
 
@@ -137,61 +222,55 @@ Filters incoming events using Common Expression Language (CEL) expressions. Sinc
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `logs` | string | No | `"true"` | CEL expression to evaluate for log events. Must return a boolean. Empty string defaults to accepting all logs |
-| `metrics` | string | No | `"true"` | CEL expression to evaluate for metric events. Must return a boolean. Empty string defaults to accepting all metrics |
-| `traces` | string | No | `"true"` | CEL expression to evaluate for trace events. Must return a boolean. Empty string defaults to accepting all traces |
-| `on_mismatch` | string | Yes | - | Action to take when expression evaluates to false. Must be either `"drop"` or `"reject"` |
+| `logs` | string | No | `"true"` | CEL expression evaluated once for all logs of an event. Must return a boolean. Empty string accepts all logs |
+| `metrics` | string | No | `"true"` | CEL expression evaluated once for all metrics of an event. Must return a boolean. Empty string accepts all metrics |
+| `traces` | string | No | `"true"` | CEL expression evaluated once for all traces of an event. Must return a boolean. Empty string accepts all traces |
+| `on_mismatch` | string | Yes | - | Action when an expression returns false: `"drop"` or `"reject"` |
 
 **CEL Expression Context:**
-- Each expression receives the full signal data object: `logs` (LogsData), `metrics` (MetricsData), or `traces` (TracesData)
-- Each expression operates only on its respective signal type and must return a boolean
-- Use the full protobuf structure, e.g., `logs.resource_logs.all(...)`, `metrics.resource_metrics.all(...)`
+- Each expression receives the complete payload of its signal type: `logs` (LogsData), `metrics` (MetricsData), or `traces` (TracesData)
+- An event can contain several signal types, e.g. after a batch stage. Each type present is checked with its own expression
+- Use the full protobuf structure, e.g. `logs.resource_logs.all(...)`, and write the expression as a condition that every accepted delivery has to fulfil
 
-**Example:**
+**On Mismatch Behavior:**
+- `drop` - Removes all data of the signal type whose expression returned false. Other signal types of the event are still passed on; if nothing is left, nothing is passed on
+- `reject` - Rejects the whole event with an error. The OTLP source answers with HTTP 400, the NATS source terminates the message instead of redelivering it
+
+**Example:** reject log deliveries in which a resource has no `service.name`:
 
 ```json
 {
-  "name": "filter-stage",
+  "name": "require-service-name",
   "type": "cel_validator",
   "from": "source",
   "spec": {
-    "logs": "logs.resource_logs.all(resLog, resLog.scope_logs.all(scopeLog, scopeLog.log_records.exists(record, record.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test')))",
+    "logs": "logs.resource_logs.all(r, r.resource.attributes.exists(a, a.key == 'service.name'))",
     "on_mismatch": "reject"
   }
 }
 ```
 
-**On Mismatch Behavior:**
-- `drop` - Silently drops the event (no error, processing continues)
-- `reject` - Rejects the event with an error (may trigger error handling)
-
 **Additional Examples:**
 
-Filter logs by severity:
+Drop metric deliveries that contain a metric without a name:
 ```json
 {
-  "logs": "logs.resource_logs.all(resLog, resLog.scope_logs.all(scopeLog, scopeLog.log_records.exists(record, record.severity_text == 'ERROR')))",
+  "metrics": "metrics.resource_metrics.all(r, r.scope_metrics.all(s, s.metrics.all(m, m.name != '')))",
   "on_mismatch": "drop"
 }
 ```
 
-Filter metrics by name:
+Reject trace deliveries that contain a span without a valid trace ID:
 ```json
 {
-  "metrics": "metrics.resource_metrics.all(resMet, resMet.scope_metrics.all(scopeMet, scopeMet.metrics.exists(m, m.name == 'http.request.duration')))",
-  "on_mismatch": "drop"
+  "traces": "traces.resource_spans.all(r, r.scope_spans.all(s, s.spans.all(span, size(span.trace_id) == 16)))",
+  "on_mismatch": "reject"
 }
 ```
 
-Accept all, reject nothing (pass-through):
-```json
-{
-  "logs": "",
-  "metrics": "",
-  "traces": "",
-  "on_mismatch": "drop"
-}
-```
+**Behavior Notes:**
+- The decision applies to the whole event. An expression like `log_records.exists(record, record.severity_text == 'ERROR')` passes on a delivery with one ERROR and many INFO records in full, including the INFO records
+- Place validators with `on_mismatch: reject` before a batch stage, so one invalid delivery does not reject the deliveries batched with it
 
 ### Batch Stage
 
@@ -230,7 +309,7 @@ Merges events that arrive concurrently into one event, so downstream components 
 
 ### Delay Stage
 
-Delays the processing of events by a specified duration. Useful for rate limiting, throttling, or creating time-based buffers.
+Holds every event back for a fixed duration before passing it on. The caller waits during that time, so a source that sends one event at a time is slowed down accordingly; concurrent events are delayed in parallel. Useful for testing and for simulating slow downstream systems.
 
 **Type:** `delay`
 
@@ -238,7 +317,7 @@ Delays the processing of events by a specified duration. Useful for rate limitin
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `delay` | string | Yes | - | Duration to delay events (e.g., `"100ms"`, `"1s"`, `"5m"`) |
+| `delay` | string | Yes | - | Duration to hold each event back (e.g., `"100ms"`, `"1s"`, `"5m"`) |
 
 **Example:**
 
@@ -281,12 +360,12 @@ Sinks are the terminal points of a pipeline that consume or export data.
 
 | Name | Type | Description |
 |------|------|-------------|
-| `debug` | `debug` | Logs events to stdout for debugging and development |
+| `debug` | `debug` | Writes events to the log (stderr) for debugging and development |
 | `nats` | `nats` | Publishes OTLP-encoded events to NATS JetStream with dynamic subject mapping |
 
 ### Debug Sink
 
-Outputs events to stdout in a human-readable format. Useful for development, testing, and debugging pipelines.
+Writes every event to the log on stderr, prefixed with `[DEBUG]` and the path the event took through the stream (e.g. `in -> filter -> out`). The event is printed as Go's representation of the OTLP data, which is verbose but complete. Useful for development, testing, and debugging pipelines.
 
 **Type:** `debug`
 
@@ -330,8 +409,10 @@ Publishes OTLP-encoded events to NATS JetStream. Uses dynamic subject mapping wi
 Signals without an expression are not published by this sink.
 
 **CEL Expression Context:**
-- The CEL expressions have access to a custom `get_attr(attributes, key)` function for extracting attribute values
-- Each expression operates on its respective signal type and receives a single record/metric/span at a time
+- Each expression is evaluated once per log record, metric and span. It receives a payload of its signal type (`logs`, `metrics` or `traces`) that contains only that one entry with its resource and scope, so `[0]` indexes address it, e.g. `logs.resource_logs[0].scope_logs[0].log_records[0]`
+- Metrics are routed per metric, not per data point: all data points of a metric go to the same subject
+- The custom function `get_attr(key)` on an attribute list returns the string value of an attribute, or `""` if it is missing, e.g. `logs.resource_logs[0].resource.attributes.get_attr('service.name')`
+- The expressions of different signal types must never return the same subject, e.g. by using a prefix per type (`'logs.'`, `'metrics.'`, `'traces.'`). An event that contains several signal types, e.g. after a `batch` stage, would otherwise crash Tram
 - Must return a string that will be used as the NATS subject
 
 **Example:**
@@ -380,10 +461,11 @@ Signals without an expression are not published by this sink.
 ```
 
 **Behavior Notes:**
-- The sink automatically creates or updates the stream with the specified configuration
-- Events are grouped by their resolved subjects and published as individual OTLP messages
-- The `register` subjects are used to configure the stream, while the CEL expressions dynamically determine the actual publish subjects per event
-- If a CEL expression fails to evaluate or returns a non-string value, the event will be dropped with an error log
+- The sink creates the JetStream stream or updates it with `register`, `retention` and `size` when the stream is created in Tram. Settings changed elsewhere are overwritten
+- Records are grouped by their resolved subject and published as one OTLP message per subject and signal type. Each message has a `Tram-Signal` header with the signal type, which the [NATS Source](#nats-source) needs to decode it
+- The `register` subjects configure the stream, while the CEL expressions determine the subject of each record. Records whose subject is not covered by `register` cannot be published
+- If a CEL expression fails to evaluate or returns a non-string value, the whole event is dropped with an error log and nothing of it is published
+- If publishing fails, the error is reported back to the source, e.g. the NATS source redelivers the message
 
 ---
 

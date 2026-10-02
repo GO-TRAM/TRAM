@@ -1,135 +1,80 @@
-# tram
-// TODO(user): Add simple overview of use/purpose
+# Kubernetes Operator
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+Lets Tram run streams described by `Stream` custom resources (`io.tram.core/v1`). The operator is part of the Tram binary and starts together with the server; it is not deployed separately.
 
-## Getting Started
+## Running
 
-### Prerequisites
-- go version v1.24.6+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+1. Install the custom resource definition:
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+   ```sh
+   kubectl apply -f internal/adapters/k8scrd/config/crd/bases/io.tram.core_streams.yaml
+   ```
 
-```sh
-make docker-build docker-push IMG=<some-registry>/tram:tag
+2. Start Tram with the operator enabled:
+
+   ```sh
+   ./tram server --enable-k8s-operator
+   ```
+
+   Tram connects with the in-cluster configuration when it runs in a pod, otherwise with the `KUBECONFIG` environment variable or `~/.kube/config`. `--kubeconfig <file>` selects a specific file.
+
+3. Create a `Stream`, e.g. the example in `setup/k8s/`:
+
+   ```sh
+   kubectl apply -f setup/k8s/generator_delay_debug.yaml
+   ```
+
+When Tram runs in a cluster, its service account needs the permissions in `config/rbac/role.yaml` (a `ClusterRole` named `manager-role`), bound with a `ClusterRoleBinding`.
+
+## The Stream Resource
+
+```yaml
+apiVersion: io.tram.core/v1
+kind: Stream
+metadata:
+  name: test-stream
+  namespace: default
+spec:
+  source:
+    name: generator
+    type: generator
+    spec:
+      interval: 2s
+  stages:
+    - name: delay
+      type: delay
+      from: generator
+      spec:
+        delay: 1s
+  sinks:
+    - name: debug
+      type: debug
+      from: delay
 ```
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
+`spec` has the same structure as the `stream` object of the HTTP API, without `name`. Each component's `spec` is passed to the component as it is, so numbers, booleans and nested objects keep their types; see [COMPONENTS.md](../../../COMPONENTS.md) for the options of each component.
 
-**Install the CRDs into the cluster:**
+## Behavior
 
-```sh
-make install
-```
+- **Names:** a resource runs as the Tram stream `<namespace>.<name>`, e.g. `default.test-stream`, so resources with the same name in different namespaces do not collide. The stream can be read through the API under that name
+- **Changes:** the stream is created or updated when the resource's `spec` changes. Status updates and periodic resyncs do not restart it
+- **Status:** `status.active` is `true` once the stream runs, and `false` if building it failed, e.g. because of an invalid component spec. Failed builds are retried with increasing delays
+- **Deletion:** deleting the resource deletes the stream
+- **Scope:** the operator watches `Stream` resources in all namespaces. There is no leader election, so every Tram instance with the operator enabled runs every `Stream` resource
+- **File sync:** with `--enable-file-sync`, streams created by the operator are also written to the configuration directory
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+## Development
 
-```sh
-make deploy IMG=<some-registry>/tram:tag
-```
+| Path | Content |
+|------|---------|
+| `api/v1/stream_types.go` | The `Stream` type and its kubebuilder markers |
+| `api/v1/zz_generated.deepcopy.go` | Generated |
+| `internal/controller/stream_controller.go` | Reconciliation and the RBAC markers |
+| `config/crd/bases/`, `config/rbac/` | Generated CRD and RBAC manifests |
+| `operator.go` | Starts the controller manager inside Tram |
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
-
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
-
-```sh
-kubectl apply -k config/samples/
-```
-
->**NOTE**: Ensure that the samples has default values to test it out.
-
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
+After changing types or markers, regenerate the deepcopy code and the manifests with [controller-gen](https://book.kubebuilder.io/reference/controller-gen) v0.22.0:
 
 ```sh
-kubectl delete -k config/samples/
+go generate ./internal/adapters/k8scrd/...
 ```
-
-**Delete the APIs(CRDs) from the cluster:**
-
-```sh
-make uninstall
-```
-
-**UnDeploy the controller from the cluster:**
-
-```sh
-make undeploy
-```
-
-## Project Distribution
-
-Following the options to release and provide this solution to the users.
-
-### By providing a bundle with all YAML files
-
-1. Build the installer for the image built and published in the registry:
-
-```sh
-make build-installer IMG=<some-registry>/tram:tag
-```
-
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
-
-2. Using the installer
-
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/tram/<tag or branch>/dist/install.yaml
-```
-
-### By providing a Helm Chart
-
-1. Build the chart using the optional helm plugin
-
-```sh
-kubebuilder edit --plugins=helm/v2-alpha
-```
-
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
-
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
-
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
-
-## License
-
-Copyright 2026.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-

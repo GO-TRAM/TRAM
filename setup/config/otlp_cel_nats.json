@@ -14,10 +14,10 @@
         "type": "cel_validator",
         "from": "otlp_source",
         "spec": {
-          "logs:": "logs.resource_logs.all(resLog, resLog.scope_logs.all(scopeLog, schopeLog.log_records.exist(record, record.attributes.exists(attr, attr.key=='service.name'))))",
-          "metrics:": "metrics.resource_metrics.all(resMetric, resMetric.resource.attributes.exists(attr, attr.key == 'service.name')",
+          "logs": "logs.resource_logs.all(resLog, resLog.resource.attributes.exists(attr, attr.key == 'service.name'))",
+          "metrics": "metrics.resource_metrics.all(resMetric, resMetric.resource.attributes.exists(attr, attr.key == 'service.name'))",
           "on_mismatch": "reject",
-          "traces:": "traces.resource_spans.all(resSpan, respSPan.resource.attributes.exists(attr, attr.key = 'service.name'))"
+          "traces": "traces.resource_spans.all(resSpan, resSpan.resource.attributes.exists(attr, attr.key == 'service.name'))"
         }
       }
     ],
