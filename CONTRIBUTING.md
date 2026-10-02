@@ -587,6 +587,8 @@ func TestMyFunction(t *testing.T) {
 
 `internal/e2e` tests complete pipelines without external dependencies: streams are built by the core from the real source and stage factories, OTLP data is sent over HTTP, and capturing sinks record exactly which records arrive where. They cover batching, splitting, cancelled requests, the status codes clients receive, and updates under load, and run with `go test ./...`.
 
+`TestNATS` in the same package runs pipelines against a NATS server in a container (see `internal/testutil/natstest`) and checks what actually ends up in JetStream: subjects, the `Tram-Signal` header, and records with their resource and scope. It also sends data from Tram's NATS sink through Tram's NATS source. It is skipped without Docker or Podman; with Podman on macOS, set the variables described under [Benchmarks](#benchmarks).
+
 When adding a stage or changing how events flow, add a case there that checks which records arrive in which sink.
 
 ### Integration Tests

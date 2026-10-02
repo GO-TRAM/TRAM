@@ -14,10 +14,12 @@ import (
 	"testing"
 	"time"
 
+	"codeberg.org/eljoth/tram/internal/adapters/sink"
 	"codeberg.org/eljoth/tram/internal/adapters/source"
 	"codeberg.org/eljoth/tram/internal/adapters/stage"
 	"codeberg.org/eljoth/tram/internal/core"
 	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/ports"
 	"github.com/stretchr/testify/require"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
@@ -71,15 +73,18 @@ func (s *captureSink) received() []*domain.Event {
 }
 
 // captureFactory creates capturing sinks and keeps them by name, so tests can
-// inspect what each sink of a stream received.
+// inspect what each sink of a stream received. Other sink types are created
+// by the real sink factory.
 type captureFactory struct {
+	real ports.Factory[domain.SinkSpec, domain.Sink]
+
 	mu    sync.Mutex
 	sinks map[string]*captureSink
 }
 
 func (f *captureFactory) New(spec domain.SinkSpec) (domain.Sink, error) {
 	if spec.Type != captureType {
-		return nil, fmt.Errorf("%w: %q", domain.ErrInvalidSinkType, spec.Type)
+		return f.real.New(spec)
 	}
 	fail, _ := spec.Spec["fail"].(string)
 	s := &captureSink{name: spec.Name, from: spec.From, fail: fail}
@@ -98,22 +103,30 @@ func (f *captureFactory) sink(t *testing.T, name string) *captureSink {
 	return s
 }
 
-// pipeline is a running stream with an OTLP source on a free port.
+// pipeline is a running stream named "e2e" whose source is called "in".
 type pipeline struct {
 	core  *core.Core
 	sinks *captureFactory
-	url   string
 	in    domain.SourceSpec
+	// baseURL is set for OTLP sources.
+	baseURL string
 }
 
-// newPipeline starts a stream named "e2e" whose OTLP source is called "in".
+// newPipeline starts a stream with an OTLP source on a free port.
 func newPipeline(t *testing.T, stages []domain.StageSpec, sinks []domain.SinkSpec) *pipeline {
 	t.Helper()
 	port := freePort(t)
+	p := newStream(t, domain.SourceSpec{Name: "in", Type: "otlp", Spec: map[string]any{"http_port": float64(port)}}, stages, sinks)
+	p.baseURL = fmt.Sprintf("http://127.0.0.1:%d", port)
+	return p
+}
+
+// newStream starts a stream with any source.
+func newStream(t *testing.T, in domain.SourceSpec, stages []domain.StageSpec, sinks []domain.SinkSpec) *pipeline {
+	t.Helper()
 	p := &pipeline{
-		sinks: &captureFactory{sinks: map[string]*captureSink{}},
-		url:   fmt.Sprintf("http://127.0.0.1:%d/v1/logs", port),
-		in:    domain.SourceSpec{Name: "in", Type: "otlp", Spec: map[string]any{"http_port": float64(port)}},
+		sinks: &captureFactory{real: sink.NewFactory(), sinks: map[string]*captureSink{}},
+		in:    in,
 	}
 	p.core = core.New(context.Background(), source.NewFactory(), stage.NewFactory(), p.sinks)
 	t.Cleanup(func() { _ = p.core.Close() })
@@ -132,10 +145,16 @@ func (p *pipeline) update(t *testing.T, stages []domain.StageSpec, sinks []domai
 // returns 0 if the request failed, e.g. because of the client's timeout.
 func (p *pipeline) post(t *testing.T, logs *logspb.LogsData, timeout time.Duration) int {
 	t.Helper()
-	body, err := proto.Marshal(logs)
+	return p.postTo(t, "/v1/logs", logs, timeout)
+}
+
+// postTo sends a payload to an OTLP/HTTP path, e.g. /v1/metrics.
+func (p *pipeline) postTo(t *testing.T, path string, payload proto.Message, timeout time.Duration) int {
+	t.Helper()
+	body, err := proto.Marshal(payload)
 	require.NoError(t, err)
 	client := &http.Client{Timeout: timeout}
-	resp, err := client.Post(p.url, "application/x-protobuf", bytes.NewReader(body))
+	resp, err := client.Post(p.baseURL+path, "application/x-protobuf", bytes.NewReader(body))
 	if err != nil {
 		return 0
 	}
