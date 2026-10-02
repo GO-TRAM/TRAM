@@ -123,6 +123,7 @@ Consumes events from a NATS JetStream stream that were published by Tram's [NATS
 - Delivery is at-least-once: when one branch of a stream fails, the redelivered message reaches all branches again
 - The consumer starts at the beginning of the stream. A durable consumer continues where it stopped; a temporary consumer starts from the beginning again whenever the source is created, i.e. when the Tram stream is created or its source is changed. Updates that only change stages or sinks keep the consumer
 - Each worker processes one message at a time; use several workers to let a `batch` stage merge messages
+- Stopping or updating the source interrupts waiting for new messages right away; it only waits for messages that are being processed, which are still delivered and acknowledged
 
 ---
 

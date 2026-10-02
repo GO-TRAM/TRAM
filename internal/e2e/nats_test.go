@@ -131,6 +131,20 @@ func TestNATS(t *testing.T) {
 		assert.ElementsMatch(t, []string{"logs", "metrics", "traces"}, signals)
 	})
 
+	// Stopping waits for messages being processed, not for a pending fetch.
+	// It used to take the full fetch timeout of 5 seconds, holding up every
+	// other change to the core.
+	t.Run("stopping an idle source is fast", func(t *testing.T) {
+		mid := n.stream("idle")
+		_ = newPipeline(t, nil, []domain.SinkSpec{n.sinkByService("out", "in", mid)}) // creates the JetStream stream
+		forward := newStream(t, n.sourceSpec(mid), nil, []domain.SinkSpec{captureSinkSpec("received", "in")})
+		time.Sleep(500 * time.Millisecond) // the source is now waiting in a fetch
+
+		start := time.Now()
+		require.NoError(t, forward.core.DeleteStream(context.Background(), "e2e"))
+		assert.Less(t, time.Since(start), time.Second)
+	})
+
 	// A subject outside the stream's register cannot be published; the client
 	// is told the data was not delivered.
 	t.Run("publish failure reaches the client", func(t *testing.T) {

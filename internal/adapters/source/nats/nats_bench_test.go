@@ -3,9 +3,6 @@ package nats
 import (
 	"context"
 	"fmt"
-	"io"
-	"log"
-	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -44,11 +41,6 @@ func (c *countingSubscriber) Notify(_ context.Context, e *domain.Event) error {
 // Requires Docker or Podman; skipped otherwise.
 func BenchmarkConsume(b *testing.B) {
 	url := natstest.Start(b)
-
-	// Stopping the source logs failed fetches, which would break up the
-	// benchmark output.
-	log.SetOutput(io.Discard)
-	b.Cleanup(func() { log.SetOutput(os.Stderr) })
 
 	nc, err := nats.Connect(url)
 	if err != nil {
