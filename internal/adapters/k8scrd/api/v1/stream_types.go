@@ -22,16 +22,24 @@ import (
 )
 
 type Spec struct {
-	Name string            `json:"name"`
-	Type string            `json:"type"`
-	Spec map[string]string `json:"spec,omitempty"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+	// Spec is the component specific configuration. It is passed through
+	// unchanged, so numbers, booleans and nested objects keep their types.
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Type=object
+	Spec *runtime.RawExtension `json:"spec,omitempty"`
 }
 
 type ReceiverSpec struct {
-	Name string            `json:"name"`
-	Type string            `json:"type"`
-	Spec map[string]string `json:"spec,omitempty"`
-	From string            `json:"from"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+	// Spec is the component specific configuration. It is passed through
+	// unchanged, so numbers, booleans and nested objects keep their types.
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Type=object
+	Spec *runtime.RawExtension `json:"spec,omitempty"`
+	From string                `json:"from"`
 }
 
 type StreamSpec struct {

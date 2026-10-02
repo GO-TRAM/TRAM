@@ -2,6 +2,7 @@ package nats
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -20,6 +21,10 @@ const (
 	// SignalHeader carries the domain.Signal of a consumed payload. It must
 	// match the header the nats sink writes.
 	SignalHeader = "Tram-Signal"
+
+	// redeliveryDelay keeps a failing downstream from being hammered with the
+	// same message.
+	redeliveryDelay = 5 * time.Second
 )
 
 type NATS struct {
@@ -104,12 +109,30 @@ func (n *NATS) worker(ctx context.Context, cons jetstream.Consumer) {
 				signal := domain.Signal(msg.Headers().Get(SignalHeader))
 				event, err := domain.UnmarshalOTLPData(signal, msg.Data())
 				if err != nil {
-					log.Printf("Error parsing OTLP data: %v", err)
+					// Redelivery cannot fix a message that does not decode.
+					log.Printf("Error parsing OTLP data, terminating message: %v", err)
+					if err := msg.Term(); err != nil {
+						log.Printf("Error terminating message: %v", err)
+					}
 					continue
 				}
 
-				if err := n.NotifySubscribers(ctx, event); err != nil {
-					log.Printf("Error notifying subscribers: %v", err)
+				// Delivery is at-least-once: when one branch fails, the
+				// redelivered message reaches all branches again.
+				err = n.NotifySubscribers(ctx, event)
+				if errors.Is(err, domain.ErrEventRejected) {
+					log.Printf("Message rejected, terminating it: %v", err)
+					if err := msg.Term(); err != nil {
+						log.Printf("Error terminating message: %v", err)
+					}
+					continue
+				}
+				if err != nil {
+					log.Printf("Error notifying subscribers, requesting redelivery: %v", err)
+					if err := msg.NakWithDelay(redeliveryDelay); err != nil {
+						log.Printf("Error rejecting message: %v", err)
+					}
+					continue
 				}
 
 				if err := msg.Ack(); err != nil {

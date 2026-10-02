@@ -113,7 +113,7 @@ func (n *CELValidator) validate(_ context.Context, varName string, data any, fil
 		case "reject":
 			fallthrough
 		default:
-			return fmt.Errorf("event did not match the CEL filter criteria")
+			return fmt.Errorf("%w: event did not match the CEL filter criteria", domain.ErrEventRejected)
 		}
 	}
 	return nil

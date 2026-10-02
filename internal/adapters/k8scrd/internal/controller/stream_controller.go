@@ -18,12 +18,19 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
+	"reflect"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	tramv1 "codeberg.org/eljoth/tram/internal/adapters/k8scrd/api/v1"
 	"codeberg.org/eljoth/tram/internal/core/domain"
@@ -41,96 +48,134 @@ type StreamReconciler struct {
 // +kubebuilder:rbac:groups=io.tram.core,resources=streams/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=io.tram.core,resources=streams/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Stream object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.24.1/pkg/reconcile
+// Reconcile makes the core run the stream described by a Stream resource, or
+// removes it from the core once the resource is gone.
 func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+	name := StreamName(req.NamespacedName)
 
 	var stream tramv1.Stream
 	if err := r.Get(ctx, req.NamespacedName, &stream); err != nil {
 		if client.IgnoreNotFound(err) != nil {
 			return ctrl.Result{}, fmt.Errorf("get stream: %w", err)
 		}
-		log.Printf("Stream %s/%s deleted, deleting from core", req.Namespace, req.Name)
-		if err := r.Core.DeleteStream(ctx, req.Name); err != nil {
+		if err := r.Core.DeleteStream(ctx, name); err != nil && !errors.Is(err, domain.ErrStreamNotFound) {
 			return ctrl.Result{}, fmt.Errorf("delete from core: %w", err)
 		}
+		log.Info("Deleted Stream from core", "stream", name)
 		return ctrl.Result{}, nil
 	}
 
-	domainSpec := toDomain(stream)
-	_, err := r.Core.UpsertStream(ctx, *domainSpec)
+	desired, err := toDomain(name, stream)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("upsert into core: %w", err)
+		// Retrying cannot fix a malformed spec; the next edit triggers a new reconcile.
+		return ctrl.Result{}, errors.Join(r.setActive(ctx, &stream, false), reconcile.TerminalError(err))
 	}
 
-	stream.Status.Active = true
-	if err := r.Status().Update(ctx, &stream); err != nil {
-		return ctrl.Result{}, err
+	current, err := r.Core.GetStream(ctx, name)
+	if err != nil && !errors.Is(err, domain.ErrStreamNotFound) {
+		return ctrl.Result{}, fmt.Errorf("get from core: %w", err)
 	}
 
-	log.Printf("Reconciled %s/%s (version: %s)", req.Namespace, req.Name, stream.ResourceVersion)
+	// Upserting restarts the stream, so only do it when the spec changed.
+	if current == nil || !reflect.DeepEqual(*current, *desired) {
+		if _, err := r.Core.UpsertStream(ctx, *desired); err != nil {
+			return ctrl.Result{}, errors.Join(r.setActive(ctx, &stream, false), fmt.Errorf("upsert into core: %w", err))
+		}
+		log.Info("Upserted Stream into core", "stream", name, "generation", stream.Generation)
+	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, r.setActive(ctx, &stream, true)
 }
 
-func toDomain(s tramv1.Stream) *domain.StreamSpec {
-	// Convert map[string]string to map[string]any
-	convertSpec := func(m map[string]string) map[string]any {
-		result := make(map[string]any, len(m))
-		for k, v := range m {
-			result[k] = v
-		}
-		return result
+// setActive updates the status only when it changes, so reconciles do not
+// produce needless writes.
+func (r *StreamReconciler) setActive(ctx context.Context, stream *tramv1.Stream, active bool) error {
+	if stream.Status.Active == active {
+		return nil
+	}
+	stream.Status.Active = active
+	if err := r.Status().Update(ctx, stream); err != nil {
+		return fmt.Errorf("update status: %w", err)
+	}
+	return nil
+}
+
+// StreamName returns the core stream name for a Stream resource. Namespaces
+// cannot contain dots, so the first dot separates namespace and name.
+func StreamName(nn types.NamespacedName) string {
+	return nn.Namespace + "." + nn.Name
+}
+
+func toDomain(name string, s tramv1.Stream) (*domain.StreamSpec, error) {
+	sourceSpec, err := specToMap(s.Spec.Source.Spec)
+	if err != nil {
+		return nil, fmt.Errorf("source %s: %w", s.Spec.Source.Name, err)
 	}
 
 	// Map source (single)
-	sourceSpec := domain.SourceSpec{
+	source := domain.SourceSpec{
 		Name: s.Spec.Source.Name,
 		Type: s.Spec.Source.Type,
-		Spec: convertSpec(s.Spec.Source.Spec),
+		Spec: sourceSpec,
 	}
 
 	// Map stages (list)
-	var stageSpecs []domain.StageSpec
+	var stages []domain.StageSpec
 	for _, stage := range s.Spec.Stages {
-		stageSpecs = append(stageSpecs, domain.StageSpec{
+		spec, err := specToMap(stage.Spec)
+		if err != nil {
+			return nil, fmt.Errorf("stage %s: %w", stage.Name, err)
+		}
+		stages = append(stages, domain.StageSpec{
 			Name: stage.Name,
 			Type: stage.Type,
 			From: stage.From,
-			Spec: convertSpec(stage.Spec),
+			Spec: spec,
 		})
 	}
 
 	// Map sinks (list)
-	var sinkSpecs []domain.SinkSpec
+	var sinks []domain.SinkSpec
 	for _, sink := range s.Spec.Sinks {
-		sinkSpecs = append(sinkSpecs, domain.SinkSpec{
+		spec, err := specToMap(sink.Spec)
+		if err != nil {
+			return nil, fmt.Errorf("sink %s: %w", sink.Name, err)
+		}
+		sinks = append(sinks, domain.SinkSpec{
 			Name: sink.Name,
 			Type: sink.Type,
 			From: sink.From,
-			Spec: convertSpec(sink.Spec),
+			Spec: spec,
 		})
 	}
 
 	return &domain.StreamSpec{
-		Name:   s.Name,
-		Source: sourceSpec,
-		Stages: stageSpecs,
-		Sinks:  sinkSpecs,
+		Name:   name,
+		Source: source,
+		Stages: stages,
+		Sinks:  sinks,
+	}, nil
+}
+
+// specToMap decodes a component spec the same way the API and file sync do,
+// so all drivers hand identical values to the core.
+func specToMap(raw *runtime.RawExtension) (map[string]any, error) {
+	if raw == nil || len(raw.Raw) == 0 {
+		return nil, nil
 	}
+	var spec map[string]any
+	if err := json.Unmarshal(raw.Raw, &spec); err != nil {
+		return nil, fmt.Errorf("decode spec: %w", err)
+	}
+	return spec, nil
 }
 
 func (r *StreamReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	log.Println("Setting up Stream controller...")
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tramv1.Stream{}).
+		// Status writes and periodic resyncs do not change the generation, so
+		// they no longer trigger a reconcile.
+		For(&tramv1.Stream{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Named("stream").
 		Complete(r)
 }

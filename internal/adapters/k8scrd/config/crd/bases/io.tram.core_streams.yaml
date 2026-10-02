@@ -45,9 +45,11 @@ spec:
                     name:
                       type: string
                     spec:
-                      additionalProperties:
-                        type: string
+                      description: |-
+                        Spec is the component specific configuration. It is passed through
+                        unchanged, so numbers, booleans and nested objects keep their types.
                       type: object
+                      x-kubernetes-preserve-unknown-fields: true
                     type:
                       type: string
                   required:
@@ -61,9 +63,11 @@ spec:
                   name:
                     type: string
                   spec:
-                    additionalProperties:
-                      type: string
+                    description: |-
+                      Spec is the component specific configuration. It is passed through
+                      unchanged, so numbers, booleans and nested objects keep their types.
                     type: object
+                    x-kubernetes-preserve-unknown-fields: true
                   type:
                     type: string
                 required:
@@ -78,9 +82,11 @@ spec:
                     name:
                       type: string
                     spec:
-                      additionalProperties:
-                        type: string
+                      description: |-
+                        Spec is the component specific configuration. It is passed through
+                        unchanged, so numbers, booleans and nested objects keep their types.
                       type: object
+                      x-kubernetes-preserve-unknown-fields: true
                     type:
                       type: string
                   required:

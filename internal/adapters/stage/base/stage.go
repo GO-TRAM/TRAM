@@ -63,8 +63,13 @@ func (s *Stage[T]) NotifySubscribers(ctx context.Context, event *domain.Event) e
 	path += " -> " + s.Name()
 	ctx = context.WithValue(ctx, domain.ContextKeyPath, path)
 
+	s.mu.RLock()
+	subs := make([]domain.Subscriber, len(s.subscribers))
+	copy(subs, s.subscribers)
+	s.mu.RUnlock()
+
 	eg := errgroup.Group{}
-	for _, sub := range s.subscribers {
+	for _, sub := range subs {
 		eg.Go(func() error {
 			return sub.Notify(ctx, event)
 		})

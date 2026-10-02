@@ -2,6 +2,7 @@ package delay
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
@@ -13,8 +14,9 @@ const Type = "delay"
 
 type Delay struct {
 	*base.Stage[Spec]
-	delay   time.Duration
-	stopped bool
+	delay    time.Duration
+	shutdown chan struct{}
+	stopOnce sync.Once
 }
 
 func New(stage domain.StageSpec, validator *validator.Validate) (*Delay, error) {
@@ -27,21 +29,36 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*Delay, error) 
 		return nil, err
 	}
 	return &Delay{
-		Stage: base,
-		delay: delay,
+		Stage:    base,
+		delay:    delay,
+		shutdown: make(chan struct{}),
 	}, nil
 }
 
+// Notify holds the event back for the configured delay before passing it on.
+// Waiting is the purpose of this stage, so it blocks the caller, but it gives
+// up as soon as ctx is done or the stage is stopped.
 func (d *Delay) Notify(ctx context.Context, event *domain.Event) error {
-	if d.stopped {
+	timer := time.NewTimer(d.delay)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-d.shutdown:
 		return ErrDelayStopped
 	}
-	<-time.After(d.delay)
+
+	select {
+	case <-d.shutdown:
+		return ErrDelayStopped
+	default:
+	}
 	return d.NotifySubscribers(ctx, event)
 }
 
 func (d *Delay) Stop() error {
-	d.stopped = true
-	<-time.After(d.delay)
+	d.stopOnce.Do(func() { close(d.shutdown) })
 	return d.Stage.Stop()
 }

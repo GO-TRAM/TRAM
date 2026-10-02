@@ -23,7 +23,11 @@ const (
 	Type = "otlp"
 )
 
-const shutdownTimeout = 5 * time.Second
+const (
+	shutdownTimeout = 5 * time.Second
+	// maxBodyBytes matches the OpenTelemetry Collector's default request size limit.
+	maxBodyBytes = 20 << 20
+)
 
 type OTLP struct {
 	*base.Source[Spec]
@@ -73,64 +77,46 @@ func (o *OTLP) Run(_ context.Context) error {
 }
 
 func (o *OTLP) handleMetrics(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Error reading request body", http.StatusBadRequest)
-		return
-	}
-
-	defer r.Body.Close()
-
-	metrics := metricspb.MetricsData{}
-	if err := proto.Unmarshal(body, &metrics); err != nil {
-		http.Error(w, "Error parsing request body", http.StatusBadRequest)
-	}
-
-	if err := o.NotifySubscribers(r.Context(), &domain.Event{
-		Metrics: &metrics,
-	}); err != nil {
-		http.Error(w, "Error notifying subscribers", http.StatusInternalServerError)
-	}
+	metrics := &metricspb.MetricsData{}
+	o.handle(w, r, metrics, &domain.Event{Metrics: metrics})
 }
 
 func (o *OTLP) handleLogs(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Error reading request body", http.StatusBadRequest)
-		return
-	}
-
-	defer r.Body.Close()
-
-	logs := logspb.LogsData{}
-	if err := proto.Unmarshal(body, &logs); err != nil {
-		http.Error(w, "Error parsing request body", http.StatusBadRequest)
-	}
-
-	if err := o.NotifySubscribers(r.Context(), &domain.Event{
-		Logs: &logs,
-	}); err != nil {
-		http.Error(w, "Error notifying subscribers", http.StatusInternalServerError)
-	}
+	logs := &logspb.LogsData{}
+	o.handle(w, r, logs, &domain.Event{Logs: logs})
 }
 
 func (o *OTLP) handleTraces(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
+	traces := &tracepb.TracesData{}
+	o.handle(w, r, traces, &domain.Event{Traces: traces})
+}
+
+// handle decodes the request body into msg, which event points to, and passes
+// the event on to subscribers.
+func (o *OTLP) handle(w http.ResponseWriter, r *http.Request, msg proto.Message, event *domain.Event) {
+	defer r.Body.Close()
+
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodyBytes))
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "Error reading request body", http.StatusBadRequest)
 		return
 	}
 
-	defer r.Body.Close()
-
-	traces := tracepb.TracesData{}
-	if err := proto.Unmarshal(body, &traces); err != nil {
+	if err := proto.Unmarshal(body, msg); err != nil {
 		http.Error(w, "Error parsing request body", http.StatusBadRequest)
+		return
 	}
 
-	if err := o.NotifySubscribers(r.Context(), &domain.Event{
-		Traces: &traces,
-	}); err != nil {
+	if err := o.NotifySubscribers(r.Context(), event); err != nil {
+		if errors.Is(err, domain.ErrEventRejected) {
+			http.Error(w, "Event rejected", http.StatusBadRequest)
+			return
+		}
 		http.Error(w, "Error notifying subscribers", http.StatusInternalServerError)
 	}
 }
