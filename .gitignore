@@ -1,0 +1,9 @@
+# Build output
+/tram
+
+# Local cluster credentials
+kubeconfig
+
+# OS and editor files
+.DS_Store
+.zed/
