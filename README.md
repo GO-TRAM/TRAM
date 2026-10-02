@@ -29,7 +29,7 @@ go build -o tram ./cmd/tram
 
 ### API Endpoints
 
-The Stream service provides the following HTTP endpoints:
+The Tram service provides the following HTTP endpoints:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -244,4 +244,4 @@ curl -X PUT http://localhost:8080/v1/streams/processing-pipeline \
 
 ## 📜 License
 
-Stream is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+Tram is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.

@@ -1,10 +1,10 @@
-# AI Assistant Guidelines for Stream Project
+# AI Assistant Guidelines for Tram Project
 
-This file contains project-specific guidelines for AI coding assistants working on the Stream project. All AI agents should follow these instructions to maintain consistency and quality.
+This file contains project-specific guidelines for AI coding assistants working on the Tram project. All AI agents should follow these instructions to maintain consistency and quality.
 
 ## Project Context
 
-Stream is a cloud-native, in-memory data pipeline framework that:
+Tram is a cloud-native, in-memory data pipeline framework that:
 - Uses tree-structured pipelines (1 source → N stages → M sinks)
 - Manages configuration entirely via API (no file-based config)
 - Uses protobuf for API definitions (swagger auto-generated)
@@ -150,7 +150,7 @@ All AI agents should be aware of these common issues:
 
 ```bash
 # Build the project
-go build -o stream ./cmd/stream
+go build -o tram ./cmd/tram
 
 # Run tests
 go test ./...
@@ -162,7 +162,7 @@ go generate ./...
 gofmt -w .
 
 # Run service
-./stream -v
+./tram server
 ```
 
 ## Response Guidelines for All AI Agents

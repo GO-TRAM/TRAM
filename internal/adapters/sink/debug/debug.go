@@ -26,7 +26,7 @@ func New(sink domain.SinkSpec, validator *validator.Validate) (*Debug, error) {
 }
 
 func (d *Debug) Notify(ctx context.Context, event *domain.Event) error {
-	path := ctx.Value(domain.ContextKeyPath).(string)
+	path, _ := ctx.Value(domain.ContextKeyPath).(string)
 	path += " -> " + d.Name()
 	log.Printf("[DEBUG] %s: %s", path, event)
 	return nil

@@ -279,7 +279,7 @@ Publishes OTLP-encoded events to NATS JetStream. Uses dynamic subject mapping wi
 | `url` | string | Yes | - | NATS server URL (e.g., `"nats://localhost:4222"`) |
 | `stream` | string | Yes | - | JetStream stream name to publish to |
 | `subject` | object | Yes | - | Subject configuration for dynamic subject mapping |
-| `retention` | string | No | - | Stream message retention duration (e.g., `"24h"`, `"7d"`) |
+| `retention` | string | No | - | Stream message retention as a Go duration (e.g., `"24h"`, `"168h"`; days are not supported) |
 | `size` | int | No | - | Maximum stream size in bytes |
 
 **Subject Configuration:**
@@ -287,9 +287,11 @@ Publishes OTLP-encoded events to NATS JetStream. Uses dynamic subject mapping wi
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `register` | array[string] | Yes | - | List of subject patterns to register with the stream |
-| `logs` | string | Yes | - | CEL expression to generate subject for log events. Must return a string. Has access to the `logs` variable |
-| `metrics` | string | Yes | - | CEL expression to generate subject for metric events. Must return a string. Has access to the `metrics` variable |
-| `traces` | string | Yes | - | CEL expression to generate subject for trace events. Must return a string. Has access to the `traces` variable |
+| `logs` | string | One of `logs`, `metrics`, `traces` | - | CEL expression to generate subject for log events. Must return a string. Has access to the `logs` variable |
+| `metrics` | string | One of `logs`, `metrics`, `traces` | - | CEL expression to generate subject for metric events. Must return a string. Has access to the `metrics` variable |
+| `traces` | string | One of `logs`, `metrics`, `traces` | - | CEL expression to generate subject for trace events. Must return a string. Has access to the `traces` variable |
+
+Signals without an expression are not published by this sink.
 
 **CEL Expression Context:**
 - The CEL expressions have access to a custom `get_attr(attributes, key)` function for extracting attribute values
@@ -335,8 +337,7 @@ Publishes OTLP-encoded events to NATS JetStream. Uses dynamic subject mapping wi
     "subject": {
       "register": ["logs.*", "metrics.*"],
       "logs": "'logs.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
-      "metrics": "'metrics.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')",
-      "traces": "'traces.default'"
+      "metrics": "'metrics.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')"
     }
   }
 }

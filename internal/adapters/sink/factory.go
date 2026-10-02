@@ -1,6 +1,8 @@
 package sink
 
 import (
+	"fmt"
+
 	"codeberg.org/eljoth/tram/internal/adapters/sink/debug"
 	"codeberg.org/eljoth/tram/internal/adapters/sink/nats"
 	"codeberg.org/eljoth/tram/internal/core/domain"
@@ -24,6 +26,6 @@ func (f *Factory) New(spec domain.SinkSpec) (domain.Sink, error) {
 	case nats.Type:
 		return nats.New(spec, f.validator)
 	default:
-		return nil, domain.ErrInvalidSourceType
+		return nil, fmt.Errorf("%w: %q", domain.ErrInvalidSinkType, spec.Type)
 	}
 }

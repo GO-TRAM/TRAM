@@ -14,6 +14,8 @@ var (
 	ErrGraphHasNoRoot       = errors.New("stream has no root")
 	ErrInvalidStreamSpec    = errors.New("stream spec is invalid")
 	ErrInvalidSourceType    = errors.New("source type is invalid")
+	ErrInvalidStageType     = errors.New("stage type is invalid")
+	ErrInvalidSinkType      = errors.New("sink type is invalid")
 	ErrStreamWireStages     = errors.New("cannot wire stage")
 	ErrStreamWireSinks      = errors.New("cannot wire sink")
 	ErrStreamNotFound       = errors.New("stream not found")

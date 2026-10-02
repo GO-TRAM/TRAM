@@ -46,7 +46,7 @@ buf curl --sh | sh
 
 ```bash
 # Build the main application
-go build -o stream ./cmd/stream
+go build -o tram ./cmd/tram
 
 # Build all packages
 go build ./...
@@ -56,10 +56,10 @@ go build ./...
 
 ```bash
 # Start the service
-./stream
+./tram server
 
-# Or with logging
-./stream -v
+# Or with file-based config sync
+./tram server --enable-file-sync -c config
 ```
 
 ### Generate Code
@@ -127,7 +127,7 @@ stream/
 
 ## 🧩 Adding New Components
 
-Stream is designed to be easily extensible. Follow these steps to add a new source, stage, or sink.
+Tram is designed to be easily extensible. Follow these steps to add a new source, stage, or sink.
 
 ### Common Patterns
 

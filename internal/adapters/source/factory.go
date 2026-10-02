@@ -1,6 +1,8 @@
 package source
 
 import (
+	"fmt"
+
 	"codeberg.org/eljoth/tram/internal/adapters/source/generator"
 	"codeberg.org/eljoth/tram/internal/adapters/source/nats"
 	"codeberg.org/eljoth/tram/internal/adapters/source/otlp"
@@ -27,6 +29,6 @@ func (f *Factory) New(spec domain.SourceSpec) (domain.Source, error) {
 	case otlp.Type:
 		return otlp.New(spec, f.validator)
 	default:
-		return nil, domain.ErrInvalidSourceType
+		return nil, fmt.Errorf("%w: %q", domain.ErrInvalidSourceType, spec.Type)
 	}
 }

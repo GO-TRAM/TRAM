@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"codeberg.org/eljoth/tram/internal/core"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/ports"
 	"github.com/fsnotify/fsnotify"
@@ -26,7 +25,7 @@ type ConfigSync struct {
 	debounceDuration time.Duration
 }
 
-func New(c *core.Core, dir string) (*ConfigSync, error) {
+func New(c ports.Core, dir string) (*ConfigSync, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file watcher: %w", err)
