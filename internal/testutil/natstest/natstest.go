@@ -10,7 +10,8 @@ import (
 	tcnats "github.com/testcontainers/testcontainers-go/modules/nats"
 )
 
-const image = "nats:2.11"
+// Image is the NATS server image the benchmarks run against.
+const Image = "nats:2.11"
 
 // Start starts a NATS server with JetStream and returns its URL. The container
 // is removed when tb finishes. tb is skipped if no container runtime (Docker
@@ -22,7 +23,7 @@ func Start(tb testing.TB) string {
 
 	// The module's default command also enables debug and trace logging,
 	// which would distort measurements.
-	container, err := tcnats.Run(ctx, image, testcontainers.WithCmd("-js"))
+	container, err := tcnats.Run(ctx, Image, testcontainers.WithCmd("-js"))
 	testcontainers.CleanupContainer(tb, container)
 	if err != nil {
 		tb.Fatalf("start NATS container: %v", err)

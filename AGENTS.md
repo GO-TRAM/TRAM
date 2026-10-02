@@ -145,7 +145,8 @@ All AI agents should respect this project structure:
 - Core logic is in `internal/core/`, domain types and record filtering in `internal/core/domain/`
 - Interfaces between core and adapters are in `internal/ports/`
 - Configuration drivers are in `internal/adapters/api/`, `configsync/` and `k8scrd/`
-- Test helpers are in `internal/testutil/`
+- Test helpers are in `internal/testutil/`, end-to-end pipeline benchmarks in `internal/scenario/`
+- Development tools are in `tools/`; `tools/benchreport` generates `BENCHMARK.md`
 - API definitions are in `api/proto/`
 - Generated code goes in `pkg/gen/`
 

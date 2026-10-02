@@ -114,9 +114,11 @@ tram/
 │   ├── core/                         # Builds, runs and stops streams
 │   │   └── domain/                   # Events, specs, the stream tree, record filtering
 │   ├── ports/                        # Interfaces between core and adapters
-│   └── testutil/otlpgen/             # OTLP payload generator for tests and benchmarks
+│   ├── scenario/                     # End-to-end pipeline benchmarks
+│   └── testutil/                     # Test helpers: OTLP payloads (otlpgen), NATS container (natstest)
 ├── pkg/gen/go/api/proto/stream/v1/   # Generated protobuf, gRPC and gateway code
 ├── setup/                            # Example configurations: config/, k8s/, nats/
+├── tools/benchreport/                # Generates BENCHMARK.md
 ├── docs/assets/                      # Images used in the documentation
 ├── buf.yaml, buf.gen.yaml, buf.lock  # Protobuf generation
 ├── generate.go                       # Entry point for go generate
@@ -603,6 +605,9 @@ Benchmarks cover the per-event hot path:
 | `BenchmarkBatch` | `stage/batch` | Batch overhead and merging with concurrent callers |
 | `BenchmarkHandleLogs` | `source/otlp` | Reading and decoding OTLP requests |
 | `BenchmarkOTLPDataRoundTrip` | `core/domain` | Serializing events for NATS |
+| `BenchmarkScenario` | `scenario` | Complete pipelines end to end: throughput, CPU per record, latency (container) |
+
+[BENCHMARK.md](BENCHMARK.md) presents these results. After performance-relevant changes, regenerate it with `go run ./tools/benchreport` (see the page for details); add new scenarios to `internal/scenario` and new components to the lists in `tools/benchreport`.
 
 Benchmarks marked "container" start a NATS server with [Testcontainers](https://golang.testcontainers.org/) via `internal/testutil/natstest`. They need Docker or Podman and are skipped if neither is running. With Podman on macOS, point Testcontainers to the socket inside the Podman VM:
 

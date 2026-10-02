@@ -7,3 +7,6 @@ kubeconfig
 # OS and editor files
 .DS_Store
 .zed/
+
+# Raw benchmark output of tools/benchreport
+bench.txt

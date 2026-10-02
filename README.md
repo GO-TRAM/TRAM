@@ -299,6 +299,7 @@ The operator watches `Stream` resources (`io.tram.core/v1`) and runs each as a s
 
 - **Components**: See [COMPONENTS.md](COMPONENTS.md) for detailed component documentation
 - **Kubernetes Operator**: See [the operator documentation](internal/adapters/k8scrd/README.md)
+- **Performance and Sizing**: See [BENCHMARK.md](BENCHMARK.md) for pipeline benchmarks and sizing guidance
 - **Development**: See [CONTRIBUTING.md](CONTRIBUTING.md) for development and contribution guidelines
 
 ---
