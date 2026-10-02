@@ -616,10 +616,12 @@ Build payloads with `internal/testutil/otlpgen` and use `otlpgen.Shapes` so resu
 Compare a change against `main` with [benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat):
 
 ```bash
-git switch main && go test -run='^$' -bench=. -benchmem -count=10 ./... > old.txt
-git switch my-branch && go test -run='^$' -bench=. -benchmem -count=10 ./... > new.txt
+git switch main && go test -p 1 -run='^$' -bench=. -benchmem -count=10 ./... > old.txt
+git switch my-branch && go test -p 1 -run='^$' -bench=. -benchmem -count=10 ./... > new.txt
 benchstat old.txt new.txt
 ```
+
+`-p 1` runs one package at a time. Without it, `go test` benchmarks several packages in parallel, which then compete for CPU and distort each other's results. Other load on the machine, like a container VM that is just starting, has the same effect; check the spread between runs before trusting a result.
 
 ---
 
