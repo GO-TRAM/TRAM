@@ -65,11 +65,27 @@ func (c *Core) UpsertStream(ctx context.Context, spec domain.StreamSpec) (*domai
 		return nil, errors.Join(domain.ErrStreamBuildFailed, err)
 	}
 
-	// TODO instead of stopping and starting a stream, modify its nodes while running.
-
-	// The old stream is stopped before the new one is built, because its
-	// components may hold resources (e.g. listening ports) the new ones need.
 	old, exists := c.streams[spec.Name]
+
+	// Updating restarts components, so an unchanged spec is left alone.
+	if exists && old.tree.Spec.Equal(spec) {
+		return &old.tree.Spec, nil
+	}
+
+	// With an unchanged source, only the stages and sinks are replaced while
+	// the source keeps running.
+	if exists && old.tree.Spec.Source.Equal(spec.Source) {
+		if err := c.replaceReceivers(old, tree); err != nil {
+			return nil, errors.Join(domain.ErrStreamBuildFailed, err)
+		}
+		log.Println("Replaced stages and sinks of stream", spec.Name)
+		c.notify(domain.StreamSpecWatchEventTypeUpsert, tree.Spec)
+		return &tree.Spec, nil
+	}
+
+	// Otherwise the old stream is stopped before the new one is built, because
+	// its components may hold resources (e.g. listening ports) the new ones
+	// need.
 	if exists {
 		if err := c.stopStream(old); err != nil {
 			log.Printf("failed to cleanly stop stream %s: %v", spec.Name, err)

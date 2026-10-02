@@ -2,6 +2,7 @@ package base
 
 import (
 	"context"
+	"slices"
 	"sync"
 
 	"codeberg.org/eljoth/tram/internal/core/domain"
@@ -48,16 +49,24 @@ func (s *Source[T]) Subscribe(c domain.Subscriber) error {
 	return nil
 }
 
+func (s *Source[T]) SetSubscribers(subscribers []domain.Subscriber) {
+	// Taking the write lock waits for deliveries holding the read lock.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.subscribers = slices.Clone(subscribers)
+}
+
+// NotifySubscribers delivers the event to all subscribers. The read lock is
+// held until every subscriber has returned, so SetSubscribers can wait for
+// deliveries to the subscribers it replaces.
 func (s *Source[T]) NotifySubscribers(ctx context.Context, event *domain.Event) error {
 	s.mu.RLock()
-	subs := make([]domain.Subscriber, len(s.subscribers))
-	copy(subs, s.subscribers)
-	s.mu.RUnlock()
+	defer s.mu.RUnlock()
 
 	ctx = context.WithValue(ctx, domain.ContextKeyPath, s.Name())
 
 	eg := errgroup.Group{}
-	for _, sub := range subs {
+	for _, sub := range s.subscribers {
 		eg.Go(func() error {
 			return sub.Notify(ctx, event)
 		})

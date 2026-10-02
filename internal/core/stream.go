@@ -39,7 +39,7 @@ func newTree(spec domain.StreamSpec) (*domain.Tree, error) {
 	return tree, nil
 }
 
-// buildStream creates and wires the components of tree. On failure, the
+// buildStream creates and wires all components of tree. On failure, the
 // components created so far are stopped again.
 func (c *Core) buildStream(tree *domain.Tree) (err error) {
 	defer func() {
@@ -51,7 +51,6 @@ func (c *Core) buildStream(tree *domain.Tree) (err error) {
 	}()
 
 	spec := tree.Spec
-
 	source, err := c.sourceFactory.New(spec.Source)
 	if err != nil {
 		return errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, spec.Source.Name), err)
@@ -60,7 +59,34 @@ func (c *Core) buildStream(tree *domain.Tree) (err error) {
 		return errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, spec.Source.Name), err)
 	}
 
-	for _, stageSpec := range spec.Stages {
+	if err := c.createReceivers(tree); err != nil {
+		return err
+	}
+	return wire(tree, true)
+}
+
+// buildReceivers creates and wires the stages and sinks of tree below a
+// source that is already set on its root. The source is not subscribed to its
+// children; see replaceReceivers. On failure, the stages and sinks created so
+// far are stopped again, the source is left untouched.
+func (c *Core) buildReceivers(tree *domain.Tree) (err error) {
+	defer func() {
+		if err != nil {
+			if stopErr := stopNodes(tree, false); stopErr != nil {
+				log.Printf("failed to stop components of unbuilt stream %s: %v", tree.Spec.Name, stopErr)
+			}
+		}
+	}()
+
+	if err := c.createReceivers(tree); err != nil {
+		return err
+	}
+	return wire(tree, false)
+}
+
+// createReceivers creates the stages and sinks of tree.
+func (c *Core) createReceivers(tree *domain.Tree) error {
+	for _, stageSpec := range tree.Spec.Stages {
 		stage, err := c.stageFactory.New(stageSpec)
 		if err != nil {
 			return errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, stageSpec.Name), err)
@@ -70,7 +96,7 @@ func (c *Core) buildStream(tree *domain.Tree) (err error) {
 		}
 	}
 
-	for _, sinkSpec := range spec.Sinks {
+	for _, sinkSpec := range tree.Spec.Sinks {
 		sink, err := c.sinkFactory.New(sinkSpec)
 		if err != nil {
 			return errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, sinkSpec.Name), err)
@@ -79,14 +105,18 @@ func (c *Core) buildStream(tree *domain.Tree) (err error) {
 			return errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, sinkSpec.Name), err)
 		}
 	}
+	return nil
+}
 
-	nodes := tree.Map()
-	for _, node := range nodes {
-		if node.Parent == nil {
+// wire subscribes every node to its parent. With includeRoot unset, the
+// root's children are left out.
+func wire(tree *domain.Tree, includeRoot bool) error {
+	root := tree.Root()
+	for _, node := range tree.Map() {
+		if node.Parent == nil || (node.Parent == root && !includeRoot) {
 			continue
 		}
-		parent := node.Parent
-		observer, err := parent.GetObserver()
+		observer, err := node.Parent.GetObserver()
 		if err != nil {
 			return err
 		}
@@ -98,7 +128,43 @@ func (c *Core) buildStream(tree *domain.Tree) (err error) {
 			return err
 		}
 	}
+	return nil
+}
 
+// replaceReceivers updates a running stream whose source is unchanged: it
+// builds the new stages and sinks, switches the running source over to them,
+// and stops the old ones. The source keeps running, so a source like OTLP
+// keeps its port open. If building fails, the running stream is not touched.
+// Must be called with the write lock held.
+func (c *Core) replaceReceivers(old *stream, tree *domain.Tree) error {
+	source, err := old.tree.Root().GetSource()
+	if err != nil {
+		return err
+	}
+	if err := tree.Root().AddSource(source); err != nil {
+		return err
+	}
+	if err := c.buildReceivers(tree); err != nil {
+		return err
+	}
+
+	children := make([]domain.Subscriber, 0, len(tree.Root().Children))
+	for _, child := range tree.Root().Children {
+		subscriber, err := child.GetSubscriber()
+		if err != nil {
+			return err
+		}
+		children = append(children, subscriber)
+	}
+
+	// Waits for events still being delivered to the old stages and sinks, so
+	// they can be stopped right after.
+	source.SetSubscribers(children)
+	if err := stopNodes(old.tree, false); err != nil {
+		log.Printf("failed to cleanly stop replaced components of stream %s: %v", tree.Spec.Name, err)
+	}
+
+	c.streams[tree.Spec.Name] = &stream{tree: tree, done: old.done}
 	return nil
 }
 

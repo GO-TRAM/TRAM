@@ -47,6 +47,18 @@ The Tram service provides the following HTTP endpoints:
 
 The stream name is taken from the URL; a `name` in the request body is replaced by it.
 
+### Updating a Stream
+
+A `PUT` to an existing stream changes as little as possible:
+
+| Change | Effect |
+|--------|--------|
+| None | Nothing happens; the running stream is kept |
+| Stages or sinks only | The new stages and sinks are created, events still in flight finish in the old ones, and the source switches over. The source keeps running, e.g. an OTLP source keeps its port open, and no event is lost |
+| Source | The stream is stopped and created again. An OTLP source closes its port in between, so clients briefly cannot connect |
+
+If an update fails, e.g. because of an invalid component spec, the request returns an error and the previous version of the stream keeps running. Delete and create a stream to restart it completely.
+
 ---
 
 ## 📡 Example API Usage

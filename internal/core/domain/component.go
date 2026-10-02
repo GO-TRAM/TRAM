@@ -30,6 +30,11 @@ type Source interface {
 	Observer
 
 	Run(ctx context.Context) error
+	// SetSubscribers replaces all subscribers of a running source. It returns
+	// once no event is being delivered to the previous subscribers anymore, so
+	// they can be stopped afterwards. Events arriving meanwhile wait and go to
+	// the new subscribers.
+	SetSubscribers(subscribers []Subscriber)
 }
 
 type Stage interface {

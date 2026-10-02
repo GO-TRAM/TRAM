@@ -156,8 +156,9 @@ All AI agents should be aware of these common issues:
 2. **Global State**: Avoid global variables; use dependency injection
 3. **Blocking Operations**: Only block in Notify while delivering downstream or when waiting is the component's documented purpose (`batch`, `delay`); always return when the context is done
 4. **Shared Events**: Never modify an incoming event; build a new one (e.g. with `domain.FilterLogs`) instead
-5. **Memory Leaks**: Always clean up goroutines and resources in Stop
-6. **Inconsistent Error Handling**: Always wrap errors with context; wrap `domain.ErrEventRejected` for permanent failures
+5. **Live Updates**: Stages and sinks can be replaced below a running source (`Source.SetSubscribers`); never keep state in a stage or sink that assumes it lives as long as the source
+6. **Memory Leaks**: Always clean up goroutines and resources in Stop
+7. **Inconsistent Error Handling**: Always wrap errors with context; wrap `domain.ErrEventRejected` for permanent failures
 
 ## Example Commands
 

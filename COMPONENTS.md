@@ -121,7 +121,7 @@ Consumes events from a NATS JetStream stream that were published by Tram's [NATS
 - Each message becomes one event
 - A message is acknowledged once all sinks have accepted it. If passing it on fails, it is redelivered after 5 seconds; data rejected by a stage is terminated instead
 - Delivery is at-least-once: when one branch of a stream fails, the redelivered message reaches all branches again
-- The consumer starts at the beginning of the stream. A durable consumer continues where it stopped; a temporary consumer starts from the beginning again whenever the stream is (re)created
+- The consumer starts at the beginning of the stream. A durable consumer continues where it stopped; a temporary consumer starts from the beginning again whenever the source is created, i.e. when the Tram stream is created or its source is changed. Updates that only change stages or sinks keep the consumer
 - Each worker processes one message at a time; use several workers to let a `batch` stage merge messages
 
 ---
