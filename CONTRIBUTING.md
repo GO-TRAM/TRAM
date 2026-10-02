@@ -114,6 +114,7 @@ tram/
 │   ├── core/                         # Builds, runs and stops streams
 │   │   └── domain/                   # Events, specs, the stream tree, record filtering
 │   ├── ports/                        # Interfaces between core and adapters
+│   ├── e2e/                          # End-to-end pipeline tests
 │   ├── scenario/                     # End-to-end pipeline benchmarks
 │   └── testutil/                     # Test helpers: OTLP payloads (otlpgen), NATS container (natstest)
 ├── pkg/gen/go/api/proto/stream/v1/   # Generated protobuf, gRPC and gateway code
@@ -582,10 +583,15 @@ func TestMyFunction(t *testing.T) {
 }
 ```
 
+### End-to-End Tests
+
+`internal/e2e` tests complete pipelines without external dependencies: streams are built by the core from the real source and stage factories, OTLP data is sent over HTTP, and capturing sinks record exactly which records arrive where. They cover batching, splitting, cancelled requests, the status codes clients receive, and updates under load, and run with `go test ./...`.
+
+When adding a stage or changing how events flow, add a case there that checks which records arrive in which sink.
+
 ### Integration Tests
 
-- Test complete pipelines
-- Use test containers for external dependencies (NATS, etc.)
+- Use test containers for external dependencies (NATS, etc.), see `internal/testutil/natstest`
 - Clean up resources after tests
 
 ### Benchmarks
