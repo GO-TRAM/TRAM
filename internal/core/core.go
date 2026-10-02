@@ -15,11 +15,23 @@ type Core struct {
 	mutex         sync.RWMutex
 	wg            sync.WaitGroup
 	closed        bool
-	streams       map[string]*domain.Tree
+	streams       map[string]*stream
 	sourceFactory ports.Factory[domain.SourceSpec, domain.Source]
 	stageFactory  ports.Factory[domain.StageSpec, domain.Stage]
 	sinkFactory   ports.Factory[domain.SinkSpec, domain.Sink]
-	watchers      []chan domain.StreamSpecWatchEvent
+	watchers      map[*watcher]struct{}
+}
+
+// stream is a built tree whose source is running.
+type stream struct {
+	tree *domain.Tree
+	// done is closed once the source's Run has returned.
+	done chan struct{}
+}
+
+type watcher struct {
+	ctx context.Context
+	ch  chan<- domain.StreamSpecWatchEvent
 }
 
 func New(
@@ -31,101 +43,75 @@ func New(
 	return &Core{
 		ctx:           ctx,
 		mutex:         sync.RWMutex{},
-		streams:       map[string]*domain.Tree{},
+		streams:       map[string]*stream{},
 		sourceFactory: sourceFactory,
 		stageFactory:  stageFactory,
 		sinkFactory:   sinkFactory,
+		watchers:      map[*watcher]struct{}{},
 	}
 }
 
 func (c *Core) UpsertStream(ctx context.Context, spec domain.StreamSpec) (*domain.StreamSpec, error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
 	if c.closed {
 		return nil, domain.ErrCoreClosed
 	}
 
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	stream, exists := c.getStream(spec.Name)
-
-	builtStream, err := c.buildStream(spec)
+	// Reject structurally invalid specs before touching the running stream.
+	tree, err := newTree(spec)
 	if err != nil {
 		return nil, errors.Join(domain.ErrStreamBuildFailed, err)
 	}
 
 	// TODO instead of stopping and starting a stream, modify its nodes while running.
 
+	// The old stream is stopped before the new one is built, because its
+	// components may hold resources (e.g. listening ports) the new ones need.
+	old, exists := c.streams[spec.Name]
 	if exists {
-		source, err := stream.Root().GetSource()
-		if err != nil {
-			return nil, errors.Join(domain.ErrStreamStopFailed, err)
+		if err := c.stopStream(old); err != nil {
+			log.Printf("failed to cleanly stop stream %s: %v", spec.Name, err)
 		}
-		if err := source.Stop(); err != nil {
-			return nil, domain.ErrStreamStopFailed
-		}
+		delete(c.streams, spec.Name)
 	}
 
-	c.wg.Go(func() {
-		log.Println("Running stream", builtStream.Spec.Name)
-		source, err := builtStream.Root().GetSource()
-		if err != nil {
-			log.Println("Failed to get source for stream", builtStream.Spec.Name, err)
-			return
+	if err := c.buildStream(tree); err != nil {
+		if exists {
+			c.restoreStream(old.tree.Spec)
 		}
-		if err := source.Run(c.ctx); err != nil {
-			log.Println("Failed to run stream", builtStream.Spec.Name, err)
-			return
-		}
-	})
-
-	c.streams[spec.Name] = builtStream
-
-	for _, ch := range c.watchers {
-		if ch == nil {
-			continue
-		}
-		ch <- domain.StreamSpecWatchEvent{
-			EventType:  domain.StreamSpecWatchEventTypeUpsert,
-			StreamSpec: builtStream.Spec,
-		}
+		return nil, errors.Join(domain.ErrStreamBuildFailed, err)
 	}
 
-	return &builtStream.Spec, nil
+	c.runStream(tree)
+	c.notify(domain.StreamSpecWatchEventTypeUpsert, tree.Spec)
+
+	return &tree.Spec, nil
 }
 
 func (c *Core) DeleteStream(ctx context.Context, name string) error {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
 	if c.closed {
 		return domain.ErrCoreClosed
 	}
 
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	stream, exists := c.getStream(name)
+	stream, exists := c.streams[name]
 	if !exists {
 		return domain.ErrStreamNotFound
 	}
 
 	log.Println("Stopping stream", name)
-	source, err := stream.Root().GetSource()
-	if err != nil {
-		return errors.Join(domain.ErrStreamStopFailed, err)
-	}
-	if err := source.Stop(); err != nil {
-		return domain.ErrStreamStopFailed
+	// Every component has been asked to stop even if some failed, so the
+	// stream is removed either way.
+	if err := c.stopStream(stream); err != nil {
+		log.Printf("failed to cleanly stop stream %s: %v", name, err)
 	}
 
 	delete(c.streams, name)
-
-	for _, ch := range c.watchers {
-		if ch == nil {
-			continue
-		}
-		ch <- domain.StreamSpecWatchEvent{
-			EventType:  domain.StreamSpecWatchEventTypeDelete,
-			StreamSpec: stream.Spec,
-		}
-	}
+	c.notify(domain.StreamSpecWatchEventTypeDelete, stream.tree.Spec)
 	log.Println("Deleted stream", name)
 
 	return nil
@@ -135,11 +121,11 @@ func (c *Core) GetStream(ctx context.Context, name string) (*domain.StreamSpec, 
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
-	stream, exists := c.getStream(name)
+	stream, exists := c.streams[name]
 	if !exists {
 		return nil, domain.ErrStreamNotFound
 	}
-	return &stream.Spec, nil
+	return &stream.tree.Spec, nil
 }
 
 func (c *Core) GetStreams(ctx context.Context) ([]domain.StreamSpec, error) {
@@ -148,7 +134,7 @@ func (c *Core) GetStreams(ctx context.Context) ([]domain.StreamSpec, error) {
 
 	streams := make([]domain.StreamSpec, 0, len(c.streams))
 	for _, stream := range c.streams {
-		streams = append(streams, stream.Spec)
+		streams = append(streams, stream.tree.Spec)
 	}
 	return streams, nil
 }
@@ -159,23 +145,22 @@ func (c *Core) Close() error {
 
 	c.closed = true
 
-	for _, stream := range c.streams {
-		log.Printf("stopping stream %s", stream.Spec.Name)
-		source, err := stream.Root().GetSource()
-		if err != nil {
-			log.Printf("failed to get source for stream %s: %v", stream.Spec.Name, err)
-			continue
-		}
-		if err := source.Stop(); err != nil {
-			log.Printf("failed to stop stream %s: %v", stream.Spec.Name, err)
+	for name, stream := range c.streams {
+		log.Printf("stopping stream %s", name)
+		if err := c.stopStream(stream); err != nil {
+			log.Printf("failed to stop stream %s: %v", name, err)
 		}
 	}
+	clear(c.streams)
 
 	c.wg.Wait()
 
 	return nil
 }
 
+// Watch registers ch to receive every stream change until ctx is done.
+// Events are delivered synchronously, so the caller has to keep receiving
+// from ch until it cancels ctx.
 func (c *Core) Watch(ctx context.Context, ch chan domain.StreamSpecWatchEvent) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -184,7 +169,28 @@ func (c *Core) Watch(ctx context.Context, ch chan domain.StreamSpecWatchEvent) e
 		return domain.ErrCoreClosed
 	}
 
-	c.watchers = append(c.watchers, ch)
+	w := &watcher{ctx: ctx, ch: ch}
+	c.watchers[w] = struct{}{}
+	context.AfterFunc(ctx, func() {
+		c.mutex.Lock()
+		defer c.mutex.Unlock()
+		delete(c.watchers, w)
+	})
 
 	return nil
+}
+
+// notify must be called with the write lock held, which keeps events in the
+// same order as the changes they describe.
+func (c *Core) notify(eventType domain.StreamSpecWatchEventType, spec domain.StreamSpec) {
+	event := domain.StreamSpecWatchEvent{
+		EventType:  eventType,
+		StreamSpec: spec,
+	}
+	for w := range c.watchers {
+		select {
+		case w.ch <- event:
+		case <-w.ctx.Done():
+		}
+	}
 }

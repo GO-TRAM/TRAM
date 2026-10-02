@@ -123,6 +123,12 @@ func (n *CELValidator) Notify(ctx context.Context, event *domain.Event) error {
 	if n == nil {
 		return ErrCELEnvironmenInitialization
 	}
+
+	// The incoming event is shared with sibling branches, so drops are applied
+	// to a shallow copy.
+	copied := *event
+	event = &copied
+
 	if event.Logs != nil {
 		if err := n.validate(ctx, "logs", event.Logs, n.logs, event, func(e *domain.Event) { e.Logs = nil }); err != nil {
 			return errors.Join(ErrCELRejectingLogs, err)

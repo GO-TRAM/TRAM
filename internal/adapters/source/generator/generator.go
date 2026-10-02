@@ -41,6 +41,7 @@ func (g *Generator) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-g.shutdown:
+			return nil
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(g.interval):

@@ -63,9 +63,15 @@ func (c *ConfigSync) Run(ctx context.Context) error {
 		}
 	}()
 
+	// Cancelling on return unregisters the watch, so the core never blocks
+	// on a channel nobody reads anymore.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	ch := make(chan domain.StreamSpecWatchEvent)
-	c.core.Watch(ctx, ch)
-	defer close(ch)
+	if err := c.core.Watch(ctx, ch); err != nil {
+		return fmt.Errorf("failed to watch core: %w", err)
+	}
 
 	for {
 		select {

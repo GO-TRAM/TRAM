@@ -16,6 +16,10 @@ import (
 
 const (
 	Type = "nats"
+
+	// SignalHeader carries the domain.Signal of a consumed payload. It must
+	// match the header the nats sink writes.
+	SignalHeader = "Tram-Signal"
 )
 
 type NATS struct {
@@ -39,6 +43,7 @@ func New(source domain.SourceSpec, validator *validator.Validate) (*NATS, error)
 
 	js, err := jetstream.New(nc)
 	if err != nil {
+		nc.Close()
 		return nil, fmt.Errorf("failed to initialize JetStream: %w", err)
 	}
 
@@ -96,7 +101,8 @@ func (n *NATS) worker(ctx context.Context, cons jetstream.Consumer) {
 			}
 
 			for msg := range msgs.Messages() {
-				event, err := domain.UnmarshalOTLPData(msg.Data())
+				signal := domain.Signal(msg.Headers().Get(SignalHeader))
+				event, err := domain.UnmarshalOTLPData(signal, msg.Data())
 				if err != nil {
 					log.Printf("Error parsing OTLP data: %v", err)
 					continue

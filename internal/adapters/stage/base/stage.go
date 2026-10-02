@@ -3,7 +3,6 @@ package base
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	"codeberg.org/eljoth/tram/internal/core/domain"
@@ -76,16 +75,8 @@ func (s *Stage[T]) NotifySubscribers(ctx context.Context, event *domain.Event) e
 	return nil
 }
 
+// Stop releases resources held by the stage itself. Subscribers are stopped by
+// the core, which owns the lifecycle of every node in a stream.
 func (s *Stage[T]) Stop() error {
-	var returnError error
-	for _, sub := range s.subscribers {
-		if err := sub.Stop(); err != nil {
-			if returnError == nil {
-				returnError = err
-				continue
-			}
-			err = errors.Join(returnError, err)
-		}
-	}
-	return returnError
+	return nil
 }

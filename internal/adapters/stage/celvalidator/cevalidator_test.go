@@ -187,6 +187,25 @@ func TestCELValidator(t *testing.T) {
 	}
 }
 
+// The event is shared with sibling branches, so dropping must not alter it.
+func TestCELValidatorDropDoesNotMutateEvent(t *testing.T) {
+	cel, err := New(domain.StageSpec{
+		Spec: map[string]any{
+			"logs":        "false",
+			"on_mismatch": "drop",
+		},
+	}, validator.New())
+	assert.NoError(t, err)
+
+	logs := &logspb.LogsData{}
+	metrics := &metricspb.MetricsData{}
+	event := &domain.Event{Logs: logs, Metrics: metrics}
+
+	assert.NoError(t, cel.Notify(t.Context(), event))
+	assert.Same(t, logs, event.Logs)
+	assert.Same(t, metrics, event.Metrics)
+}
+
 // ------- Benchmarks -------
 //
 

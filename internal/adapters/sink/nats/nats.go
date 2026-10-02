@@ -28,6 +28,10 @@ import (
 
 const (
 	Type = "nats"
+
+	// SignalHeader carries the domain.Signal of the published payload. It must
+	// match the header the nats source reads.
+	SignalHeader = "Tram-Signal"
 )
 
 type NATS struct {
@@ -42,7 +46,7 @@ type NATS struct {
 	traces  cel.Program
 }
 
-func New(sink domain.SinkSpec, validator *validator.Validate) (*NATS, error) {
+func New(sink domain.SinkSpec, validator *validator.Validate) (_ *NATS, err error) {
 	base, err := base.New[Spec](sink.Name, sink.From, sink.Spec, validator)
 	if err != nil {
 		return nil, err
@@ -52,6 +56,11 @@ func New(sink domain.SinkSpec, validator *validator.Validate) (*NATS, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
 	}
+	defer func() {
+		if err != nil {
+			nc.Close()
+		}
+	}()
 
 	js, err := jetstream.New(nc)
 	if err != nil {
@@ -168,12 +177,17 @@ func (n *NATS) Notify(ctx context.Context, event *domain.Event) error {
 	}
 
 	for k, v := range mappedEvents {
-		data, err := v.MarshalOTLPData()
+		signal, data, err := v.MarshalOTLPData()
 		if err != nil {
 			log.Println(err)
 			return fmt.Errorf("failed to marshal event: %w", err)
 		}
-		_, err = n.jetstream.Publish(ctx, k, data)
+		msg := &nats.Msg{
+			Subject: k,
+			Data:    data,
+			Header:  nats.Header{SignalHeader: []string{string(signal)}},
+		}
+		_, err = n.jetstream.PublishMsg(ctx, msg)
 		if err != nil {
 			log.Println(err)
 			return fmt.Errorf("failed to publish event: %w", err)

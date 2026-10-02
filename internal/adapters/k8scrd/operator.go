@@ -11,6 +11,7 @@ import (
 	stdlog "log"
 	"log/slog"
 
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
@@ -29,7 +30,7 @@ type Operator struct {
 
 func New(core ports.Core, kubeconfig string) (*Operator, error) {
 	// Set slog as the logger for controller-runtime
-	ctlrlog.SetLogger(&slogLogger{logger: slog.Default()})
+	ctrl.SetLogger(logr.FromSlogHandler(slog.Default().Handler()))
 
 	cfg, err := ctrl.GetConfig()
 

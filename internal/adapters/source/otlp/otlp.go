@@ -2,9 +2,11 @@ package otlp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"time"
 
@@ -21,8 +23,11 @@ const (
 	Type = "otlp"
 )
 
+const shutdownTimeout = 5 * time.Second
+
 type OTLP struct {
 	*base.Source[Spec]
+	listener   net.Listener
 	httpServer *http.Server
 }
 
@@ -32,34 +37,36 @@ func New(source domain.SourceSpec, validator *validator.Validate) (*OTLP, error)
 		return nil, err
 	}
 
-	spec := base.Spec()
-
-	if !isPortAvailableUnix(base.Spec().HttpPort) {
-		return nil, fmt.Errorf("%w: %d", domain.ErrPortUnavailable, spec.HttpPort)
+	// Bind right away so a taken port fails stream creation instead of
+	// surfacing later in Run.
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", base.Spec().HttpPort))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %d: %w", domain.ErrPortUnavailable, base.Spec().HttpPort, err)
 	}
 
-	return &OTLP{
-		Source: base,
-	}, nil
-}
+	o := &OTLP{
+		Source:   base,
+		listener: listener,
+	}
 
-func (o *OTLP) Run(_ context.Context) error {
 	mux := http.NewServeMux()
-
 	mux.HandleFunc("POST /v1/traces", o.handleTraces)
 	mux.HandleFunc("POST /v1/metrics", o.handleMetrics)
 	mux.HandleFunc("POST /v1/logs", o.handleLogs)
 
 	o.httpServer = &http.Server{
-		Addr:         fmt.Sprintf(":%d", o.Spec().HttpPort),
 		Handler:      mux,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  15 * time.Second,
 	}
 
+	return o, nil
+}
+
+func (o *OTLP) Run(_ context.Context) error {
 	log.Printf("Starting OTLP HTTP server on port %d for source %s", o.Spec().HttpPort, o.Name())
-	if err := o.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := o.httpServer.Serve(o.listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Printf("OTLP HTTP server error: %v", err)
 	}
 	return nil
@@ -128,7 +135,19 @@ func (o *OTLP) handleTraces(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Stop waits for in-flight requests so no event reaches subscribers after it
+// returns. It is safe to call before Run.
 func (o *OTLP) Stop() error {
-	o.httpServer.Close()
-	return nil
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+
+	err := o.httpServer.Shutdown(ctx)
+	if err != nil {
+		err = errors.Join(err, o.httpServer.Close())
+	}
+	// Shutdown only closes listeners passed to Serve; close it in case Run never started.
+	if cerr := o.listener.Close(); cerr != nil && !errors.Is(cerr, net.ErrClosed) {
+		err = errors.Join(err, cerr)
+	}
+	return err
 }
