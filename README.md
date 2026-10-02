@@ -153,7 +153,7 @@ Source → [Stage] → Sink
 | Type | Components |
 |------|-------------|
 | **Sources** | `generator`, `nats`, `otlp` |
-| **Stages** | `cel_validator`, `delay`, `noop` |
+| **Stages** | `batch`, `cel_validator`, `delay`, `noop` |
 | **Sinks** | `debug` |
 
 For detailed documentation on each component and its configuration, see [COMPONENTS.md](COMPONENTS.md).

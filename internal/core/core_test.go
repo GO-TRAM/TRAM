@@ -90,10 +90,20 @@ func (f sourceFactory) New(spec domain.SourceSpec) (domain.Source, error) {
 	return &fakeSource{reg: f.reg, name: spec.Name, shutdown: make(chan struct{})}, nil
 }
 
-type stageFactory struct{}
+type fakeStage struct {
+	fakeSink
+	subs []domain.Subscriber
+}
 
-func (stageFactory) New(domain.StageSpec) (domain.Stage, error) {
-	return nil, errors.New("no stages in tests")
+func (s *fakeStage) Subscribe(sub domain.Subscriber) error {
+	s.subs = append(s.subs, sub)
+	return nil
+}
+
+type stageFactory struct{ reg *registry }
+
+func (f stageFactory) New(spec domain.StageSpec) (domain.Stage, error) {
+	return &fakeStage{fakeSink: fakeSink{reg: f.reg, name: spec.Name, from: spec.From}}, nil
 }
 
 type sinkFactory struct{ reg *registry }
@@ -108,7 +118,7 @@ func (f sinkFactory) New(spec domain.SinkSpec) (domain.Sink, error) {
 func newCore(t *testing.T) (*core.Core, *registry) {
 	t.Helper()
 	reg := &registry{}
-	c := core.New(t.Context(), sourceFactory{reg}, stageFactory{}, sinkFactory{reg})
+	c := core.New(t.Context(), sourceFactory{reg}, stageFactory{reg}, sinkFactory{reg})
 	t.Cleanup(func() { _ = c.Close() })
 	return c, reg
 }
@@ -185,6 +195,26 @@ func TestUpsertStream(t *testing.T) {
 			reg.mu.Unlock()
 		})
 	}
+}
+
+// Stages like a batch flush on Stop, so they have to stop before their children.
+func TestDeleteStreamStopsTopDown(t *testing.T) {
+	c, reg := newCore(t)
+
+	spec := domain.StreamSpec{
+		Name:   "stream",
+		Source: domain.SourceSpec{Name: "source", Type: "fake"},
+		Stages: []domain.StageSpec{
+			{Name: "first", Type: "fake", From: "source"},
+			{Name: "second", Type: "fake", From: "first"},
+		},
+		Sinks: []domain.SinkSpec{{Name: "out", Type: "fake", From: "second"}},
+	}
+	_, err := c.UpsertStream(t.Context(), spec)
+	require.NoError(t, err)
+	require.NoError(t, c.DeleteStream(t.Context(), "stream"))
+
+	assert.Equal(t, []string{"source", "first", "second", "out"}, reg.stoppedNames())
 }
 
 func TestDeleteStreamStopsAllComponents(t *testing.T) {

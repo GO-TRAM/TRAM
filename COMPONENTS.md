@@ -122,6 +122,7 @@ Stages process, transform, or filter data between sources and sinks.
 
 | Name | Type | Description |
 |------|------|-------------|
+| `batch` | `batch` | Merges concurrently arriving events into larger batches |
 | `cel_validator` | `cel_validator` | Filters events using Common Expression Language (CEL) |
 | `delay` | `delay` | Delays events by a specified duration |
 | `noop` | `noop` | Pass-through stage that does no processing (useful for testing) |
@@ -191,6 +192,41 @@ Accept all, reject nothing (pass-through):
   "on_mismatch": "drop"
 }
 ```
+
+### Batch Stage
+
+Merges events that arrive concurrently into one event, so downstream components handle fewer, larger batches. It batches whatever it receives; use a filter stage before it to batch only some of the data.
+
+**Type:** `batch`
+
+**Configuration:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `max_records` | int | No | `8192` | Flushes once the batch holds at least this many records (log records, metric data points and spans). Events are never split, so a batch can exceed it by the size of the last event |
+| `timeout` | string | No | `"200ms"` | Flushes a batch this long after its first event arrived |
+
+**Example:**
+
+```json
+{
+  "name": "batch",
+  "type": "batch",
+  "from": "otlp-in",
+  "spec": {
+    "max_records": 1000,
+    "timeout": "500ms"
+  }
+}
+```
+
+**Behavior Notes:**
+- Batching happens in memory only. Each caller waits until its batch has been delivered and receives the delivery result, so sources keep acknowledging or rejecting exactly what was delivered, and a slow downstream slows the sources down instead of growing the buffer
+- Batching only helps when events arrive concurrently, e.g. parallel OTLP requests or a NATS source with several `workers`. A source that sends one event at a time only adds `timeout` to its latency
+- If a caller's context is cancelled (e.g. the OTLP client disconnects) before the batch flushes, its event is withdrawn and not delivered. Once the flush has started, the event is delivered and the caller waits for the result
+- A delivery error, including a rejection by a later stage, applies to every event in the batch. Place `cel_validator` stages with `on_mismatch: reject` before the batch, so one invalid event does not reject the others
+- Events are merged by concatenating their resource entries. Resources and scopes that appear in several events are kept as separate entries, which OTLP allows
+- On shutdown, the open batch is delivered before downstream stages and sinks stop
 
 ### Delay Stage
 

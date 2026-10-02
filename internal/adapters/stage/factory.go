@@ -3,6 +3,7 @@ package stage
 import (
 	"fmt"
 
+	"codeberg.org/eljoth/tram/internal/adapters/stage/batch"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/celvalidator"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/delay"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/noop"
@@ -28,6 +29,8 @@ func (f *Factory) New(spec domain.StageSpec) (domain.Stage, error) {
 		return celvalidator.New(spec, f.validator)
 	case delay.Type:
 		return delay.New(spec, f.validator)
+	case batch.Type:
+		return batch.New(spec, f.validator)
 	default:
 		return nil, fmt.Errorf("%w: %q", domain.ErrInvalidStageType, spec.Type)
 	}

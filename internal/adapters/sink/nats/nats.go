@@ -52,6 +52,13 @@ func New(sink domain.SinkSpec, validator *validator.Validate) (_ *NATS, err erro
 		return nil, err
 	}
 
+	// Compiled before connecting, so invalid expressions fail without
+	// touching NATS.
+	logs, metrics, traces, err := compileSubjects(base.Spec().Subject)
+	if err != nil {
+		return nil, err
+	}
+
 	nc, err := nats.Connect(base.Spec().URL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
@@ -89,6 +96,20 @@ func New(sink domain.SinkSpec, validator *validator.Validate) (_ *NATS, err erro
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
 
+	return &NATS{
+		Sink:      base,
+		natsConn:  nc,
+		jetstream: js,
+		stream:    s,
+		logs:      logs,
+		metrics:   metrics,
+		traces:    traces,
+	}, nil
+}
+
+// compileSubjects builds the CEL programs that compute the subject for each
+// signal type.
+func compileSubjects(subject SubjectSpec) (logs, metrics, traces cel.Program, err error) {
 	getAttrFunc := cel.Function("get_attr",
 		cel.MemberOverload("attributes_get_attr",
 			[]*cel.Type{
@@ -140,33 +161,25 @@ func New(sink domain.SinkSpec, validator *validator.Validate) (_ *NATS, err erro
 		getAttrFunc,
 	)
 	if err != nil {
-		return nil, errors.Join(ErrCELEnvironmenInitialization, err)
+		return nil, nil, nil, errors.Join(ErrCELEnvironmenInitialization, err)
 	}
 
-	logs, err := initCEL(baseEnv, base.Spec().Subject.Logs, cel.Variable("logs", cel.ObjectType("opentelemetry.proto.logs.v1.LogsData")))
+	logs, err = initCEL(baseEnv, subject.Logs, cel.Variable("logs", cel.ObjectType("opentelemetry.proto.logs.v1.LogsData")))
 	if err != nil {
-		return nil, errors.Join(ErrCELInvalidLogsExpression, err)
+		return nil, nil, nil, errors.Join(ErrCELInvalidLogsExpression, err)
 	}
 
-	metrics, err := initCEL(baseEnv, base.Spec().Subject.Metrics, cel.Variable("metrics", cel.ObjectType("opentelemetry.proto.metrics.v1.MetricsData")))
+	metrics, err = initCEL(baseEnv, subject.Metrics, cel.Variable("metrics", cel.ObjectType("opentelemetry.proto.metrics.v1.MetricsData")))
 	if err != nil {
-		return nil, errors.Join(ErrCELInvalidMetricsExpression, err)
+		return nil, nil, nil, errors.Join(ErrCELInvalidMetricsExpression, err)
 	}
 
-	traces, err := initCEL(baseEnv, base.Spec().Subject.Traces, cel.Variable("traces", cel.ObjectType("opentelemetry.proto.trace.v1.TracesData")))
+	traces, err = initCEL(baseEnv, subject.Traces, cel.Variable("traces", cel.ObjectType("opentelemetry.proto.trace.v1.TracesData")))
 	if err != nil {
-		return nil, errors.Join(ErrCELInvalidTracesExpression, err)
+		return nil, nil, nil, errors.Join(ErrCELInvalidTracesExpression, err)
 	}
 
-	return &NATS{
-		Sink:      base,
-		natsConn:  nc,
-		jetstream: js,
-		stream:    s,
-		logs:      logs,
-		metrics:   metrics,
-		traces:    traces,
-	}, nil
+	return logs, metrics, traces, nil
 }
 
 func (n *NATS) Notify(ctx context.Context, event *domain.Event) error {

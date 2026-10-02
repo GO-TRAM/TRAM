@@ -565,6 +565,30 @@ func TestMyFunction(t *testing.T) {
 - Use test containers for external dependencies (NATS, etc.)
 - Clean up resources after tests
 
+### Benchmarks
+
+Benchmarks cover the per-event hot path:
+
+| Benchmark | Package | Measures |
+|-----------|---------|----------|
+| `BenchmarkNotifySubscribers` | `source/base`, `stage/base` | Fan-out cost per event and child |
+| `BenchmarkPipeline` | `core` | A full stream with real stages, in records/s |
+| `BenchmarkCELValidator` | `stage/celvalidator` | Expression evaluation per payload size |
+| `BenchmarkGroupEventsBySubjects`, `BenchmarkAppendLogRecord` | `sink/nats` | Splitting batches by subject |
+| `BenchmarkBatch` | `stage/batch` | Batch overhead and merging with concurrent callers |
+| `BenchmarkHandleLogs` | `source/otlp` | Reading and decoding OTLP requests |
+| `BenchmarkOTLPDataRoundTrip` | `core/domain` | Serializing events for NATS |
+
+Build payloads with `internal/testutil/otlpgen` and use `otlpgen.Shapes` so results are comparable across benchmarks. Use `b.Loop()`, call `b.ReportAllocs()`, and report `records/s` for payload-dependent benchmarks.
+
+Compare a change against `main` with [benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat):
+
+```bash
+git switch main && go test -run='^$' -bench=. -benchmem -count=10 ./... > old.txt
+git switch my-branch && go test -run='^$' -bench=. -benchmem -count=10 ./... > new.txt
+benchstat old.txt new.txt
+```
+
 ---
 
 ## 📚 Documentation

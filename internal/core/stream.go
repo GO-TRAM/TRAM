@@ -165,10 +165,15 @@ func (c *Core) stopStream(s *stream) error {
 }
 
 // stopNodes stops every created stage and sink of tree, and the source if
-// includeSource is set.
+// includeSource is set. Nodes are stopped top-down, so a stage that still
+// holds events (like a batch) can flush them to children that are running.
 func stopNodes(tree *domain.Tree, includeSource bool) error {
 	var errs []error
-	for name, node := range tree.Map() {
+	queue := []*domain.Node{tree.Root()}
+	for len(queue) > 0 {
+		node := queue[0]
+		queue = append(queue[1:], node.Children...)
+
 		if node.Kind == domain.KindSource && !includeSource {
 			continue
 		}
@@ -177,7 +182,7 @@ func stopNodes(tree *domain.Tree, includeSource bool) error {
 			continue
 		}
 		if err := stoppable.Stop(); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", name, err))
+			errs = append(errs, fmt.Errorf("%s: %w", node.Name, err))
 		}
 	}
 	return errors.Join(errs...)

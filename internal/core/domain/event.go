@@ -18,6 +18,51 @@ type Event struct {
 	Traces  *tracepb.TracesData
 }
 
+// RecordCount returns the number of records in the event at the lowest level
+// each signal allows: log records, metric data points and spans.
+func (e *Event) RecordCount() int {
+	if e == nil {
+		return 0
+	}
+
+	n := 0
+	for _, rl := range e.Logs.GetResourceLogs() {
+		for _, sl := range rl.GetScopeLogs() {
+			n += len(sl.GetLogRecords())
+		}
+	}
+	for _, rm := range e.Metrics.GetResourceMetrics() {
+		for _, sm := range rm.GetScopeMetrics() {
+			for _, m := range sm.GetMetrics() {
+				n += dataPointCount(m)
+			}
+		}
+	}
+	for _, rs := range e.Traces.GetResourceSpans() {
+		for _, ss := range rs.GetScopeSpans() {
+			n += len(ss.GetSpans())
+		}
+	}
+	return n
+}
+
+func dataPointCount(m *metricspb.Metric) int {
+	switch data := m.GetData().(type) {
+	case *metricspb.Metric_Gauge:
+		return len(data.Gauge.GetDataPoints())
+	case *metricspb.Metric_Sum:
+		return len(data.Sum.GetDataPoints())
+	case *metricspb.Metric_Histogram:
+		return len(data.Histogram.GetDataPoints())
+	case *metricspb.Metric_ExponentialHistogram:
+		return len(data.ExponentialHistogram.GetDataPoints())
+	case *metricspb.Metric_Summary:
+		return len(data.Summary.GetDataPoints())
+	default:
+		return 0
+	}
+}
+
 // Signal identifies the OTLP payload type of serialized event data. LogsData,
 // MetricsData and TracesData share the same wire layout at the top level, so
 // the type cannot be detected from the bytes and has to be carried alongside.
