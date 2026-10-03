@@ -363,6 +363,7 @@ Sinks are the terminal points of a pipeline that consume or export data.
 |------|------|-------------|
 | `debug` | `debug` | Writes events to the log (stderr) for debugging and development |
 | `nats` | `nats` | Publishes OTLP-encoded events to NATS JetStream with dynamic subject mapping |
+| `otlp` | `otlp` | Sends OTLP-encoded events via HTTP to an OpenTelemetry endpoint |
 
 ### Debug Sink
 
@@ -381,6 +382,73 @@ Writes every event to the log on stderr as a `Debug event` record with the attri
   "from": "source"
 }
 ```
+
+### OTLP Sink
+
+Sends OpenTelemetry Protocol data via HTTP to an OTLP-compatible endpoint. Sends logs to `/v1/logs`, metrics to `/v1/metrics`, and traces to `/v1/traces` with a protobuf-encoded body.
+
+**Type:** `otlp`
+
+**Configuration:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `url` | string | Yes | - | OTLP HTTP endpoint URL (e.g., `"http://localhost:4318"`) |
+| `headers` | object | No | - | HTTP headers to send with each request |
+| `timeout` | string | No | `"10s"` | HTTP request timeout as a Go duration (e.g., `"5s"`, `"30s"`) |
+| `insecure` | boolean | No | `false` | Allow connections to servers with invalid TLS certificates |
+
+**Example:**
+
+```json
+{
+  "name": "otlp-sink",
+  "type": "otlp",
+  "from": "source",
+  "spec": {
+    "url": "http://telemetry-collector:4318"
+  }
+}
+```
+
+**Example with authentication and custom timeout:**
+
+```json
+{
+  "name": "secure-otlp-sink",
+  "type": "otlp",
+  "from": "filter-stage",
+  "spec": {
+    "url": "https://telemetry-collector:4318",
+    "timeout": "30s",
+    "headers": {
+      "Authorization": "Bearer your-api-key-here"
+    }
+  }
+}
+```
+
+**Example with invalid certificate acceptance (for testing):**
+
+```json
+{
+  "name": "dev-otlp-sink",
+  "type": "otlp",
+  "from": "source",
+  "spec": {
+    "url": "https://localhost:4318",
+    "insecure": true
+  }
+}
+```
+
+**Behavior Notes:**
+- Each event is sent as a separate HTTP request to the appropriate endpoint based on its signal type
+- Uses protobuf encoding (`application/protobuf` content type) as required by OTLP/HTTP
+- The sink handles URL construction properly, so both `"http://host:4318"` and `"http://host:4318/"` work correctly
+- HTTP errors (non-2xx status codes) are returned to the caller, which may cause retries depending on the source
+- Connection pooling is used for better performance with multiple requests
+- Timeout applies to the entire request lifecycle, including connection establishment and reading the response
 
 ### NATS Sink
 

@@ -8,6 +8,7 @@ import (
 
 	"codeberg.org/eljoth/tram/internal/adapters/sink/debug"
 	"codeberg.org/eljoth/tram/internal/adapters/sink/nats"
+	"codeberg.org/eljoth/tram/internal/adapters/sink/otlp"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
@@ -29,6 +30,8 @@ func (f *Factory) New(spec domain.SinkSpec) (domain.Sink, error) {
 		return debug.New(spec, f.validator, f.logger)
 	case nats.Type:
 		return nats.New(spec, f.validator, f.logger)
+	case otlp.Type:
+		return otlp.New(spec, f.validator, f.logger)
 	default:
 		return nil, fmt.Errorf("%w: %q", domain.ErrInvalidSinkType, spec.Type)
 	}

@@ -20,3 +20,24 @@ func TestFactoryUnknownType(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrInvalidSinkType)
 	assert.ErrorContains(t, err, `"unknown"`)
 }
+
+func TestFactoryOTLPSink(t *testing.T) {
+	t.Parallel()
+
+	factory := sink.NewFactory(slog.New(slog.DiscardHandler))
+	spec := domain.SinkSpec{
+		Name: "otlp-sink",
+		From: "test-source",
+		Type: "otlp",
+		Spec: map[string]any{
+			"url": "http://localhost:4318",
+		},
+	}
+
+	sink, err := factory.New(spec)
+	require.NoError(t, err)
+	assert.NotNil(t, sink)
+	assert.Equal(t, "otlp-sink", sink.Name())
+	assert.Equal(t, "test-source", sink.From())
+	assert.NoError(t, sink.Stop())
+}
