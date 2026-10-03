@@ -1,0 +1,232 @@
+# Tasks for developing Tram. Run `task` to list them, and
+# `task --summary <name>` for details on one. Arguments after `--` are passed
+# on, e.g. `task test:unit -- -run TestBatch`.
+#
+# Install Task from https://taskfile.dev.
+
+version: '3'
+
+vars:
+  BINARY: tram
+  IMAGE: tram:dev
+  # Podman if installed, Docker otherwise; set CONTAINER_TOOL=docker to choose.
+  CONTAINER_TOOL:
+    sh: command -v podman >/dev/null 2>&1 && echo podman || echo docker
+  # The Podman socket inside the Podman machine, where Testcontainers' Ryuk
+  # container mounts it from. For a rootless machine, set it to
+  # /run/user/<uid>/podman/podman.sock.
+  PODMAN_SOCKET: /run/podman/podman.sock
+  # Testcontainers needs this setup with Podman; with Docker it works as is.
+  # The socket override must not be set at all for Docker, even empty.
+  TESTCONTAINERS_ENV: >-
+    {{if eq .CONTAINER_TOOL "podman"}}TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE={{.PODMAN_SOCKET}}
+    TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED=true{{end}}
+
+  # Tool versions installed by `task tools`, matching the generated code.
+  BUF_VERSION: v1.50.0
+  PROTOC_GEN_GO_VERSION: v1.36.5
+  PROTOC_GEN_GO_GRPC_VERSION: v1.5.1
+  GRPC_GATEWAY_VERSION: v2.26.1
+  CONTROLLER_GEN_VERSION: v0.22.0
+  GOLANGCI_LINT_VERSION: v2.14.0
+
+tasks:
+  default:
+    desc: List all tasks
+    silent: true
+    cmds:
+      - task --list
+
+  # --- Build and run -------------------------------------------------------
+
+  build:
+    desc: Build the tram binary
+    sources:
+      - '**/*.go'
+      - go.mod
+      - go.sum
+    generates:
+      - '{{.BINARY}}'
+    cmds:
+      - go build -o {{.BINARY}} ./cmd/tram
+
+  run:
+    desc: Run the server locally (pass flags after --, e.g. -- --enable-file-sync)
+    cmds:
+      - go run ./cmd/tram server {{.CLI_ARGS}}
+
+  generate:
+    desc: Regenerate protobuf, gRPC gateway and swagger code (buf) and the Kubernetes CRD (controller-gen)
+    preconditions:
+      - sh: command -v buf
+        msg: buf is missing; run `task tools`
+      - sh: command -v controller-gen
+        msg: controller-gen is missing; run `task tools`
+    cmds:
+      - go generate ./...
+
+  tidy:
+    desc: Tidy go.mod and go.sum
+    cmds:
+      - go mod tidy
+
+  clean:
+    desc: Remove build and benchmark output
+    cmds:
+      - rm -f {{.BINARY}} benchreport bench.txt coverage.out
+
+  # --- Code quality --------------------------------------------------------
+
+  lint:
+    desc: Run golangci-lint, including go vet
+    cmds:
+      - golangci-lint run ./... {{.CLI_ARGS}}
+
+  fmt:
+    desc: Format the code with the formatters configured for golangci-lint (goimports, golines)
+    cmds:
+      - golangci-lint fmt ./...
+
+  check:
+    desc: Run everything a change should pass, without containers - lint, unit and end-to-end tests
+    cmds:
+      - task: lint
+      - task: test:unit
+      - task: test:e2e
+
+  # --- Tests ---------------------------------------------------------------
+
+  test:
+    desc: Run all tests; tests that need containers are skipped without Docker or Podman
+    cmds:
+      - '{{.TESTCONTAINERS_ENV}} go test -race {{.CLI_ARGS}} ./...'
+
+  test:unit:
+    desc: Run the unit tests of all packages, without the end-to-end tests
+    cmds:
+      - go test -race {{.CLI_ARGS}} $(go list ./... | grep -v /internal/e2e)
+
+  test:e2e:
+    desc: Run the end-to-end pipeline tests that need no containers
+    cmds:
+      - go test -race -skip '^TestNATS$' {{.CLI_ARGS}} ./internal/e2e/
+
+  test:containers:
+    desc: Run the end-to-end tests against NATS in a container (Testcontainers; needs Docker or Podman)
+    summary: |
+      Runs the tests that start a NATS server with Testcontainers. Unlike in
+      `task test`, they fail instead of being skipped if no container runtime
+      is running. Results are never cached, since they depend on the
+      container. With Podman, the socket of the Podman machine is used; see
+      PODMAN_SOCKET for rootless machines.
+    preconditions:
+      - sh: '{{.CONTAINER_TOOL}} info >/dev/null 2>&1'
+        msg: '{{.CONTAINER_TOOL}} is not running; start it first (e.g. `podman machine start`)'
+    cmds:
+      - "{{.TESTCONTAINERS_ENV}} go test -race -count=1 -run '^TestNATS$' {{.CLI_ARGS}} ./internal/e2e/"
+
+  test:cover:
+    desc: Run all tests with coverage and show the total; the full report is in coverage.out
+    cmds:
+      - '{{.TESTCONTAINERS_ENV}} go test -coverprofile=coverage.out ./...'
+      - go tool cover -func=coverage.out | tail -n 1
+      - 'echo "Open the report with: go tool cover -html=coverage.out"'
+
+  # --- Benchmarks ----------------------------------------------------------
+
+  bench:
+    desc: Run benchmarks (BENCH=regexp, PKG=packages, COUNT=runs, BENCHTIME=duration)
+    summary: |
+      Runs the benchmarks one package at a time, so they do not compete for
+      CPU. Benchmarks that need NATS start it in a container and are skipped
+      without Docker or Podman.
+
+        task bench BENCH=Batch PKG=./internal/adapters/stage/batch/
+        task bench COUNT=10 > old.txt
+
+      Compare two runs with `task bench:compare OLD=old.txt NEW=new.txt`.
+    vars:
+      BENCH: '{{.BENCH | default "."}}'
+      PKG: '{{.PKG | default "./..."}}'
+      COUNT: '{{.COUNT | default "1"}}'
+      BENCHTIME: '{{.BENCHTIME | default "1s"}}'
+    cmds:
+      - >-
+        {{.TESTCONTAINERS_ENV}} go test -p 1 -run '^$' -bench '{{.BENCH}}' -benchmem
+        -count {{.COUNT}} -benchtime {{.BENCHTIME}} {{.CLI_ARGS}} {{.PKG}}
+
+  bench:compare:
+    desc: Compare two benchmark outputs with benchstat (OLD=file NEW=file)
+    requires:
+      vars: [OLD, NEW]
+    preconditions:
+      - sh: command -v benchstat
+        msg: benchstat is missing; run `task tools`
+    cmds:
+      - benchstat {{.OLD}} {{.NEW}}
+
+  bench:report:
+    desc: Run all benchmarks and regenerate BENCHMARK.md (takes several minutes, needs Docker or Podman)
+    summary: |
+      Runs tools/benchreport, which runs the benchmarks, writes their results
+      into the generated sections of BENCHMARK.md and saves the raw output to
+      bench.txt. Pass benchreport's flags after --, e.g. `-- -count 5`.
+      Rebuild the page from bench.txt without running the benchmarks again
+      with `task bench:report:from-raw`.
+    preconditions:
+      - sh: '{{.CONTAINER_TOOL}} info >/dev/null 2>&1'
+        msg: '{{.CONTAINER_TOOL}} is not running; start it first (e.g. `podman machine start`)'
+    cmds:
+      - '{{.TESTCONTAINERS_ENV}} go run ./tools/benchreport -raw bench.txt {{.CLI_ARGS}}'
+
+  bench:report:from-raw:
+    desc: Regenerate BENCHMARK.md from the benchmark output saved in bench.txt
+    preconditions:
+      - sh: test -f bench.txt
+        msg: bench.txt is missing; run `task bench:report` first
+    cmds:
+      - go run ./tools/benchreport -input bench.txt {{.CLI_ARGS}}
+
+  # --- Container image -----------------------------------------------------
+
+  image:build:
+    desc: Build the container image (IMAGE=name, default tram:dev)
+    cmds:
+      - '{{.CONTAINER_TOOL}} build -t {{.IMAGE}} .'
+
+  image:run:
+    desc: Run the container image with the HTTP and gRPC APIs on localhost:8080 and localhost:50051
+    deps: [image:build]
+    cmds:
+      - '{{.CONTAINER_TOOL}} run --rm -p 8080:8080 -p 50051:50051 {{.IMAGE}} {{.CLI_ARGS}}'
+
+  # --- Local services ------------------------------------------------------
+
+  nats:up:
+    desc: Start a local NATS server with JetStream on localhost:4222
+    cmds:
+      - '{{.CONTAINER_TOOL}} compose -f setup/nats/docker-compose.yaml up -d'
+
+  nats:down:
+    desc: Stop the local NATS server
+    cmds:
+      - '{{.CONTAINER_TOOL}} compose -f setup/nats/docker-compose.yaml down'
+
+  k8s:crd:
+    desc: Install the Stream CRD into the current Kubernetes context
+    cmds:
+      - kubectl apply -f internal/adapters/k8scrd/config/crd/bases/io.tram.core_streams.yaml
+
+  # --- Tools ---------------------------------------------------------------
+
+  tools:
+    desc: Install the tools for code generation, linting and benchmark comparison into GOBIN
+    cmds:
+      - go install github.com/bufbuild/buf/cmd/buf@{{.BUF_VERSION}}
+      - go install google.golang.org/protobuf/cmd/protoc-gen-go@{{.PROTOC_GEN_GO_VERSION}}
+      - go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@{{.PROTOC_GEN_GO_GRPC_VERSION}}
+      - go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@{{.GRPC_GATEWAY_VERSION}}
+      - go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@{{.GRPC_GATEWAY_VERSION}}
+      - go install sigs.k8s.io/controller-tools/cmd/controller-gen@{{.CONTROLLER_GEN_VERSION}}
+      - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}}
+      - go install golang.org/x/perf/cmd/benchstat@latest

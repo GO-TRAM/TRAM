@@ -22,12 +22,13 @@ Thank you for your interest in contributing to Tram! This document provides guid
 ### Prerequisites
 
 - Go 1.26+
-- Docker, optional, to run a NATS server for the `nats` source and sink
+- [Task](https://taskfile.dev), recommended, to run the common commands (see [Tasks](#tasks))
+- Docker or Podman, optional, for the container image, a local NATS server and the tests and benchmarks that use Testcontainers
 
-Only needed to regenerate code (`go generate ./...`):
+Only needed to regenerate code (`task generate`), installed with `task tools`:
 
 - [buf](https://buf.build/) and the protoc plugins used in `buf.gen.yaml`
-- [controller-gen](https://book.kubebuilder.io/reference/controller-gen) v0.22.0 for the Kubernetes CRD and deepcopy code
+- [controller-gen](https://book.kubebuilder.io/reference/controller-gen) for the Kubernetes CRD and deepcopy code
 
 ### Install Dependencies
 
@@ -39,21 +40,43 @@ cd tram
 # Install Go dependencies
 go mod download
 
-# Code generators (only needed for go generate)
-go install github.com/bufbuild/buf/cmd/buf@latest
-go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
-go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@latest
-go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.22.0
+# Code generators, golangci-lint and benchstat, in the versions the
+# generated code was made with (see the versions in Taskfile.yml)
+task tools
 
 # Optional: NATS with JetStream for the nats source and sink
-docker compose -f setup/nats/docker-compose.yaml up -d
+task nats:up
 ```
 
 ---
 
 ## 💻 Development Environment
+
+### Tasks
+
+`Taskfile.yml` holds the common commands. `task` lists them, `task --summary <name>` explains one, and arguments after `--` are passed on, e.g. `task test:unit -- -run TestBatch -v`.
+
+| Task | What it does |
+|------|--------------|
+| `task build` / `task run` | Build the binary, or run the server (`task run -- --enable-file-sync`) |
+| `task check` | Lint, unit and end-to-end tests: what a change should pass |
+| `task test` | All tests; tests that need containers are skipped without Docker or Podman |
+| `task test:unit` / `task test:e2e` | Unit tests only, or the end-to-end tests that need no containers |
+| `task test:containers` | End-to-end tests against NATS in a container; fails if no container runtime runs |
+| `task test:cover` | All tests with coverage, written to `coverage.out` |
+| `task lint` / `task fmt` | golangci-lint (including go vet), or format with its configured formatters |
+| `task generate` | Regenerate protobuf, gateway and swagger code and the Kubernetes CRD |
+| `task bench` | Benchmarks, e.g. `task bench BENCH=Batch PKG=./internal/adapters/stage/batch/` |
+| `task bench:compare` | Compare two benchmark outputs with benchstat |
+| `task bench:report` | Run all benchmarks and regenerate [BENCHMARK.md](BENCHMARK.md) |
+| `task image:build` / `task image:run` | Build the container image `tram:dev`, or run it with the APIs on localhost |
+| `task nats:up` / `task nats:down` | Start or stop a local NATS server with JetStream |
+| `task k8s:crd` | Install the Stream CRD into the current Kubernetes context |
+| `task tools` | Install the code generators, golangci-lint and benchstat |
+
+Container tasks use Podman if it is installed and Docker otherwise; set `CONTAINER_TOOL=docker` to choose. With Podman, the test and benchmark tasks also set up Testcontainers for the Podman machine (see [Benchmarks](#benchmarks)).
+
+The sections below show the underlying commands.
 
 ### Build the Project
 
@@ -459,24 +482,24 @@ var _ domain.Sink = (*Webhook)(nil)
 
 ### Before Submitting
 
-1. **Run tests**: Ensure all tests pass
+1. **Generate code**: Make sure all code is generated
    ```bash
-   go test ./...
+   task generate
    ```
 
-2. **Generate code**: Make sure all code is generated
+2. **Format code**: Use the formatters configured for golangci-lint
    ```bash
-   go generate ./...
+   task fmt
    ```
 
-3. **Format code**: Use gofmt for consistent formatting
+3. **Lint and test**: Ensure linting and all tests pass
    ```bash
-   gofmt -w .
+   task check
    ```
 
-4. **Check linting**: Run static analysis
+4. **Test against NATS**: If you changed the NATS source or sink, also run the container tests
    ```bash
-   go vet ./...
+   task test:containers
    ```
 
 ### Pull Request Requirements
@@ -619,9 +642,9 @@ Benchmarks cover the per-event hot path:
 | `BenchmarkOTLPDataRoundTrip` | `core/domain` | Serializing events for NATS |
 | `BenchmarkScenario` | `scenario` | Complete pipelines end to end: throughput, CPU per record, latency (container) |
 
-[BENCHMARK.md](BENCHMARK.md) presents these results. After performance-relevant changes, regenerate it with `go run ./tools/benchreport` (see the page for details); add new scenarios to `internal/scenario` and new components to the lists in `tools/benchreport`.
+[BENCHMARK.md](BENCHMARK.md) presents these results. After performance-relevant changes, regenerate it with `task bench:report` (see the page for details); add new scenarios to `internal/scenario` and new components to the lists in `tools/benchreport`.
 
-Benchmarks marked "container" start a NATS server with [Testcontainers](https://golang.testcontainers.org/) via `internal/testutil/natstest`. They need Docker or Podman and are skipped if neither is running. With Podman on macOS, point Testcontainers to the socket inside the Podman VM:
+Benchmarks marked "container" start a NATS server with [Testcontainers](https://golang.testcontainers.org/) via `internal/testutil/natstest`. They need Docker or Podman and are skipped if neither is running. With Podman on macOS, point Testcontainers to the socket inside the Podman VM; the tasks do this for you when Podman is installed (for a rootless machine, set `PODMAN_SOCKET=/run/user/<uid>/podman/podman.sock`):
 
 ```bash
 export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/run/podman/podman.sock
@@ -633,9 +656,9 @@ Build payloads with `internal/testutil/otlpgen` and use `otlpgen.Shapes` so resu
 Compare a change against `main` with [benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat):
 
 ```bash
-git switch main && go test -p 1 -run='^$' -bench=. -benchmem -count=10 ./... > old.txt
-git switch my-branch && go test -p 1 -run='^$' -bench=. -benchmem -count=10 ./... > new.txt
-benchstat old.txt new.txt
+git switch main && task bench COUNT=10 > old.txt
+git switch my-branch && task bench COUNT=10 > new.txt
+task bench:compare OLD=old.txt NEW=new.txt
 ```
 
 `-p 1` runs one package at a time. Without it, `go test` benchmarks several packages in parallel, which then compete for CPU and distort each other's results. Other load on the machine, like a container VM that is just starting, has the same effect; check the spread between runs before trusting a result.

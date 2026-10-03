@@ -14,3 +14,9 @@ bench.txt
 
 # Knowledge graph built locally by graphify
 graphify-out/
+
+# Coverage profile of task test:cover
+coverage.out
+
+# Checksums Task keeps to skip up-to-date tasks
+.task/
