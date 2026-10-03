@@ -42,7 +42,7 @@ func newSource(t *testing.T, subscriberErr error) (*otlp.OTLP, *recorder) {
 	require.NoError(t, err)
 	rec := &recorder{err: subscriberErr}
 	require.NoError(t, src.Subscribe(rec))
-	return &otlp.OTLP{Source: src}, rec
+	return otlp.NewWithoutListener(src, otlp.DefaultDeliveryTimeout), rec
 }
 
 func gzipped(t *testing.T, data []byte) []byte {

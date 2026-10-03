@@ -32,9 +32,19 @@ const (
 	// maxBodyBytes matches the OpenTelemetry Collector's default request size limit.
 	maxBodyBytes = 20 << 20
 
-	readTimeout  = 5 * time.Second
-	writeTimeout = 10 * time.Second
-	idleTimeout  = 15 * time.Second
+	readHeaderTimeout = 5 * time.Second
+	// readTimeout bounds reading a whole request. It is generous, because a
+	// body of up to maxBodyBytes can take a while on a slow connection.
+	readTimeout = time.Minute
+	idleTimeout = 15 * time.Second
+
+	// defaultDeliveryTimeout bounds passing a request on, so the client gets
+	// a retryable answer before it gives up itself: OpenTelemetry SDK
+	// exporters wait 10s by default.
+	defaultDeliveryTimeout = 8 * time.Second
+	// responseWriteTimeout bounds writing the response once the request was
+	// passed on, so a client that stops reading cannot hold the connection.
+	responseWriteTimeout = 10 * time.Second
 )
 
 const (
@@ -56,12 +66,26 @@ type OTLP struct {
 	logger     *slog.Logger
 	listener   net.Listener
 	httpServer *http.Server
+
+	deliveryTimeout      time.Duration
+	responseWriteTimeout time.Duration
 }
 
 func New(source domain.SourceSpec, validator *validator.Validate, logger *slog.Logger) (*OTLP, error) {
 	base, err := base.New[Spec](source.Name, source.Spec, validator)
 	if err != nil {
 		return nil, err
+	}
+
+	deliveryTimeout := defaultDeliveryTimeout
+	if raw := base.Spec().DeliveryTimeout; raw != "" {
+		deliveryTimeout, err = time.ParseDuration(raw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid delivery_timeout: %w", err)
+		}
+		if deliveryTimeout <= 0 {
+			return nil, fmt.Errorf("invalid delivery_timeout: %s is not positive", raw)
+		}
 	}
 
 	// Bind right away so a taken port fails stream creation instead of
@@ -73,9 +97,11 @@ func New(source domain.SourceSpec, validator *validator.Validate, logger *slog.L
 	}
 
 	o := &OTLP{
-		Source:   base,
-		logger:   logger,
-		listener: listener,
+		Source:               base,
+		logger:               logger,
+		listener:             listener,
+		deliveryTimeout:      deliveryTimeout,
+		responseWriteTimeout: responseWriteTimeout,
 	}
 
 	mux := http.NewServeMux()
@@ -83,11 +109,15 @@ func New(source domain.SourceSpec, validator *validator.Validate, logger *slog.L
 	mux.HandleFunc("POST /v1/metrics", o.handleMetrics)
 	mux.HandleFunc("POST /v1/logs", o.handleLogs)
 
+	// The server sets no WriteTimeout: it would also run while the request is
+	// passed on, and cut the connection after a slow but successful delivery,
+	// so the client retries data that arrived. handle bounds the delivery and
+	// the response write separately instead.
 	o.httpServer = &http.Server{
-		Handler:      mux,
-		ReadTimeout:  readTimeout,
-		WriteTimeout: writeTimeout,
-		IdleTimeout:  idleTimeout,
+		Handler:           mux,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		IdleTimeout:       idleTimeout,
 	}
 
 	return o, nil
@@ -117,15 +147,41 @@ func (o *OTLP) handleTraces(w http.ResponseWriter, r *http.Request) {
 	o.handle(w, r, traces, &domain.Event{Traces: traces})
 }
 
-// handle decodes the request body into msg, which event points to, and passes
-// the event on to subscribers.
+// handle decodes the request body into msg, which event points to, passes
+// the event on to subscribers and answers the request.
 func (o *OTLP) handle(w http.ResponseWriter, r *http.Request, msg proto.Message, event *domain.Event) {
 	defer r.Body.Close()
 
+	contentType, status, message := o.receive(w, r, msg, event)
+
+	// The deadline starts now, after the delivery, which may take a while.
+	// Recorders in tests do not support it, which is fine to ignore.
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(o.responseWriteTimeout))
+
+	if status != http.StatusOK {
+		http.Error(w, message, status)
+		return
+	}
+	// An empty Export*ServiceResponse encodes to no bytes in protobuf and to
+	// {} in JSON.
+	w.Header().Set("Content-Type", contentType)
+	w.WriteHeader(http.StatusOK)
+	if contentType == contentTypeJSON {
+		_, _ = w.Write([]byte("{}"))
+	}
+}
+
+// receive reads and decodes a request and passes it on. It returns the
+// content type of the request, and the status and message to answer with.
+func (o *OTLP) receive(
+	w http.ResponseWriter,
+	r *http.Request,
+	msg proto.Message,
+	event *domain.Event,
+) (string, int, string) {
 	contentType, ok := requestContentType(r)
 	if !ok {
-		http.Error(w, "Unsupported content type", http.StatusUnsupportedMediaType)
-		return
+		return "", http.StatusUnsupportedMediaType, "Unsupported content type"
 	}
 
 	body, err := readBody(w, r)
@@ -133,13 +189,12 @@ func (o *OTLP) handle(w http.ResponseWriter, r *http.Request, msg proto.Message,
 		_, maxBytesExceeded := errors.AsType[*http.MaxBytesError](err)
 		switch {
 		case maxBytesExceeded || errors.Is(err, errBodyTooLarge):
-			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			return "", http.StatusRequestEntityTooLarge, "Request body too large"
 		case errors.Is(err, errUnsupportedEncoding):
-			http.Error(w, "Unsupported content encoding", http.StatusUnsupportedMediaType)
+			return "", http.StatusUnsupportedMediaType, "Unsupported content encoding"
 		default:
-			http.Error(w, "Error reading request body", http.StatusBadRequest)
+			return "", http.StatusBadRequest, "Error reading request body"
 		}
-		return
 	}
 
 	if contentType == contentTypeJSON {
@@ -148,27 +203,23 @@ func (o *OTLP) handle(w http.ResponseWriter, r *http.Request, msg proto.Message,
 		err = proto.Unmarshal(body, msg)
 	}
 	if err != nil {
-		http.Error(w, "Error parsing request body", http.StatusBadRequest)
-		return
+		return "", http.StatusBadRequest, "Error parsing request body"
 	}
 
-	if err = o.NotifySubscribers(r.Context(), event); err != nil {
+	// A delivery that takes too long is cancelled, so the client gets a
+	// retryable answer before it gives up, and the data it sends again was
+	// most likely not delivered yet. A batch that is already being sent is
+	// still awaited, since it holds data of other requests too.
+	ctx, cancel := context.WithTimeout(r.Context(), o.deliveryTimeout)
+	defer cancel()
+	if err = o.NotifySubscribers(ctx, event); err != nil {
 		if errors.Is(err, domain.ErrEventRejected) {
-			http.Error(w, "Event rejected", http.StatusBadRequest)
-			return
+			return "", http.StatusBadRequest, "Event rejected"
 		}
 		// OTLP clients retry on 503, but drop the data on 500.
-		http.Error(w, "Error notifying subscribers", http.StatusServiceUnavailable)
-		return
+		return "", http.StatusServiceUnavailable, "Error notifying subscribers"
 	}
-
-	// An empty Export*ServiceResponse encodes to no bytes in protobuf and to
-	// {} in JSON.
-	w.Header().Set("Content-Type", contentType)
-	w.WriteHeader(http.StatusOK)
-	if contentType == contentTypeJSON {
-		_, _ = w.Write([]byte("{}"))
-	}
+	return contentType, http.StatusOK, ""
 }
 
 // requestContentType returns the content type of an OTLP request, normalized

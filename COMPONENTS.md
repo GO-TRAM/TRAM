@@ -51,6 +51,7 @@ Receives OpenTelemetry Protocol data over HTTP (OTLP/HTTP). OTLP over gRPC is no
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `http_port` | int | Yes | - | Port to listen on, on all network interfaces |
+| `delivery_timeout` | string | No | `"8s"` | Maximum time to pass a request on to the stages and sinks, as a Go duration. A request that takes longer is cancelled and answered with `503`, which clients retry |
 
 **Example:**
 
@@ -68,7 +69,9 @@ Receives OpenTelemetry Protocol data over HTTP (OTLP/HTTP). OTLP over gRPC is no
 - Accepts `POST` requests on `/v1/logs`, `/v1/metrics` and `/v1/traces` with a protobuf (`application/x-protobuf`) or JSON (`application/json`) body. Requests without a content type are read as protobuf
 - Bodies may be compressed with `Content-Encoding: gzip`
 - Each request becomes one event and is passed on as a whole
-- Responses: `200` with an empty response message in the request's encoding once all sinks have accepted the data, `400` for a malformed body or data rejected by a stage (e.g. `cel_validator` with `on_mismatch: reject`), `413` for bodies larger than 20 MiB (also after decompression), `415` for other content types or encodings, `503` if passing the data on failed, which OTLP clients retry
+- Responses: `200` with an empty response message in the request's encoding once all sinks have accepted the data, `400` for a malformed body or data rejected by a stage (e.g. `cel_validator` with `on_mismatch: reject`), `413` for bodies larger than 20 MiB (also after decompression), `415` for other content types or encodings, `503` if passing the data on failed or took longer than `delivery_timeout`, which OTLP clients retry
+- The default `delivery_timeout` is below the 10s that OpenTelemetry SDK exporters wait by default, so they get the `503` before they give up. Raise it for pipelines that take longer, e.g. with a `delay` stage or slow sinks, and for clients that wait longer, like the OpenTelemetry Collector (30s by default). A batch that is already being sent when the timeout expires is still awaited, since it holds data of other requests too
+- A request may take up to 1 minute to send, which leaves time for large bodies on slow connections
 - The port is opened when the stream is created, so a port that is already in use fails the stream creation
 
 ### NATS Source
@@ -305,7 +308,7 @@ Merges events that arrive concurrently into one event, so downstream components 
 **Behavior Notes:**
 - Batching happens in memory only. Each caller waits until its batch has been delivered and receives the delivery result, so sources keep acknowledging or rejecting exactly what was delivered, and a slow downstream slows the sources down instead of growing the buffer
 - Batching only helps when events arrive concurrently, e.g. parallel OTLP requests or a NATS source with several `workers`. A source that sends one event at a time only adds `timeout` to its latency
-- If a caller's context is cancelled (e.g. the OTLP client disconnects) before the batch flushes, its event is withdrawn and not delivered. Once the flush has started, the event is delivered and the caller waits for the result
+- If a caller's context is cancelled (e.g. the OTLP client disconnects or the OTLP source's `delivery_timeout` expires) before the batch flushes, its event is withdrawn and not delivered. Once the flush has started, the event is delivered and the caller waits for the result
 - A delivery error, including a rejection by a later stage, applies to every event in the batch. Place `cel_validator` stages with `on_mismatch: reject` before the batch, so one invalid event does not reject the others
 - Events are merged by concatenating their resource entries. Resources and scopes that appear in several events are kept as separate entries, which OTLP allows
 - On shutdown, the open batch is delivered before downstream stages and sinks stop
@@ -334,6 +337,9 @@ Holds every event back for a fixed duration before passing it on. The caller wai
   }
 }
 ```
+
+**Behavior Notes:**
+- Behind an OTLP source, the delay counts toward the source's `delivery_timeout` (8s by default). Raise it for longer delays, or every request is answered with `503`
 
 ### No-op Stage
 
