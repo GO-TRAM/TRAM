@@ -20,3 +20,5 @@ coverage.out
 
 # Checksums Task keeps to skip up-to-date tasks
 .task/
+
+.claude/
