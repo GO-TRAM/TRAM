@@ -30,3 +30,20 @@ func Unwrap(subscriber domain.Subscriber) domain.Subscriber {
 	}
 	return subscriber
 }
+
+// SourceChildren returns the subscribers a source delivers to through the
+// fan-out the core gave it, unwrapped. subscribers are the subscribers of the
+// source, which hold just that fan-out.
+func SourceChildren(subscribers []domain.Subscriber) []domain.Subscriber {
+	var children []domain.Subscriber
+	for _, subscriber := range subscribers {
+		f, ok := Unwrap(subscriber).(*fanout)
+		if !ok {
+			return nil
+		}
+		for _, child := range f.children {
+			children = append(children, Unwrap(child))
+		}
+	}
+	return children
+}

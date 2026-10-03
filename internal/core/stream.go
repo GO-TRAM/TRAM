@@ -113,12 +113,13 @@ func (c *Core) createReceivers(tree *domain.Tree) error {
 	return nil
 }
 
-// wire subscribes every node to its parent. With includeRoot unset, the
-// root's children are left out.
+// wire subscribes every node to its parent. The root's children are not
+// subscribed to the source themselves; with includeRoot set, the source gets
+// a fan-out to them, see sourceSubscriber.
 func (c *Core) wire(tree *domain.Tree, includeRoot bool) error {
 	root := tree.Root()
 	for _, node := range tree.Map() {
-		if node.Parent == nil || (node.Parent == root && !includeRoot) {
+		if node.Parent == nil || node.Parent == root {
 			continue
 		}
 		observer, err := node.Parent.GetObserver()
@@ -133,7 +134,19 @@ func (c *Core) wire(tree *domain.Tree, includeRoot bool) error {
 			return err
 		}
 	}
-	return nil
+	if !includeRoot {
+		return nil
+	}
+
+	source, err := root.GetObserver()
+	if err != nil {
+		return err
+	}
+	subscriber, err := c.sourceSubscriber(tree)
+	if err != nil {
+		return err
+	}
+	return source.Subscribe(subscriber)
 }
 
 // subscriber returns the subscriber of node, wrapped so that it is measured.
@@ -144,6 +157,22 @@ func (c *Core) subscriber(tree *domain.Tree, node *domain.Node) (domain.Subscrib
 		return nil, err
 	}
 	return c.metrics.instrument(tree.Spec.Name, node, subscriber), nil
+}
+
+// sourceSubscriber returns the subscriber the source of tree delivers to: a
+// fan-out to the source's children, measured as the source. Every source
+// gets its subscriber from here.
+func (c *Core) sourceSubscriber(tree *domain.Tree) (domain.Subscriber, error) {
+	root := tree.Root()
+	children := make([]domain.Subscriber, 0, len(root.Children))
+	for _, child := range root.Children {
+		subscriber, err := c.subscriber(tree, child)
+		if err != nil {
+			return nil, err
+		}
+		children = append(children, subscriber)
+	}
+	return c.metrics.instrument(tree.Spec.Name, root, &fanout{name: root.Name, children: children}), nil
 }
 
 // replaceReceivers updates a running stream whose source is unchanged: it
@@ -163,18 +192,14 @@ func (c *Core) replaceReceivers(old *stream, tree *domain.Tree) error {
 		return err
 	}
 
-	children := make([]domain.Subscriber, 0, len(tree.Root().Children))
-	for _, child := range tree.Root().Children {
-		subscriber, childErr := c.subscriber(tree, child)
-		if childErr != nil {
-			return childErr
-		}
-		children = append(children, subscriber)
+	subscriber, err := c.sourceSubscriber(tree)
+	if err != nil {
+		return err
 	}
 
 	// Waits for events still being delivered to the old stages and sinks, so
 	// they can be stopped right after.
-	source.SetSubscribers(children)
+	source.SetSubscribers([]domain.Subscriber{subscriber})
 	if err = stopNodes(old.tree, false); err != nil {
 		c.logger.ErrorContext(c.ctx, "Could not cleanly stop replaced components of stream",
 			slog.String("stream", tree.Spec.Name), slog.Any("error", err))

@@ -421,8 +421,9 @@ func TestUpsertWithUnchangedSourceReplacesOnlyStagesAndSinks(t *testing.T) {
 
 	require.Len(t, reg.sources, 1)
 	source := reg.sources[0]
-	assert.Equal(t, []string{"filter"}, names(source.subs), "the running source delivers to the new stage")
-	assert.Equal(t, []string{"new"}, names(core.Unwrap(source.subs[0]).(*fakeStage).subs))
+	children := core.SourceChildren(source.subs)
+	assert.Equal(t, []string{"filter"}, names(children), "the running source delivers to the new stage")
+	assert.Equal(t, []string{"new"}, names(children[0].(*fakeStage).subs))
 
 	got, err := c.GetStream(t.Context(), "stream")
 	require.NoError(t, err)
@@ -447,7 +448,12 @@ func TestUpsertWithUnchangedSourceLeavesStreamUntouchedOnFailure(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrStreamBuildFailed)
 
 	assert.Equal(t, []string{"a"}, reg.stoppedNames(), "only the sink created for the failed update is stopped")
-	assert.Equal(t, []string{"old"}, names(reg.sources[0].subs), "the source still delivers to the old sink")
+	assert.Equal(
+		t,
+		[]string{"old"},
+		names(core.SourceChildren(reg.sources[0].subs)),
+		"the source still delivers to the old sink",
+	)
 
 	got, err := c.GetStream(t.Context(), "stream")
 	require.NoError(t, err)
