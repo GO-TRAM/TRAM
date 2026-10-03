@@ -1,7 +1,12 @@
 package nats
 
 import (
+	"context"
+	"errors"
+	"log/slog"
+
 	"github.com/go-playground/validator/v10"
+	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
 	"codeberg.org/eljoth/tram/internal/adapters/sink/base"
@@ -14,8 +19,21 @@ type Message struct {
 	Event   *domain.Event
 }
 
+// errNoConnection is returned by every publish of a sink built with
+// NewWithoutConnection.
+var errNoConnection = errors.New("sink has no NATS connection")
+
+// noConnection is a JetStream client whose publishes fail.
+type noConnection struct {
+	jetstream.JetStream
+}
+
+func (noConnection) PublishMsg(context.Context, *nats.Msg, ...jetstream.PublishOpt) (*jetstream.PubAck, error) {
+	return nil, errNoConnection
+}
+
 // NewWithoutConnection builds a sink that can group events but has no NATS
-// connection to publish them.
+// connection to publish them; publishing fails.
 func NewWithoutConnection(spec map[string]any, validator *validator.Validate) (*NATS, error) {
 	b, err := base.New[Spec]("nats", "in", spec, validator)
 	if err != nil {
@@ -25,7 +43,12 @@ func NewWithoutConnection(spec map[string]any, validator *validator.Validate) (*
 	if err != nil {
 		return nil, err
 	}
-	return &NATS{Sink: b, subjects: compiled}, nil
+	return &NATS{
+		Sink:      b,
+		subjects:  compiled,
+		logger:    slog.New(slog.DiscardHandler),
+		jetstream: noConnection{},
+	}, nil
 }
 
 func SubjectCovers(pattern, subject string) bool {

@@ -186,9 +186,12 @@ func getAttr(args ...ref.Val) ref.Val {
 func (n *NATS) Notify(ctx context.Context, event *domain.Event) error {
 	messages, err := n.groupEventsBySubjects(event)
 	if err != nil {
-		n.logger.ErrorContext(ctx, "Could not resolve subject, dropping event",
+		// Resolving the subjects of the same event fails the same way again,
+		// so the event is rejected instead of retried. It must not count as
+		// delivered either, which would lose it silently.
+		n.logger.WarnContext(ctx, "Could not resolve subject, rejecting event",
 			slog.String("sink", n.Name()), slog.Any("error", err))
-		return nil
+		return fmt.Errorf("%w: could not resolve subject: %w", domain.ErrEventRejected, err)
 	}
 
 	for _, m := range messages {

@@ -185,7 +185,7 @@ func TestNotify(t *testing.T) {
 		unmarshaled := &logspb.LogsData{}
 		err = proto.Unmarshal(receivedBody, unmarshaled)
 		require.NoError(t, err)
-		assert.Len(t, unmarshaled.ResourceLogs, 1)
+		assert.Len(t, unmarshaled.GetResourceLogs(), 1)
 	})
 
 	t.Run("successful metrics delivery", func(t *testing.T) {
@@ -236,7 +236,7 @@ func TestNotify(t *testing.T) {
 		unmarshaled := &metricspb.MetricsData{}
 		err = proto.Unmarshal(receivedBody, unmarshaled)
 		require.NoError(t, err)
-		assert.Len(t, unmarshaled.ResourceMetrics, 1)
+		assert.Len(t, unmarshaled.GetResourceMetrics(), 1)
 	})
 
 	t.Run("event with several signals", func(t *testing.T) {

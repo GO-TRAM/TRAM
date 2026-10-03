@@ -536,6 +536,7 @@ Signals without an expression are not published by this sink.
 - Records are grouped by their resolved subject and published as one OTLP message per subject and signal type, so different signal types may share a subject. Each message has a `Tram-Signal` header with the signal type, which the [NATS Source](#nats-source) needs to decode it
 - Records keep their resource and scope. If all records of a signal type resolve to the same subject, the payload is published unchanged. Resources that appear in several entries of an event, e.g. after a `batch` stage, stay separate entries in the message, which OTLP allows
 - The `register` subjects configure the stream, while the CEL expressions determine the subject of each record. Records whose subject is not covered by `register` cannot be published
+- An event is rejected if a subject expression fails for one of its records, or resolves to an invalid subject: one with an empty token, whitespace or a wildcard. `get_attr` returns `""` for a missing attribute, so `'logs.' + ...get_attr('team')` gives the invalid `logs.` for records without it. The OTLP source answers with HTTP 400, the NATS source terminates the message instead of redelivering it
 - If a CEL expression fails to evaluate or returns a non-string value, the whole event is dropped with an error log and nothing of it is published
 - If publishing fails, the error is reported back to the source, e.g. the NATS source redelivers the message
 

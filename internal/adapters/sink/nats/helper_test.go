@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
+	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	"google.golang.org/protobuf/proto"
 
 	natssink "codeberg.org/eljoth/tram/internal/adapters/sink/nats"
@@ -225,6 +226,40 @@ func TestGroupEventsBySubjectsRequiresStringSubject(t *testing.T) {
 		&domain.Event{Logs: otlpgen.Logs(otlpgen.Shape{Records: 1, Resources: 1})},
 	)
 	assert.Error(t, err)
+}
+
+// An event whose subject cannot be resolved fails the same way on every
+// retry. It is rejected, so the source neither acknowledges it as delivered
+// nor asks for it again.
+func TestNotifyRejectsUnresolvableSubject(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		subject string
+	}{
+		{name: "evaluation fails", subject: "'logs.' + logs.resource_logs[0].scope_logs[1].scope.name"},
+		{name: "missing attribute", subject: "'logs.' + logs.resource_logs[0].resource.attributes.get_attr('team')"},
+		{name: "whitespace", subject: "'logs.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')"},
+		{name: "wildcard", subject: "'logs.>'"},
+	}
+
+	event := &domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{
+		Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{
+			Key:   "service.name",
+			Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "my shop"}},
+		}}},
+		ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{}}}},
+	}}}}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			sink := newSink(t, map[string]any{"logs": c.subject})
+			assert.ErrorIs(t, sink.Notify(t.Context(), event), domain.ErrEventRejected)
+		})
+	}
 }
 
 // No event variable is provided, so a subject using it must fail when the

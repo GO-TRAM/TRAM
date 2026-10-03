@@ -2,6 +2,7 @@ package nats
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/interpreter"
@@ -286,7 +287,28 @@ func evalSubject(program cel.Program, vars *activation) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("CEL expression returned %T instead of a string", out.Value())
 	}
+	if err = validSubject(subject); err != nil {
+		return "", err
+	}
 	return subject, nil
+}
+
+// validSubject reports why a message cannot be published to subject: NATS
+// needs tokens that are not empty, contain no whitespace and are no
+// wildcards. An expression like 'logs.' + attributes.get_attr('team') gives
+// "logs." for records without the attribute.
+func validSubject(subject string) error {
+	for token := range strings.SplitSeq(subject, ".") {
+		switch {
+		case token == "":
+			return fmt.Errorf("subject %q has an empty token", subject)
+		case token == "*" || token == ">":
+			return fmt.Errorf("subject %q contains a wildcard", subject)
+		case strings.ContainsAny(token, " \t\r\n"):
+			return fmt.Errorf("subject %q contains whitespace", subject)
+		}
+	}
+	return nil
 }
 
 func allEqual(subjects []string) bool {
