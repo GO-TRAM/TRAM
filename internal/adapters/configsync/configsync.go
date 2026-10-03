@@ -68,6 +68,12 @@ func New(c ports.Core, dir string, logger *slog.Logger) (*ConfigSync, error) {
 func (c *ConfigSync) Run(ctx context.Context) error {
 	c.logger.InfoContext(ctx, "Starting configuration sync", slog.String("directory", c.dir))
 
+	// Cancelling on return unregisters the watch, so the core never blocks
+	// on a channel nobody reads anymore. Derived before the goroutine below
+	// starts, which reads ctx.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	go func() {
 		for event := range c.watcher.Events {
 			c.logger.DebugContext(ctx, "Received file system event",
@@ -75,11 +81,6 @@ func (c *ConfigSync) Run(ctx context.Context) error {
 			c.fsEvents <- event
 		}
 	}()
-
-	// Cancelling on return unregisters the watch, so the core never blocks
-	// on a channel nobody reads anymore.
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	ch := make(chan domain.StreamSpecWatchEvent)
 	if err := c.core.Watch(ctx, ch); err != nil {
@@ -115,9 +116,11 @@ func (c *ConfigSync) Run(ctx context.Context) error {
 }
 
 // sync makes the core's streams match the stream files: it creates or
-// updates a stream for every file and deletes streams without a file.
+// updates a stream for every file and deletes streams without a file. A
+// stream whose file cannot be read is left as it is, because deleting it
+// would also remove the file, e.g. while an editor is still saving it.
 func (c *ConfigSync) sync(ctx context.Context) error {
-	files, err := c.readStreamFiles(ctx)
+	files, unreadable, err := c.readStreamFiles(ctx)
 	if err != nil {
 		return err
 	}
@@ -128,6 +131,11 @@ func (c *ConfigSync) sync(ctx context.Context) error {
 	}
 	for _, stream := range configured {
 		if _, ok := files[stream.Name]; ok {
+			continue
+		}
+		if _, ok := unreadable[stream.Name]; ok {
+			c.logger.WarnContext(ctx, "Keeping stream whose file cannot be read",
+				slog.String("stream", stream.Name))
 			continue
 		}
 		c.logger.DebugContext(ctx, "Deleting stream", slog.String("stream", stream.Name))
@@ -147,30 +155,32 @@ func (c *ConfigSync) sync(ctx context.Context) error {
 	return nil
 }
 
-// readStreamFiles reads all stream files, keyed by stream name. Files that
-// cannot be read are skipped.
-func (c *ConfigSync) readStreamFiles(ctx context.Context) (map[string]Stream, error) {
+// readStreamFiles reads all stream files, keyed by stream name. The names of
+// files that cannot be read are returned separately.
+func (c *ConfigSync) readStreamFiles(ctx context.Context) (map[string]Stream, map[string]struct{}, error) {
 	entries, err := os.ReadDir(c.dir)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	files := make(map[string]Stream, len(entries))
+	unreadable := map[string]struct{}{}
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != fileExtension {
 			continue
 		}
+		name := strings.TrimSuffix(entry.Name(), fileExtension)
 		stream, readErr := c.StreamFromFile(entry.Name())
 		if readErr != nil {
 			c.logger.ErrorContext(ctx, "Could not read stream file",
 				slog.String("file", entry.Name()), slog.Any("error", readErr))
+			unreadable[name] = struct{}{}
 			continue
 		}
-		name := strings.TrimSuffix(entry.Name(), fileExtension)
 		stream.Stream.Name = name
 		files[name] = stream
 	}
-	return files, nil
+	return files, unreadable, nil
 }
 
 // apply creates or updates the stream from its file, unless it is unchanged.
