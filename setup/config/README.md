@@ -191,4 +191,4 @@ All example configurations in this directory have corresponding Kubernetes YAML 
 - `config/otlp_secure.json` ↔ `k8s/otlp_secure.yaml`
 - `config/otlp_batch.json` ↔ `k8s/otlp_batch.yaml`
 
-See [OTLP Kubernetes Examples](../k8s/OTLP_K8S_EXAMPLES.md) for detailed Kubernetes-specific documentation.
+See [Kubernetes Examples](../k8s/README.md) for detailed Kubernetes-specific documentation.

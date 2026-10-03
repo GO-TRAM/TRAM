@@ -397,4 +397,4 @@ All Kubernetes YAML examples in this directory have corresponding JSON configura
 - `k8s/otlp_benchmark.yaml` ↔ `config/otlp_benchmark.json`
 - `k8s/otlp_insecure_dev.yaml` ↔ `config/otlp_insecure_dev.json`
 
-See [OTLP JSON Examples](../config/OTLP_EXAMPLES.md) for detailed JSON configuration documentation.
+See [JSON Examples](../config/README.md) for detailed JSON configuration documentation.
