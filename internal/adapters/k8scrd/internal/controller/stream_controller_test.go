@@ -1,4 +1,4 @@
-package controller
+package controller_test
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	tramv1 "codeberg.org/eljoth/tram/internal/adapters/k8scrd/api/v1"
+	"codeberg.org/eljoth/tram/internal/adapters/k8scrd/internal/controller"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
@@ -48,9 +49,10 @@ func (c *fakeCore) GetStreams(context.Context) ([]domain.StreamSpec, error) { re
 
 func (c *fakeCore) Watch(context.Context, chan domain.StreamSpecWatchEvent) error { return nil }
 
-func newStream(namespace, name string) *tramv1.Stream {
+// newStream returns a stream named "s" in namespace.
+func newStream(namespace string) *tramv1.Stream {
 	return &tramv1.Stream{
-		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name},
+		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "s"},
 		Spec: tramv1.StreamSpec{
 			Source: tramv1.Spec{
 				Name: "in",
@@ -67,7 +69,7 @@ func newStream(namespace, name string) *tramv1.Stream {
 	}
 }
 
-func newReconciler(t *testing.T, objs ...*tramv1.Stream) (*StreamReconciler, *fakeCore) {
+func newReconciler(t *testing.T, objs ...*tramv1.Stream) (*controller.StreamReconciler, *fakeCore) {
 	t.Helper()
 	scheme := runtime.NewScheme()
 	require.NoError(t, tramv1.AddToScheme(scheme))
@@ -78,18 +80,21 @@ func newReconciler(t *testing.T, objs ...*tramv1.Stream) (*StreamReconciler, *fa
 	}
 
 	core := &fakeCore{streams: map[string]domain.StreamSpec{}}
-	return &StreamReconciler{Client: builder.Build(), Scheme: scheme, Core: core}, core
+	return &controller.StreamReconciler{Client: builder.Build(), Scheme: scheme, Core: core}, core
 }
 
-func request(namespace, name string) ctrl.Request {
-	return ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: name}}
+// request returns a request for the stream named "s" in namespace.
+func request(namespace string) ctrl.Request {
+	return ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: "s"}}
 }
 
 func TestReconcileUpsertsOnlyOnChange(t *testing.T) {
-	r, core := newReconciler(t, newStream("default", "s"))
+	t.Parallel()
+
+	r, core := newReconciler(t, newStream("default"))
 
 	for range 3 {
-		_, err := r.Reconcile(t.Context(), request("default", "s"))
+		_, err := r.Reconcile(t.Context(), request("default"))
 		require.NoError(t, err)
 	}
 	assert.Equal(t, 1, core.upserts)
@@ -100,16 +105,18 @@ func TestReconcileUpsertsOnlyOnChange(t *testing.T) {
 
 	stream.Spec.Source.Spec = &runtime.RawExtension{Raw: []byte(`{"http_port":4319}`)}
 	require.NoError(t, r.Update(t.Context(), &stream))
-	_, err := r.Reconcile(t.Context(), request("default", "s"))
+	_, err := r.Reconcile(t.Context(), request("default"))
 	require.NoError(t, err)
 	assert.Equal(t, 2, core.upserts)
 }
 
 func TestReconcileKeepsNamespacesApart(t *testing.T) {
-	r, core := newReconciler(t, newStream("a", "s"), newStream("b", "s"))
+	t.Parallel()
+
+	r, core := newReconciler(t, newStream("a"), newStream("b"))
 
 	for _, ns := range []string{"a", "b"} {
-		_, err := r.Reconcile(t.Context(), request(ns, "s"))
+		_, err := r.Reconcile(t.Context(), request(ns))
 		require.NoError(t, err)
 	}
 	require.Len(t, core.streams, 2)
@@ -117,19 +124,21 @@ func TestReconcileKeepsNamespacesApart(t *testing.T) {
 	var stream tramv1.Stream
 	require.NoError(t, r.Get(t.Context(), types.NamespacedName{Namespace: "a", Name: "s"}, &stream))
 	require.NoError(t, r.Delete(t.Context(), &stream))
-	_, err := r.Reconcile(t.Context(), request("a", "s"))
+	_, err := r.Reconcile(t.Context(), request("a"))
 	require.NoError(t, err)
 
 	assert.NotContains(t, core.streams, "a.s")
 	assert.Contains(t, core.streams, "b.s")
 
 	// A repeated delete of a stream the core no longer knows is not an error.
-	_, err = r.Reconcile(t.Context(), request("a", "s"))
+	_, err = r.Reconcile(t.Context(), request("a"))
 	assert.NoError(t, err)
 }
 
 func TestToDomainKeepsSpecTypes(t *testing.T) {
-	spec, err := toDomain("default.s", *newStream("default", "s"))
+	t.Parallel()
+
+	spec, err := controller.ToDomain("default.s", *newStream("default"))
 	require.NoError(t, err)
 
 	assert.Equal(t, "default.s", spec.Name)

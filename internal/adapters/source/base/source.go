@@ -1,3 +1,4 @@
+// Package base provides the common parts of all sources.
 package base
 
 import (
@@ -5,14 +6,14 @@ import (
 	"slices"
 	"sync"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 	"golang.org/x/sync/errgroup"
+
+	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 type Source[T any] struct {
 	name        string
-	streamName  string
 	subscribers []domain.Subscriber
 	mu          sync.RWMutex
 	spec        *T
@@ -24,7 +25,7 @@ func New[T any](name string, spec map[string]any, validator *validator.Validate)
 		return nil, err
 	}
 
-	if err := validator.Struct(parsedSpec); err != nil {
+	if err = validator.Struct(parsedSpec); err != nil {
 		return nil, err
 	}
 

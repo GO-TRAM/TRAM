@@ -1,14 +1,22 @@
-package sink
+package sink_test
 
 import (
+	"log/slog"
+
+	"codeberg.org/eljoth/tram/internal/adapters/sink"
+
 	"testing"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 func TestFactoryUnknownType(t *testing.T) {
-	_, err := NewFactory().New(domain.SinkSpec{Name: "s", Type: "unknown"})
-	assert.ErrorIs(t, err, domain.ErrInvalidSinkType)
+	t.Parallel()
+
+	_, err := sink.NewFactory(slog.New(slog.DiscardHandler)).New(domain.SinkSpec{Name: "s", Type: "unknown"})
+	require.ErrorIs(t, err, domain.ErrInvalidSinkType)
 	assert.ErrorContains(t, err, `"unknown"`)
 }

@@ -1,5 +1,11 @@
 package celvalidator
 
+// Values of Spec.OnMismatch.
+const (
+	OnMismatchDrop   = "drop"
+	OnMismatchReject = "reject"
+)
+
 type Spec struct {
 	Logs       string `json:"logs"`
 	Metrics    string `json:"metrics"`

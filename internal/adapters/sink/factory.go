@@ -2,29 +2,33 @@ package sink
 
 import (
 	"fmt"
+	"log/slog"
+
+	"github.com/go-playground/validator/v10"
 
 	"codeberg.org/eljoth/tram/internal/adapters/sink/debug"
 	"codeberg.org/eljoth/tram/internal/adapters/sink/nats"
 	"codeberg.org/eljoth/tram/internal/core/domain"
-	"github.com/go-playground/validator/v10"
 )
 
 type Factory struct {
 	validator *validator.Validate
+	logger    *slog.Logger
 }
 
-func NewFactory() *Factory {
+func NewFactory(logger *slog.Logger) *Factory {
 	return &Factory{
 		validator: validator.New(),
+		logger:    logger,
 	}
 }
 
 func (f *Factory) New(spec domain.SinkSpec) (domain.Sink, error) {
 	switch spec.Type {
 	case debug.Type:
-		return debug.New(spec, f.validator)
+		return debug.New(spec, f.validator, f.logger)
 	case nats.Type:
-		return nats.New(spec, f.validator)
+		return nats.New(spec, f.validator, f.logger)
 	default:
 		return nil, fmt.Errorf("%w: %q", domain.ErrInvalidSinkType, spec.Type)
 	}

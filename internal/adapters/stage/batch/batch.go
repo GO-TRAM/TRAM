@@ -6,12 +6,13 @@ import (
 	"sync"
 	"time"
 
-	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
-	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
+
+	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 const (
@@ -31,6 +32,7 @@ const (
 // e.g. from parallel OTLP requests or several NATS workers.
 type Batch struct {
 	*base.Stage[Spec]
+
 	maxRecords int
 	timeout    time.Duration
 
@@ -254,7 +256,9 @@ func merge(entries []*entry) *domain.Event {
 			merged.Logs.ResourceLogs = append(merged.Logs.ResourceLogs, e.event.Logs.GetResourceLogs()...)
 		}
 		if metrics > 0 {
-			merged.Metrics.ResourceMetrics = append(merged.Metrics.ResourceMetrics, e.event.Metrics.GetResourceMetrics()...)
+			merged.Metrics.ResourceMetrics = append(
+				merged.Metrics.ResourceMetrics,
+				e.event.Metrics.GetResourceMetrics()...)
 		}
 		if traces > 0 {
 			merged.Traces.ResourceSpans = append(merged.Traces.ResourceSpans, e.event.Traces.GetResourceSpans()...)

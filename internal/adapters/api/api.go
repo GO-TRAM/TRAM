@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
@@ -18,39 +18,48 @@ import (
 	v1 "codeberg.org/eljoth/tram/pkg/gen/go/api/proto/stream/v1"
 )
 
+const (
+	shutdownTimeout   = 5 * time.Second
+	readHeaderTimeout = 10 * time.Second
+)
+
 type API struct {
 	grpcServerEndpoint string
 	httpServerEndpoint string
 	grpcServer         *grpc.Server
 	core               ports.Core
+	logger             *slog.Logger
 }
 
-func New(core ports.Core, grpcServerEndpoint, httpServerEndpoint string) (*API, error) {
+func New(core ports.Core, grpcServerEndpoint, httpServerEndpoint string, logger *slog.Logger) (*API, error) {
 	return &API{
 		grpcServerEndpoint: grpcServerEndpoint,
 		httpServerEndpoint: httpServerEndpoint,
 		core:               core,
+		logger:             logger,
 	}, nil
 }
 
 func (a *API) Run(ctx context.Context) error {
-	log.Printf("Starting gRPC Gateway server on %s, forwarding to gRPC at %s", a.httpServerEndpoint, a.grpcServerEndpoint)
-
 	a.grpcServer = grpc.NewServer()
 
-	v1.RegisterStreamServiceServer(a.grpcServer, &streamServer{core: a.core})
+	v1.RegisterStreamServiceServer(a.grpcServer, &streamServer{core: a.core, logger: a.logger})
 
-	grpcListener, err := net.Listen("tcp", a.grpcServerEndpoint)
+	var lc net.ListenConfig
+	grpcListener, err := lc.Listen(ctx, "tcp", a.grpcServerEndpoint)
 	if err != nil {
-		return fmt.Errorf("gRPC server failed to listen: %v", err)
+		return fmt.Errorf("gRPC server failed to listen: %w", err)
 	}
 
 	var wg sync.WaitGroup
 
 	wg.Go(func() {
-		log.Printf("gRPC server listening on %s\n", a.grpcServerEndpoint)
-		if err := a.grpcServer.Serve(grpcListener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-			log.Printf("gRPC server failed: %v\n", err)
+		a.logger.InfoContext(ctx, "gRPC server listening", slog.String("address", a.grpcServerEndpoint))
+		if serveErr := a.grpcServer.Serve(
+			grpcListener,
+		); serveErr != nil &&
+			!errors.Is(serveErr, grpc.ErrServerStopped) {
+			a.logger.ErrorContext(ctx, "gRPC server failed", slog.Any("error", serveErr))
 		}
 	})
 
@@ -59,35 +68,36 @@ func (a *API) Run(ctx context.Context) error {
 
 	err = v1.RegisterStreamServiceHandlerFromEndpoint(ctx, mux, a.grpcServerEndpoint, opts)
 	if err != nil {
-		return fmt.Errorf("failed to register gateway handler: %v", err)
+		return fmt.Errorf("failed to register gateway handler: %w", err)
 	}
 
 	httpServer := &http.Server{
-		Addr:    a.httpServerEndpoint,
-		Handler: mux,
+		Addr:              a.httpServerEndpoint,
+		Handler:           mux,
+		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
 	wg.Go(func() {
-		log.Printf("HTTP Gateway listening on %s\n", a.httpServerEndpoint)
-		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("HTTP gateway failed: %v\n", err)
+		a.logger.InfoContext(ctx, "HTTP gateway listening", slog.String("address", a.httpServerEndpoint))
+		if serveErr := httpServer.ListenAndServe(); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			a.logger.ErrorContext(ctx, "HTTP gateway failed", slog.Any("error", serveErr))
 		}
 	})
 
 	<-ctx.Done()
 
-	log.Println("Shutting down servers...")
+	a.logger.InfoContext(ctx, "Shutting down API servers")
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 	defer cancel()
 
-	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		log.Printf("HTTP server shutdown error: %v\n", err)
+	if err = httpServer.Shutdown(shutdownCtx); err != nil {
+		a.logger.ErrorContext(ctx, "Could not shut down HTTP gateway cleanly", slog.Any("error", err))
 	}
 
 	a.grpcServer.Stop()
 
 	wg.Wait()
-	log.Println("Servers stopped gracefully")
+	a.logger.InfoContext(ctx, "API servers stopped")
 	return nil
 }

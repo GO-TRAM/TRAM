@@ -1,9 +1,10 @@
-// internal/adapters/sink/base/sink.go
+// Package base provides the common parts of all sinks.
 package base
 
 import (
-	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
+
+	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 type Sink[T any] struct {
@@ -18,7 +19,7 @@ func New[T any](name, from string, spec map[string]any, validator *validator.Val
 		return nil, err
 	}
 
-	if err := validator.Struct(parsedSpec); err != nil {
+	if err = validator.Struct(parsedSpec); err != nil {
 		return nil, err
 	}
 

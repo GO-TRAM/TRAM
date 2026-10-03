@@ -1,4 +1,4 @@
-package base
+package base_test
 
 import (
 	"context"
@@ -7,10 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"codeberg.org/eljoth/tram/internal/adapters/source/base"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 type noopSubscriber struct{}
@@ -42,7 +44,9 @@ func (s *blockingSubscriber) Notify(context.Context, *domain.Event) error {
 }
 
 func TestSetSubscribersWaitsForDeliveries(t *testing.T) {
-	src, err := New[struct{}]("source", nil, validator.New())
+	t.Parallel()
+
+	src, err := base.New[struct{}]("source", nil, validator.New())
 	require.NoError(t, err)
 
 	old := &blockingSubscriber{name: "old", started: make(chan struct{}), release: make(chan struct{})}
@@ -92,7 +96,7 @@ func BenchmarkNotifySubscribers(b *testing.B) {
 	})
 
 	for _, children := range []int{1, 2, 8} {
-		src, err := New[struct{}]("source", nil, validator.New())
+		src, err := base.New[struct{}]("source", nil, validator.New())
 		if err != nil {
 			b.Fatal(err)
 		}

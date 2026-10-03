@@ -1,14 +1,13 @@
 //go:generate controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./..."
 //go:generate controller-gen crd paths="./..." output:crd:dir=config/crd/bases
 
-// internal/adapters/k8scrd/operator.go
+// Package k8scrd runs Tram's Kubernetes operator, which turns Stream custom
+// resources into streams of the core.
 package k8scrd
 
 import (
 	"context"
 	"fmt"
-	"log"
-	stdlog "log"
 	"log/slog"
 
 	"github.com/go-logr/logr"
@@ -24,13 +23,13 @@ import (
 )
 
 type Operator struct {
-	mgr  ctrl.Manager
-	core ports.Core
+	mgr    ctrl.Manager
+	core   ports.Core
+	logger *slog.Logger
 }
 
-func New(core ports.Core, kubeconfig string) (*Operator, error) {
-	// Set slog as the logger for controller-runtime
-	ctrl.SetLogger(logr.FromSlogHandler(slog.Default().Handler()))
+func New(core ports.Core, kubeconfig string, logger *slog.Logger) (*Operator, error) {
+	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
 
 	cfg, err := ctrl.GetConfig()
 
@@ -43,14 +42,14 @@ func New(core ports.Core, kubeconfig string) (*Operator, error) {
 	}
 
 	scheme := runtime.NewScheme()
-	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+	if err = clientgoscheme.AddToScheme(scheme); err != nil {
 		return nil, err
 	}
-	if err := tramv1.AddToScheme(scheme); err != nil {
+	if err = tramv1.AddToScheme(scheme); err != nil {
 		return nil, err
 	}
 
-	stdlog.Printf("Kube host = %q", cfg.Host)
+	logger.Info("Connecting to Kubernetes", slog.String("host", cfg.Host))
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:         scheme,
@@ -63,23 +62,20 @@ func New(core ports.Core, kubeconfig string) (*Operator, error) {
 		return nil, err
 	}
 
-	if err := (&controller.StreamReconciler{
+	if err = (&controller.StreamReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 		Core:   core,
 	}).SetupWithManager(mgr); err != nil {
-		log.Printf("ERROR setting up controller: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("set up controller: %w", err)
 	}
 
-	stdlog.Println("Controller setup complete, waiting for cache sync...")
-
-	return &Operator{mgr: mgr, core: core}, nil
+	return &Operator{mgr: mgr, core: core, logger: logger}, nil
 }
 
 func (o *Operator) Run(ctx context.Context) error {
-	stdlog.Println("Starting controller-manager...")
+	o.logger.InfoContext(ctx, "Starting Kubernetes operator")
 	err := o.mgr.Start(ctx)
-	stdlog.Printf("Controller-manager stopped: %v", err)
+	o.logger.InfoContext(ctx, "Kubernetes operator stopped", slog.Any("error", err))
 	return err
 }

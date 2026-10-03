@@ -1,13 +1,15 @@
-package batch
+package batch_test
 
 import (
 	"context"
 	"sync/atomic"
 	"testing"
 
+	"github.com/go-playground/validator/v10"
+
+	"codeberg.org/eljoth/tram/internal/adapters/stage/batch"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
-	"github.com/go-playground/validator/v10"
 )
 
 type countingSubscriber struct {
@@ -22,9 +24,9 @@ func (c *countingSubscriber) Notify(context.Context, *domain.Event) error {
 	return nil
 }
 
-func newBenchBatch(b *testing.B, spec map[string]any) (*Batch, *countingSubscriber) {
+func newBenchBatch(b *testing.B, spec map[string]any) (*batch.Batch, *countingSubscriber) {
 	b.Helper()
-	batch, err := New(domain.StageSpec{Name: "batch", From: "source", Spec: spec}, validator.New())
+	batch, err := batch.New(domain.StageSpec{Name: "batch", From: "source", Spec: spec}, validator.New())
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -36,7 +38,7 @@ func newBenchBatch(b *testing.B, spec map[string]any) (*Batch, *countingSubscrib
 
 // BenchmarkBatch measures the cost of passing events through the batch stage.
 func BenchmarkBatch(b *testing.B) {
-	for _, shape := range otlpgen.Shapes {
+	for _, shape := range otlpgen.Shapes() {
 		event := &domain.Event{Logs: otlpgen.Logs(shape)}
 
 		// Every event fills a batch on its own, so this is the overhead of

@@ -17,7 +17,7 @@ func ParseSpec[T any](raw map[string]any, spec T) (T, error) {
 		return spec, fmt.Errorf("failed to marshal spec: %w", err)
 	}
 
-	if err := json.Unmarshal(data, &spec); err != nil {
+	if err = json.Unmarshal(data, &spec); err != nil {
 		return spec, fmt.Errorf("failed to unmarshal spec: %w", err)
 	}
 

@@ -15,12 +15,18 @@ func BenchmarkOTLPDataRoundTrip(b *testing.B) {
 		event func(otlpgen.Shape) *domain.Event
 	}{
 		{name: "logs", event: func(s otlpgen.Shape) *domain.Event { return &domain.Event{Logs: otlpgen.Logs(s)} }},
-		{name: "metrics", event: func(s otlpgen.Shape) *domain.Event { return &domain.Event{Metrics: otlpgen.Metrics(s)} }},
-		{name: "traces", event: func(s otlpgen.Shape) *domain.Event { return &domain.Event{Traces: otlpgen.Traces(s)} }},
+		{
+			name:  "metrics",
+			event: func(s otlpgen.Shape) *domain.Event { return &domain.Event{Metrics: otlpgen.Metrics(s)} },
+		},
+		{
+			name:  "traces",
+			event: func(s otlpgen.Shape) *domain.Event { return &domain.Event{Traces: otlpgen.Traces(s)} },
+		},
 	}
 
 	for _, signal := range signals {
-		for _, shape := range otlpgen.Shapes {
+		for _, shape := range otlpgen.Shapes() {
 			event := signal.event(shape)
 			_, data, err := event.MarshalOTLPData()
 			if err != nil {
@@ -31,12 +37,12 @@ func BenchmarkOTLPDataRoundTrip(b *testing.B) {
 				b.SetBytes(int64(len(data)))
 				b.ReportAllocs()
 				for b.Loop() {
-					sig, data, err := event.MarshalOTLPData()
-					if err != nil {
-						b.Fatal(err)
+					sig, encoded, marshalErr := event.MarshalOTLPData()
+					if marshalErr != nil {
+						b.Fatal(marshalErr)
 					}
-					if _, err := domain.UnmarshalOTLPData(sig, data); err != nil {
-						b.Fatal(err)
+					if _, unmarshalErr := domain.UnmarshalOTLPData(sig, encoded); unmarshalErr != nil {
+						b.Fatal(unmarshalErr)
 					}
 				}
 				b.ReportMetric(float64(shape.Records*b.N)/b.Elapsed().Seconds(), "records/s")

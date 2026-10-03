@@ -1,4 +1,4 @@
-package otlp
+package otlp_test
 
 import (
 	"bytes"
@@ -7,13 +7,16 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"codeberg.org/eljoth/tram/internal/adapters/source/base"
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/adapters/source/otlp"
+
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	"google.golang.org/protobuf/proto"
+
+	"codeberg.org/eljoth/tram/internal/adapters/source/base"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 type recorder struct {
@@ -30,6 +33,8 @@ func (r *recorder) Notify(_ context.Context, e *domain.Event) error {
 }
 
 func TestHandleLogs(t *testing.T) {
+	t.Parallel()
+
 	valid, err := proto.Marshal(&logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{}}})
 	require.NoError(t, err)
 
@@ -42,20 +47,28 @@ func TestHandleLogs(t *testing.T) {
 	}{
 		{name: "valid", body: valid, expectStatus: http.StatusOK, expectEvents: 1},
 		{name: "malformed", body: []byte{0xff, 0xff, 0xff}, expectStatus: http.StatusBadRequest},
-		{name: "too large", body: make([]byte, maxBodyBytes+1), expectStatus: http.StatusRequestEntityTooLarge},
-		{name: "rejected", body: valid, subscriberErr: domain.ErrEventRejected, expectStatus: http.StatusBadRequest, expectEvents: 1},
+		{name: "too large", body: make([]byte, otlp.MaxBodyBytes+1), expectStatus: http.StatusRequestEntityTooLarge},
+		{
+			name:          "rejected",
+			body:          valid,
+			subscriberErr: domain.ErrEventRejected,
+			expectStatus:  http.StatusBadRequest,
+			expectEvents:  1,
+		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			src, err := base.New[Spec]("otlp", map[string]any{"http_port": 1}, validator.New())
-			require.NoError(t, err)
+			t.Parallel()
+
+			src, newErr := base.New[otlp.Spec]("otlp", map[string]any{"http_port": 1}, validator.New())
+			require.NoError(t, newErr)
 			rec := &recorder{err: c.subscriberErr}
 			require.NoError(t, src.Subscribe(rec))
-			o := &OTLP{Source: src}
+			o := &otlp.OTLP{Source: src}
 
 			w := httptest.NewRecorder()
-			o.handleLogs(w, httptest.NewRequest(http.MethodPost, "/v1/logs", bytes.NewReader(c.body)))
+			otlp.HandleLogs(o, w, httptest.NewRequest(http.MethodPost, "/v1/logs", bytes.NewReader(c.body)))
 
 			assert.Equal(t, c.expectStatus, w.Code)
 			assert.Len(t, rec.events, c.expectEvents)

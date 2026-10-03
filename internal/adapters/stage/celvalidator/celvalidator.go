@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"reflect"
 
-	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
-	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/ext"
+
+	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
@@ -23,6 +24,7 @@ const Type = "cel_validator"
 
 type CELValidator struct {
 	*base.Stage[Spec]
+
 	metrics cel.Program
 	logs    cel.Program
 	traces  cel.Program
@@ -43,7 +45,7 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELValidator, 
 			tracespb.File_opentelemetry_proto_trace_v1_trace_proto,
 		),
 
-		ext.NativeTypes(reflect.TypeOf(&domain.Event{})),
+		ext.NativeTypes(reflect.TypeFor[*domain.Event]()),
 
 		cel.Variable("event", cel.ObjectType("domain.Event")),
 	)
@@ -51,17 +53,29 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELValidator, 
 		return nil, errors.Join(ErrCELEnvironmenInitialization, err)
 	}
 
-	logs, err := initCEL(baseEnv, base.Spec().Logs, cel.Variable("logs", cel.ObjectType("opentelemetry.proto.logs.v1.LogsData")))
+	logs, err := initCEL(
+		baseEnv,
+		base.Spec().Logs,
+		cel.Variable("logs", cel.ObjectType("opentelemetry.proto.logs.v1.LogsData")),
+	)
 	if err != nil {
 		return nil, errors.Join(ErrCELInvalidLogsExpression, err)
 	}
 
-	metrics, err := initCEL(baseEnv, base.Spec().Metrics, cel.Variable("metrics", cel.ObjectType("opentelemetry.proto.metrics.v1.MetricsData")))
+	metrics, err := initCEL(
+		baseEnv,
+		base.Spec().Metrics,
+		cel.Variable("metrics", cel.ObjectType("opentelemetry.proto.metrics.v1.MetricsData")),
+	)
 	if err != nil {
 		return nil, errors.Join(ErrCELInvalidMetricsExpression, err)
 	}
 
-	traces, err := initCEL(baseEnv, base.Spec().Traces, cel.Variable("traces", cel.ObjectType("opentelemetry.proto.trace.v1.TracesData")))
+	traces, err := initCEL(
+		baseEnv,
+		base.Spec().Traces,
+		cel.Variable("traces", cel.ObjectType("opentelemetry.proto.trace.v1.TracesData")),
+	)
 	if err != nil {
 		return nil, errors.Join(ErrCELInvalidTracesExpression, err)
 	}
@@ -94,7 +108,14 @@ func initCEL(celEnv *cel.Env, expression string, opts ...cel.EnvOption) (cel.Pro
 	return celProgram, nil
 }
 
-func (n *CELValidator) validate(_ context.Context, varName string, data any, filter cel.Program, event *domain.Event, dropper func(*domain.Event)) error {
+func (n *CELValidator) validate(
+	_ context.Context,
+	varName string,
+	data any,
+	filter cel.Program,
+	event *domain.Event,
+	dropper func(*domain.Event),
+) error {
 	result, _, err := filter.Eval(map[string]any{
 		varName: data,
 	})
@@ -103,14 +124,17 @@ func (n *CELValidator) validate(_ context.Context, varName string, data any, fil
 		return fmt.Errorf("CEL evaluation error: %w", err)
 	}
 
-	isMatch := result.Value().(bool)
+	isMatch, ok := result.Value().(bool)
+	if !ok {
+		return fmt.Errorf("CEL expression returned %T instead of bool", result.Value())
+	}
 
 	if !isMatch {
 		switch n.Stage.Spec().OnMismatch {
-		case "drop":
+		case OnMismatchDrop:
 			dropper(event)
 			return nil
-		case "reject":
+		case OnMismatchReject:
 			fallthrough
 		default:
 			return fmt.Errorf("%w: event did not match the CEL filter criteria", domain.ErrEventRejected)
@@ -130,19 +154,40 @@ func (n *CELValidator) Notify(ctx context.Context, event *domain.Event) error {
 	event = &copied
 
 	if event.Logs != nil {
-		if err := n.validate(ctx, "logs", event.Logs, n.logs, event, func(e *domain.Event) { e.Logs = nil }); err != nil {
+		if err := n.validate(
+			ctx,
+			"logs",
+			event.Logs,
+			n.logs,
+			event,
+			func(e *domain.Event) { e.Logs = nil },
+		); err != nil {
 			return errors.Join(ErrCELRejectingLogs, err)
 		}
 	}
 
 	if event.Metrics != nil {
-		if err := n.validate(ctx, "metrics", event.Metrics, n.metrics, event, func(e *domain.Event) { e.Metrics = nil }); err != nil {
+		if err := n.validate(
+			ctx,
+			"metrics",
+			event.Metrics,
+			n.metrics,
+			event,
+			func(e *domain.Event) { e.Metrics = nil },
+		); err != nil {
 			return errors.Join(ErrCELRejectingMetrics, err)
 		}
 	}
 
 	if event.Traces != nil {
-		if err := n.validate(ctx, "traces", event.Traces, n.traces, event, func(e *domain.Event) { e.Traces = nil }); err != nil {
+		if err := n.validate(
+			ctx,
+			"traces",
+			event.Traces,
+			n.traces,
+			event,
+			func(e *domain.Event) { e.Traces = nil },
+		); err != nil {
 			return errors.Join(ErrCELRejectingTraces, err)
 		}
 	}

@@ -1,11 +1,9 @@
-package celfilter
+package celfilter_test
 
 import (
 	"context"
 	"testing"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
-	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,6 +13,10 @@ import (
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/proto"
+
+	"codeberg.org/eljoth/tram/internal/adapters/stage/celfilter"
+	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
 type capture struct{ events []*domain.Event }
@@ -27,9 +29,9 @@ func (c *capture) Notify(_ context.Context, e *domain.Event) error {
 	return nil
 }
 
-func newFilter(t *testing.T, spec map[string]any) (*CELFilter, *capture) {
+func newFilter(t *testing.T, spec map[string]any) (*celfilter.CELFilter, *capture) {
 	t.Helper()
-	f, err := New(domain.StageSpec{Name: "filter", From: "source", Spec: spec}, validator.New())
+	f, err := celfilter.New(domain.StageSpec{Name: "filter", From: "source", Spec: spec}, validator.New())
 	require.NoError(t, err)
 	c := &capture{}
 	require.NoError(t, f.Subscribe(c))
@@ -37,7 +39,10 @@ func newFilter(t *testing.T, spec map[string]any) (*CELFilter, *capture) {
 }
 
 func stringAttr(key, value string) *commonpb.KeyValue {
-	return &commonpb.KeyValue{Key: key, Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: value}}}
+	return &commonpb.KeyValue{
+		Key:   key,
+		Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: value}},
+	}
 }
 
 // customerLogs builds one resource and one scope with a record per customer,
@@ -45,7 +50,10 @@ func stringAttr(key, value string) *commonpb.KeyValue {
 func customerLogs(customers ...string) *domain.Event {
 	sl := &logspb.ScopeLogs{}
 	for _, c := range customers {
-		sl.LogRecords = append(sl.LogRecords, &logspb.LogRecord{Attributes: []*commonpb.KeyValue{stringAttr("customer", c)}})
+		sl.LogRecords = append(
+			sl.LogRecords,
+			&logspb.LogRecord{Attributes: []*commonpb.KeyValue{stringAttr("customer", c)}},
+		)
 	}
 	return &domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{
 		Resource:  &resourcepb.Resource{Attributes: []*commonpb.KeyValue{stringAttr("service.name", "shop")}},
@@ -58,7 +66,7 @@ func customers(e *domain.Event) []string {
 	for _, rl := range e.Logs.GetResourceLogs() {
 		for _, sl := range rl.GetScopeLogs() {
 			for _, r := range sl.GetLogRecords() {
-				out = append(out, r.Attributes[0].Value.GetStringValue())
+				out = append(out, r.GetAttributes()[0].GetValue().GetStringValue())
 			}
 		}
 	}
@@ -66,6 +74,8 @@ func customers(e *domain.Event) []string {
 }
 
 func TestNew(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name        string
 		spec        map[string]any
@@ -73,23 +83,48 @@ func TestNew(t *testing.T) {
 		expectErrIs error
 	}{
 		{name: "logs", spec: map[string]any{"logs": "record.severity_text == 'ERROR'"}},
-		{name: "metrics on data points", spec: map[string]any{"metrics": "datapoint.attributes.exists(a, a.key == 'team')"}},
+		{
+			name: "metrics on data points",
+			spec: map[string]any{"metrics": "datapoint.attributes.exists(a, a.key == 'team')"},
+		},
 		{name: "traces", spec: map[string]any{"traces": "span.name.startsWith('GET')"}},
 		{name: "no expression", spec: map[string]any{}, expectErr: true},
-		{name: "invalid logs", spec: map[string]any{"logs": "record.unknown_field"}, expectErr: true, expectErrIs: ErrCELInvalidLogsExpression},
-		{name: "non-bool logs", spec: map[string]any{"logs": "record.severity_text"}, expectErr: true, expectErrIs: ErrCELInvalidLogsExpression},
-		{name: "invalid metrics", spec: map[string]any{"metrics": "metric.name +"}, expectErr: true, expectErrIs: ErrCELInvalidMetricsExpression},
-		{name: "wrong variable for traces", spec: map[string]any{"traces": "record.severity_text == 'x'"}, expectErr: true, expectErrIs: ErrCELInvalidTracesExpression},
+		{
+			name:        "invalid logs",
+			spec:        map[string]any{"logs": "record.unknown_field"},
+			expectErr:   true,
+			expectErrIs: celfilter.ErrCELInvalidLogsExpression,
+		},
+		{
+			name:        "non-bool logs",
+			spec:        map[string]any{"logs": "record.severity_text"},
+			expectErr:   true,
+			expectErrIs: celfilter.ErrCELInvalidLogsExpression,
+		},
+		{
+			name:        "invalid metrics",
+			spec:        map[string]any{"metrics": "metric.name +"},
+			expectErr:   true,
+			expectErrIs: celfilter.ErrCELInvalidMetricsExpression,
+		},
+		{
+			name:        "wrong variable for traces",
+			spec:        map[string]any{"traces": "record.severity_text == 'x'"},
+			expectErr:   true,
+			expectErrIs: celfilter.ErrCELInvalidTracesExpression,
+		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := New(domain.StageSpec{Name: "filter", Spec: c.spec}, validator.New())
+			t.Parallel()
+
+			_, err := celfilter.New(domain.StageSpec{Name: "filter", Spec: c.spec}, validator.New())
 			if !c.expectErr {
 				assert.NoError(t, err)
 				return
 			}
-			assert.Error(t, err)
+			require.Error(t, err)
 			if c.expectErrIs != nil {
 				assert.ErrorIs(t, err, c.expectErrIs)
 			}
@@ -100,8 +135,16 @@ func TestNew(t *testing.T) {
 // The use case that motivated the stage: records of several customers in one
 // resource and scope are split into one branch per customer.
 func TestSplitCustomersFromOneScope(t *testing.T) {
-	filterA, outA := newFilter(t, map[string]any{"logs": "record.attributes.exists(a, a.key == 'customer' && a.value.string_value == 'A')"})
-	filterB, outB := newFilter(t, map[string]any{"logs": "!record.attributes.exists(a, a.key == 'customer' && a.value.string_value == 'A')"})
+	t.Parallel()
+
+	filterA, outA := newFilter(
+		t,
+		map[string]any{"logs": "record.attributes.exists(a, a.key == 'customer' && a.value.string_value == 'A')"},
+	)
+	filterB, outB := newFilter(
+		t,
+		map[string]any{"logs": "!record.attributes.exists(a, a.key == 'customer' && a.value.string_value == 'A')"},
+	)
 
 	event := customerLogs("A", "B", "A", "C")
 	original := proto.Clone(event.Logs)
@@ -113,11 +156,17 @@ func TestSplitCustomersFromOneScope(t *testing.T) {
 	require.Len(t, outB.events, 1)
 	assert.Equal(t, []string{"A", "A"}, customers(outA.events[0]))
 	assert.Equal(t, []string{"B", "C"}, customers(outB.events[0]))
-	assert.Same(t, event.Logs.ResourceLogs[0].Resource, outA.events[0].Logs.ResourceLogs[0].Resource)
+	assert.Same(
+		t,
+		event.Logs.GetResourceLogs()[0].GetResource(),
+		outA.events[0].Logs.GetResourceLogs()[0].GetResource(),
+	)
 	assert.True(t, proto.Equal(original, event.Logs), "the shared input must not be modified")
 }
 
 func TestNotify(t *testing.T) {
+	t.Parallel()
+
 	shape := otlpgen.Shape{Records: 8, Resources: 2, Teams: 2}
 
 	cases := []struct {
@@ -129,14 +178,18 @@ func TestNotify(t *testing.T) {
 		expectNone    bool
 	}{
 		{
-			name:          "logs by record attribute",
-			spec:          map[string]any{"logs": "record.attributes.exists(a, a.key == 'team' && a.value.string_value == 'team-0')"},
+			name: "logs by record attribute",
+			spec: map[string]any{
+				"logs": "record.attributes.exists(a, a.key == 'team' && a.value.string_value == 'team-0')",
+			},
 			event:         func() *domain.Event { return &domain.Event{Logs: otlpgen.Logs(shape)} },
 			expectRecords: 4,
 		},
 		{
-			name:          "logs by resource attribute",
-			spec:          map[string]any{"logs": "resource.attributes.exists(a, a.key == 'service.name' && a.value.string_value == 'service-1')"},
+			name: "logs by resource attribute",
+			spec: map[string]any{
+				"logs": "resource.attributes.exists(a, a.key == 'service.name' && a.value.string_value == 'service-1')",
+			},
 			event:         func() *domain.Event { return &domain.Event{Logs: otlpgen.Logs(shape)} },
 			expectRecords: 4,
 		},
@@ -148,8 +201,10 @@ func TestNotify(t *testing.T) {
 			expectSame:    true,
 		},
 		{
-			name:          "metric data points by attribute",
-			spec:          map[string]any{"metrics": "datapoint.attributes.exists(a, a.key == 'team' && a.value.string_value == 'team-1')"},
+			name: "metric data points by attribute",
+			spec: map[string]any{
+				"metrics": "datapoint.attributes.exists(a, a.key == 'team' && a.value.string_value == 'team-1')",
+			},
 			event:         func() *domain.Event { return &domain.Event{Metrics: otlpgen.Metrics(shape)} },
 			expectRecords: 4,
 		},
@@ -183,6 +238,8 @@ func TestNotify(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
 			f, out := newFilter(t, c.spec)
 			event := c.event()
 
@@ -202,15 +259,22 @@ func TestNotify(t *testing.T) {
 
 // TestDocumentedExamples keeps the examples in COMPONENTS.md working.
 func TestDocumentedExamples(t *testing.T) {
+	t.Parallel()
+
 	logs := func(severities ...string) *domain.Event {
 		sl := &logspb.ScopeLogs{}
 		for _, s := range severities {
 			sl.LogRecords = append(sl.LogRecords, &logspb.LogRecord{SeverityText: s})
 		}
-		return &domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{ScopeLogs: []*logspb.ScopeLogs{sl}}}}}
+		return &domain.Event{
+			Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{ScopeLogs: []*logspb.ScopeLogs{sl}}}},
+		}
 	}
 	gauge := func(name string) *metricspb.Metric {
-		return &metricspb.Metric{Name: name, Data: &metricspb.Metric_Gauge{Gauge: &metricspb.Gauge{DataPoints: []*metricspb.NumberDataPoint{{}}}}}
+		return &metricspb.Metric{
+			Name: name,
+			Data: &metricspb.Metric_Gauge{Gauge: &metricspb.Gauge{DataPoints: []*metricspb.NumberDataPoint{{}}}},
+		}
 	}
 	service := func(name string) *resourcepb.Resource {
 		return &resourcepb.Resource{Attributes: []*commonpb.KeyValue{stringAttr("service.name", name)}}
@@ -231,14 +295,20 @@ func TestDocumentedExamples(t *testing.T) {
 		{
 			name: "keep only the data points of one metric",
 			spec: map[string]any{"metrics": "metric.name == 'http.server.request.duration'"},
-			event: &domain.Event{Metrics: &metricspb.MetricsData{ResourceMetrics: []*metricspb.ResourceMetrics{{
-				ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{gauge("http.server.request.duration"), gauge("other")}}},
-			}}}},
+			event: &domain.Event{Metrics: &metricspb.MetricsData{ResourceMetrics: []*metricspb.ResourceMetrics{
+				{
+					ScopeMetrics: []*metricspb.ScopeMetrics{
+						{Metrics: []*metricspb.Metric{gauge("http.server.request.duration"), gauge("other")}},
+					},
+				},
+			}}},
 			expectRecords: 1,
 		},
 		{
 			name: "keep only spans of one service",
-			spec: map[string]any{"traces": "resource.attributes.exists(a, a.key == 'service.name' && a.value.string_value == 'checkout')"},
+			spec: map[string]any{
+				"traces": "resource.attributes.exists(a, a.key == 'service.name' && a.value.string_value == 'checkout')",
+			},
 			event: &domain.Event{Traces: &tracepb.TracesData{ResourceSpans: []*tracepb.ResourceSpans{
 				{Resource: service("checkout"), ScopeSpans: []*tracepb.ScopeSpans{{Spans: []*tracepb.Span{{}, {}}}}},
 				{Resource: service("cart"), ScopeSpans: []*tracepb.ScopeSpans{{Spans: []*tracepb.Span{{}}}}},
@@ -249,6 +319,8 @@ func TestDocumentedExamples(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
 			f, out := newFilter(t, c.spec)
 			require.NoError(t, f.Notify(t.Context(), c.event))
 			require.Len(t, out.events, 1)
@@ -258,15 +330,19 @@ func TestDocumentedExamples(t *testing.T) {
 }
 
 func TestEvaluationErrorRejectsEvent(t *testing.T) {
+	t.Parallel()
+
 	f, out := newFilter(t, map[string]any{"logs": "record.attributes[5].key == 'x'"})
 
 	err := f.Notify(t.Context(), customerLogs("A"))
-	assert.ErrorIs(t, err, domain.ErrEventRejected)
-	assert.ErrorIs(t, err, ErrCELEvaluation)
+	require.ErrorIs(t, err, domain.ErrEventRejected)
+	require.ErrorIs(t, err, celfilter.ErrCELEvaluation)
 	assert.Empty(t, out.events)
 }
 
 func TestMissingResourceAndScope(t *testing.T) {
+	t.Parallel()
+
 	f, out := newFilter(t, map[string]any{"logs": "!resource.attributes.exists(a, a.key == 'x') && scope.name == ''"})
 	event := &domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{
 		ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{}}}},
@@ -278,6 +354,8 @@ func TestMissingResourceAndScope(t *testing.T) {
 }
 
 func TestHistogramDataPoints(t *testing.T) {
+	t.Parallel()
+
 	f, out := newFilter(t, map[string]any{"metrics": "datapoint.count > 1u"})
 	event := &domain.Event{Metrics: &metricspb.MetricsData{ResourceMetrics: []*metricspb.ResourceMetrics{{
 		ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{{

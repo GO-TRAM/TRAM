@@ -1,12 +1,14 @@
-package base
+package base_test
 
 import (
 	"context"
 	"fmt"
 	"testing"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
+
+	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 type noopSubscriber struct{}
@@ -23,7 +25,7 @@ func BenchmarkNotifySubscribers(b *testing.B) {
 	ctx := context.WithValue(context.Background(), domain.ContextKeyPath, "source")
 
 	for _, children := range []int{1, 2, 8} {
-		stage, err := New[struct{}]("stage", "source", nil, validator.New())
+		stage, err := base.New[struct{}]("stage", "source", nil, validator.New())
 		if err != nil {
 			b.Fatal(err)
 		}

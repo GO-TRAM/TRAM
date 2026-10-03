@@ -3,13 +3,14 @@ package stage
 import (
 	"fmt"
 
+	"github.com/go-playground/validator/v10"
+
 	"codeberg.org/eljoth/tram/internal/adapters/stage/batch"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/celfilter"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/celvalidator"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/delay"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/noop"
 	"codeberg.org/eljoth/tram/internal/core/domain"
-	"github.com/go-playground/validator/v10"
 )
 
 type Factory struct {

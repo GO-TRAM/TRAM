@@ -14,16 +14,25 @@ const (
 
 type NodeKind string
 
+// Order of node kinds from the root of a stream to its leaves.
+const (
+	orderSource = iota
+	orderStage
+	orderSink
+)
+
+const orderUnknown = -1
+
 func (k NodeKind) Value() int {
 	switch k {
 	case KindSource:
-		return 0
+		return orderSource
 	case KindStage:
-		return 1
+		return orderStage
 	case KindSink:
-		return 2
+		return orderSink
 	default:
-		return -1
+		return orderUnknown
 	}
 }
 
@@ -44,10 +53,11 @@ func (n *Node) AddSink(s Sink) error {
 }
 
 func (n *Node) GetSink() (Sink, error) {
-	if n.Kind != KindSink {
+	sink, ok := n.Processor.(Sink)
+	if n.Kind != KindSink || !ok {
 		return nil, ErrNodeNotSink
 	}
-	return n.Processor.(Sink), nil
+	return sink, nil
 }
 
 func (n *Node) AddStage(s Stage) error {
@@ -59,10 +69,11 @@ func (n *Node) AddStage(s Stage) error {
 }
 
 func (n *Node) GetStage() (Stage, error) {
-	if n.Kind != KindStage {
+	stage, ok := n.Processor.(Stage)
+	if n.Kind != KindStage || !ok {
 		return nil, ErrNodeNotStage
 	}
-	return n.Processor.(Stage), nil
+	return stage, nil
 }
 
 func (n *Node) AddSource(s Source) error {
@@ -74,24 +85,27 @@ func (n *Node) AddSource(s Source) error {
 }
 
 func (n *Node) GetSource() (Source, error) {
-	if n.Kind != KindSource {
+	source, ok := n.Processor.(Source)
+	if n.Kind != KindSource || !ok {
 		return nil, ErrNodeNotSource
 	}
-	return n.Processor.(Source), nil
+	return source, nil
 }
 
 func (n *Node) GetObserver() (Observer, error) {
-	if n.Kind != KindSource && n.Kind != KindStage {
+	observer, ok := n.Processor.(Observer)
+	if (n.Kind != KindSource && n.Kind != KindStage) || !ok {
 		return nil, ErrNodeNotObserver
 	}
-	return n.Processor.(Observer), nil
+	return observer, nil
 }
 
-func (n Node) GetSubscriber() (Subscriber, error) {
-	if n.Kind != KindStage && n.Kind != KindSink {
+func (n *Node) GetSubscriber() (Subscriber, error) {
+	subscriber, ok := n.Processor.(Subscriber)
+	if (n.Kind != KindStage && n.Kind != KindSink) || !ok {
 		return nil, ErrNodeNotSubscriber
 	}
-	return n.Processor.(Subscriber), nil
+	return subscriber, nil
 }
 
 func (n *Node) String() string {

@@ -34,7 +34,7 @@ func NewTree(spec StreamSpec) (*Tree, error) {
 
 		node := treeMap[stage.Name]
 		node.Parent = from
-		treeMap[stage.From].Children = append(from.Children, node)
+		from.Children = append(from.Children, node)
 	}
 
 	for _, sink := range spec.Sinks {
@@ -160,10 +160,10 @@ func (g *Tree) String() string {
 	return source.String()
 }
 
-func (t *Tree) Map() map[string]*Node {
-	return t.treeMap
+func (g *Tree) Map() map[string]*Node {
+	return g.treeMap
 }
 
-func (t *Tree) GetNode(name string) *Node {
-	return t.treeMap[name]
+func (g *Tree) GetNode(name string) *Node {
+	return g.treeMap[name]
 }

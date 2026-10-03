@@ -1,4 +1,4 @@
-package e2e
+package e2e_test
 
 import (
 	"context"
@@ -9,13 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
-	"codeberg.org/eljoth/tram/internal/testutil/natstest"
-	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/testutil/natstest"
+	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
 // signalHeader must match the header of Tram's NATS sink and source.
@@ -25,9 +26,13 @@ const signalHeader = "Tram-Signal"
 // actually ends up in JetStream. All subtests share the container and use
 // their own streams. Requires Docker or Podman; skipped otherwise.
 func TestNATS(t *testing.T) {
+	t.Parallel()
+
 	n := startNATS(t)
 
 	t.Run("batch then publish one message per service", func(t *testing.T) {
+		t.Parallel()
+
 		out := n.stream("out")
 		p := newPipeline(t,
 			[]domain.StageSpec{batchStage(6, "1h")},
@@ -50,6 +55,8 @@ func TestNATS(t *testing.T) {
 	})
 
 	t.Run("split into two streams", func(t *testing.T) {
+		t.Parallel()
+
 		outA, outRest := n.stream("a"), n.stream("rest")
 		p := newPipeline(t,
 			[]domain.StageSpec{
@@ -61,31 +68,56 @@ func TestNATS(t *testing.T) {
 				n.sinkByService("sink-rest", "other-customers", outRest),
 			})
 
-		require.Equal(t, http.StatusOK, p.post(t, request("shop", rec{"r1", "A"}, rec{"r2", "B"}, rec{"r3", "A"}, rec{"r4", "C"}), 10*time.Second))
+		require.Equal(
+			t,
+			http.StatusOK,
+			p.post(t, request("shop", rec{"r1", "A"}, rec{"r2", "B"}, rec{"r3", "A"}, rec{"r4", "C"}), 10*time.Second),
+		)
 
-		assert.Equal(t, map[string][]string{outA + ".shop": {"shop/e2e/r1", "shop/e2e/r3"}}, bySubject(t, n.read(t, outA)))
-		assert.Equal(t, map[string][]string{outRest + ".shop": {"shop/e2e/r2", "shop/e2e/r4"}}, bySubject(t, n.read(t, outRest)))
+		assert.Equal(
+			t,
+			map[string][]string{outA + ".shop": {"shop/e2e/r1", "shop/e2e/r3"}},
+			bySubject(t, n.read(t, outA)),
+		)
+		assert.Equal(
+			t,
+			map[string][]string{outRest + ".shop": {"shop/e2e/r2", "shop/e2e/r4"}},
+			bySubject(t, n.read(t, outRest)),
+		)
 	})
 
 	// What Tram's NATS sink publishes is consumed by Tram's NATS source in a
 	// second stream, filtered there, and arrives with resource and scope.
 	t.Run("sink to source round trip", func(t *testing.T) {
+		t.Parallel()
+
 		mid := n.stream("mid")
 		ingest := newPipeline(t, nil, []domain.SinkSpec{n.sinkByService("out", "in", mid)})
 		forward := newStream(t, n.sourceSpec(mid), []domain.StageSpec{customerFilter("customer-a", "in", isCustomerA)},
 			[]domain.SinkSpec{captureSinkSpec("received", "customer-a")})
 
-		require.Equal(t, http.StatusOK, ingest.post(t, request("shop", rec{"r1", "A"}, rec{"r2", "B"}, rec{"r3", "A"}), 10*time.Second))
+		require.Equal(
+			t,
+			http.StatusOK,
+			ingest.post(t, request("shop", rec{"r1", "A"}, rec{"r2", "B"}, rec{"r3", "A"}), 10*time.Second),
+		)
 		require.Equal(t, http.StatusOK, ingest.post(t, request("cart", rec{"k1", "B"}, rec{"k2", "A"}), 10*time.Second))
 
 		received := forward.sinks.sink(t, "received")
-		require.Eventually(t, func() bool { return len(arrived(received.received())) == 3 }, 10*time.Second, 10*time.Millisecond)
+		require.Eventually(
+			t,
+			func() bool { return len(arrived(received.received())) == 3 },
+			10*time.Second,
+			10*time.Millisecond,
+		)
 		assert.ElementsMatch(t, []string{"shop/e2e/r1", "shop/e2e/r3", "cart/e2e/k2"}, arrived(received.received()))
 	})
 
 	// Logs, metrics and traces keep their type through NATS. Decoding them
 	// without the signal header used to turn everything into logs.
 	t.Run("signal types survive the round trip", func(t *testing.T) {
+		t.Parallel()
+
 		mid := n.stream("signals")
 		ingest := newPipeline(t, nil, []domain.SinkSpec{{
 			Name: "out", Type: "nats", From: "in", Spec: n.sinkSpec(mid, map[string]any{
@@ -116,13 +148,21 @@ func TestNATS(t *testing.T) {
 			switch {
 			case e.Logs != nil && e.Metrics == nil && e.Traces == nil:
 				signals = append(signals, "logs")
-				assert.Equal(t, "log message 0", e.Logs.ResourceLogs[0].ScopeLogs[0].LogRecords[0].Body.GetStringValue())
+				assert.Equal(
+					t,
+					"log message 0",
+					e.Logs.GetResourceLogs()[0].GetScopeLogs()[0].GetLogRecords()[0].GetBody().GetStringValue(),
+				)
 			case e.Metrics != nil && e.Logs == nil && e.Traces == nil:
 				signals = append(signals, "metrics")
-				assert.Equal(t, "metric_0", e.Metrics.ResourceMetrics[0].ScopeMetrics[0].Metrics[0].Name)
+				assert.Equal(
+					t,
+					"metric_0",
+					e.Metrics.GetResourceMetrics()[0].GetScopeMetrics()[0].GetMetrics()[0].GetName(),
+				)
 			case e.Traces != nil && e.Logs == nil && e.Metrics == nil:
 				signals = append(signals, "traces")
-				assert.Equal(t, "span-0", e.Traces.ResourceSpans[0].ScopeSpans[0].Spans[0].Name)
+				assert.Equal(t, "span-0", e.Traces.GetResourceSpans()[0].GetScopeSpans()[0].GetSpans()[0].GetName())
 			default:
 				t.Errorf("event with an unexpected mix of signal types: %+v", e)
 			}
@@ -135,6 +175,8 @@ func TestNATS(t *testing.T) {
 	// It used to take the full fetch timeout of 5 seconds, holding up every
 	// other change to the core.
 	t.Run("stopping an idle source is fast", func(t *testing.T) {
+		t.Parallel()
+
 		mid := n.stream("idle")
 		_ = newPipeline(t, nil, []domain.SinkSpec{n.sinkByService("out", "in", mid)}) // creates the JetStream stream
 		forward := newStream(t, n.sourceSpec(mid), nil, []domain.SinkSpec{captureSinkSpec("received", "in")})
@@ -148,6 +190,8 @@ func TestNATS(t *testing.T) {
 	// A subject outside the stream's register cannot be published; the client
 	// is told the data was not delivered.
 	t.Run("publish failure reaches the client", func(t *testing.T) {
+		t.Parallel()
+
 		out := n.stream("narrow")
 		p := newPipeline(t, nil, []domain.SinkSpec{{
 			Name: "out", Type: "nats", From: "in", Spec: map[string]any{
@@ -224,8 +268,8 @@ func (n *natsServer) read(t *testing.T, name string) []*jetstream.RawStreamMsg {
 
 	var messages []*jetstream.RawStreamMsg
 	for seq := info.State.FirstSeq; seq <= info.State.LastSeq && info.State.Msgs > 0; seq++ {
-		m, err := stream.GetMsg(ctx, seq)
-		require.NoError(t, err)
+		m, getErr := stream.GetMsg(ctx, seq)
+		require.NoError(t, getErr)
 		messages = append(messages, m)
 	}
 	return messages

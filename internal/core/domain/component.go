@@ -1,4 +1,5 @@
-// internal/core/domain/component.go
+// Package domain contains Tram's core types: streams, their components and
+// the events flowing through them.
 package domain
 
 import "context"
@@ -42,6 +43,6 @@ type Stage interface {
 	Subscriber
 }
 
-type Sink interface {
-	Subscriber
-}
+// Sink is a subscriber at the end of a stream; it needs nothing beyond the
+// Subscriber methods.
+type Sink = Subscriber

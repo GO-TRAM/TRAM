@@ -3,7 +3,7 @@ package core
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"sync"
 
 	"codeberg.org/eljoth/tram/internal/core/domain"
@@ -12,6 +12,7 @@ import (
 
 type Core struct {
 	ctx           context.Context
+	logger        *slog.Logger
 	mutex         sync.RWMutex
 	wg            sync.WaitGroup
 	closed        bool
@@ -36,12 +37,14 @@ type watcher struct {
 
 func New(
 	ctx context.Context,
+	logger *slog.Logger,
 	sourceFactory ports.Factory[domain.SourceSpec, domain.Source],
 	stageFactory ports.Factory[domain.StageSpec, domain.Stage],
 	sinkFactory ports.Factory[domain.SinkSpec, domain.Sink],
 ) *Core {
 	return &Core{
 		ctx:           ctx,
+		logger:        logger,
 		mutex:         sync.RWMutex{},
 		streams:       map[string]*stream{},
 		sourceFactory: sourceFactory,
@@ -75,10 +78,10 @@ func (c *Core) UpsertStream(ctx context.Context, spec domain.StreamSpec) (*domai
 	// With an unchanged source, only the stages and sinks are replaced while
 	// the source keeps running.
 	if exists && old.tree.Spec.Source.Equal(spec.Source) {
-		if err := c.replaceReceivers(old, tree); err != nil {
+		if err = c.replaceReceivers(old, tree); err != nil {
 			return nil, errors.Join(domain.ErrStreamBuildFailed, err)
 		}
-		log.Println("Replaced stages and sinks of stream", spec.Name)
+		c.logger.InfoContext(ctx, "Replaced stages and sinks of stream", slog.String("stream", spec.Name))
 		c.notify(domain.StreamSpecWatchEventTypeUpsert, tree.Spec)
 		return &tree.Spec, nil
 	}
@@ -87,13 +90,14 @@ func (c *Core) UpsertStream(ctx context.Context, spec domain.StreamSpec) (*domai
 	// its components may hold resources (e.g. listening ports) the new ones
 	// need.
 	if exists {
-		if err := c.stopStream(old); err != nil {
-			log.Printf("failed to cleanly stop stream %s: %v", spec.Name, err)
+		if err = c.stopStream(old); err != nil {
+			c.logger.ErrorContext(ctx, "Could not cleanly stop stream",
+				slog.String("stream", spec.Name), slog.Any("error", err))
 		}
 		delete(c.streams, spec.Name)
 	}
 
-	if err := c.buildStream(tree); err != nil {
+	if err = c.buildStream(tree); err != nil {
 		if exists {
 			c.restoreStream(old.tree.Spec)
 		}
@@ -119,21 +123,22 @@ func (c *Core) DeleteStream(ctx context.Context, name string) error {
 		return domain.ErrStreamNotFound
 	}
 
-	log.Println("Stopping stream", name)
+	c.logger.InfoContext(ctx, "Stopping stream", slog.String("stream", name))
 	// Every component has been asked to stop even if some failed, so the
 	// stream is removed either way.
 	if err := c.stopStream(stream); err != nil {
-		log.Printf("failed to cleanly stop stream %s: %v", name, err)
+		c.logger.ErrorContext(ctx, "Could not cleanly stop stream",
+			slog.String("stream", name), slog.Any("error", err))
 	}
 
 	delete(c.streams, name)
 	c.notify(domain.StreamSpecWatchEventTypeDelete, stream.tree.Spec)
-	log.Println("Deleted stream", name)
+	c.logger.InfoContext(ctx, "Deleted stream", slog.String("stream", name))
 
 	return nil
 }
 
-func (c *Core) GetStream(ctx context.Context, name string) (*domain.StreamSpec, error) {
+func (c *Core) GetStream(_ context.Context, name string) (*domain.StreamSpec, error) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
@@ -144,7 +149,7 @@ func (c *Core) GetStream(ctx context.Context, name string) (*domain.StreamSpec, 
 	return &stream.tree.Spec, nil
 }
 
-func (c *Core) GetStreams(ctx context.Context) ([]domain.StreamSpec, error) {
+func (c *Core) GetStreams(_ context.Context) ([]domain.StreamSpec, error) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
@@ -162,9 +167,9 @@ func (c *Core) Close() error {
 	c.closed = true
 
 	for name, stream := range c.streams {
-		log.Printf("stopping stream %s", name)
+		c.logger.InfoContext(c.ctx, "Stopping stream", slog.String("stream", name))
 		if err := c.stopStream(stream); err != nil {
-			log.Printf("failed to stop stream %s: %v", name, err)
+			c.logger.ErrorContext(c.ctx, "Could not stop stream", slog.String("stream", name), slog.Any("error", err))
 		}
 	}
 	clear(c.streams)

@@ -1,37 +1,43 @@
-package delay
+package delay_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"codeberg.org/eljoth/tram/internal/adapters/stage/delay"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 func TestNotifyReturnsEarly(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name      string
-		interrupt func(d *Delay, cancel context.CancelFunc)
+		interrupt func(d *delay.Delay, cancel context.CancelFunc)
 		expected  error
 	}{
 		{
 			name:      "context cancelled",
-			interrupt: func(_ *Delay, cancel context.CancelFunc) { cancel() },
+			interrupt: func(_ *delay.Delay, cancel context.CancelFunc) { cancel() },
 			expected:  context.Canceled,
 		},
 		{
 			name:      "stage stopped",
-			interrupt: func(d *Delay, _ context.CancelFunc) { _ = d.Stop() },
-			expected:  ErrDelayStopped,
+			interrupt: func(d *delay.Delay, _ context.CancelFunc) { _ = d.Stop() },
+			expected:  delay.ErrDelayStopped,
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			d, err := New(domain.StageSpec{Name: "delay", Spec: map[string]any{"delay": "1h"}}, validator.New())
+			t.Parallel()
+
+			d, err := delay.New(domain.StageSpec{Name: "delay", Spec: map[string]any{"delay": "1h"}}, validator.New())
 			require.NoError(t, err)
 
 			ctx, cancel := context.WithCancel(t.Context())
@@ -42,8 +48,8 @@ func TestNotifyReturnsEarly(t *testing.T) {
 			c.interrupt(d, cancel)
 
 			select {
-			case err := <-done:
-				assert.ErrorIs(t, err, c.expected)
+			case notifyErr := <-done:
+				require.ErrorIs(t, notifyErr, c.expected)
 			case <-time.After(time.Second):
 				t.Fatal("Notify did not return")
 			}
@@ -52,7 +58,9 @@ func TestNotifyReturnsEarly(t *testing.T) {
 }
 
 func TestStopIsIdempotent(t *testing.T) {
-	d, err := New(domain.StageSpec{Name: "delay", Spec: map[string]any{"delay": "1h"}}, validator.New())
+	t.Parallel()
+
+	d, err := delay.New(domain.StageSpec{Name: "delay", Spec: map[string]any{"delay": "1h"}}, validator.New())
 	require.NoError(t, err)
 
 	assert.NoError(t, d.Stop())

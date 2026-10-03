@@ -366,7 +366,7 @@ Sinks are the terminal points of a pipeline that consume or export data.
 
 ### Debug Sink
 
-Writes every event to the log on stderr, prefixed with `[DEBUG]` and the path the event took through the stream (e.g. `in -> filter -> out`). The event is printed as Go's representation of the OTLP data, which is verbose but complete. Useful for development, testing, and debugging pipelines.
+Writes every event to the log on stderr as a `Debug event` record with the attributes `path` (the path the event took through the stream, e.g. `in -> filter -> out`), `records` (the number of log records, data points and spans) and `event` (Go's representation of the OTLP data, which is verbose but complete). Useful for development, testing, and debugging pipelines.
 
 **Type:** `debug`
 

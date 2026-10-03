@@ -5,15 +5,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-playground/validator/v10"
+
 	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
-	"github.com/go-playground/validator/v10"
 )
 
 const Type = "delay"
 
 type Delay struct {
 	*base.Stage[Spec]
+
 	delay    time.Duration
 	shutdown chan struct{}
 	stopOnce sync.Once

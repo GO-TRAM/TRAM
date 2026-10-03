@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
-	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/interpreter"
@@ -16,6 +14,9 @@ import (
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/proto"
+
+	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 const Type = "cel_filter"
@@ -25,6 +26,7 @@ const Type = "cel_filter"
 // a whole event, it decides per log record, metric data point and span.
 type CELFilter struct {
 	*base.Stage[Spec]
+
 	// A nil program means the signal type is not filtered.
 	logs    cel.Program
 	metrics cel.Program
@@ -52,25 +54,34 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELFilter, err
 		return nil, errors.Join(ErrCELEnvironmentInitialization, err)
 	}
 
-	logs, err := compile(env, base.Spec().Logs,
-		cel.Variable("record", cel.ObjectType("opentelemetry.proto.logs.v1.LogRecord")))
-	if err != nil {
-		return nil, errors.Join(ErrCELInvalidLogsExpression, err)
+	// A signal type without an expression keeps a nil program and is not
+	// filtered.
+	var logs, metrics, traces cel.Program
+	if expression := base.Spec().Logs; expression != "" {
+		logs, err = compile(env, expression,
+			cel.Variable("record", cel.ObjectType("opentelemetry.proto.logs.v1.LogRecord")))
+		if err != nil {
+			return nil, errors.Join(ErrCELInvalidLogsExpression, err)
+		}
 	}
 
 	// Data points have a different type per metric type, so datapoint is
 	// dynamically typed; the fields they share, like attributes, work for all.
-	metrics, err := compile(env, base.Spec().Metrics,
-		cel.Variable("metric", cel.ObjectType("opentelemetry.proto.metrics.v1.Metric")),
-		cel.Variable("datapoint", cel.DynType))
-	if err != nil {
-		return nil, errors.Join(ErrCELInvalidMetricsExpression, err)
+	if expression := base.Spec().Metrics; expression != "" {
+		metrics, err = compile(env, expression,
+			cel.Variable("metric", cel.ObjectType("opentelemetry.proto.metrics.v1.Metric")),
+			cel.Variable("datapoint", cel.DynType))
+		if err != nil {
+			return nil, errors.Join(ErrCELInvalidMetricsExpression, err)
+		}
 	}
 
-	traces, err := compile(env, base.Spec().Traces,
-		cel.Variable("span", cel.ObjectType("opentelemetry.proto.trace.v1.Span")))
-	if err != nil {
-		return nil, errors.Join(ErrCELInvalidTracesExpression, err)
+	if expression := base.Spec().Traces; expression != "" {
+		traces, err = compile(env, expression,
+			cel.Variable("span", cel.ObjectType("opentelemetry.proto.trace.v1.Span")))
+		if err != nil {
+			return nil, errors.Join(ErrCELInvalidTracesExpression, err)
+		}
 	}
 
 	return &CELFilter{
@@ -83,9 +94,6 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELFilter, err
 
 // compile returns nil for an empty expression, which disables filtering.
 func compile(env *cel.Env, expression string, vars ...cel.EnvOption) (cel.Program, error) {
-	if expression == "" {
-		return nil, nil
-	}
 	env, err := env.Extend(vars...)
 	if err != nil {
 		return nil, err
@@ -102,14 +110,17 @@ func compile(env *cel.Env, expression string, vars ...cel.EnvOption) (cel.Progra
 
 func (f *CELFilter) Notify(ctx context.Context, event *domain.Event) error {
 	filtered := *event
-	vars := &activation{}
+	vars := &activation{emptyResource: &resourcepb.Resource{}, emptyScope: &commonpb.InstrumentationScope{}}
 
 	if f.logs != nil && event.Logs != nil {
-		logs, err := domain.FilterLogs(event.Logs, func(resource *resourcepb.Resource, scope *commonpb.InstrumentationScope, record *logspb.LogRecord) (bool, error) {
-			vars.set(resource, scope)
-			vars.record = record
-			return eval(f.logs, vars)
-		})
+		logs, err := domain.FilterLogs(
+			event.Logs,
+			func(resource *resourcepb.Resource, scope *commonpb.InstrumentationScope, record *logspb.LogRecord) (bool, error) {
+				vars.set(resource, scope)
+				vars.record = record
+				return eval(f.logs, vars)
+			},
+		)
 		if err != nil {
 			return err
 		}
@@ -117,12 +128,15 @@ func (f *CELFilter) Notify(ctx context.Context, event *domain.Event) error {
 	}
 
 	if f.metrics != nil && event.Metrics != nil {
-		metrics, err := domain.FilterMetrics(event.Metrics, func(resource *resourcepb.Resource, scope *commonpb.InstrumentationScope, metric *metricspb.Metric, dataPoint proto.Message) (bool, error) {
-			vars.set(resource, scope)
-			vars.metric = metric
-			vars.dataPoint = dataPoint
-			return eval(f.metrics, vars)
-		})
+		metrics, err := domain.FilterMetrics(
+			event.Metrics,
+			func(resource *resourcepb.Resource, scope *commonpb.InstrumentationScope, metric *metricspb.Metric, dataPoint proto.Message) (bool, error) {
+				vars.set(resource, scope)
+				vars.metric = metric
+				vars.dataPoint = dataPoint
+				return eval(f.metrics, vars)
+			},
+		)
 		if err != nil {
 			return err
 		}
@@ -130,11 +144,14 @@ func (f *CELFilter) Notify(ctx context.Context, event *domain.Event) error {
 	}
 
 	if f.traces != nil && event.Traces != nil {
-		traces, err := domain.FilterSpans(event.Traces, func(resource *resourcepb.Resource, scope *commonpb.InstrumentationScope, span *tracepb.Span) (bool, error) {
-			vars.set(resource, scope)
-			vars.span = span
-			return eval(f.traces, vars)
-		})
+		traces, err := domain.FilterSpans(
+			event.Traces,
+			func(resource *resourcepb.Resource, scope *commonpb.InstrumentationScope, span *tracepb.Span) (bool, error) {
+				vars.set(resource, scope)
+				vars.span = span
+				return eval(f.traces, vars)
+			},
+		)
 		if err != nil {
 			return err
 		}
@@ -160,19 +177,23 @@ func eval(program cel.Program, vars *activation) (bool, error) {
 	}
 	keep, ok := out.Value().(bool)
 	if !ok {
-		return false, fmt.Errorf("%w: %w: expression returned %T instead of bool", domain.ErrEventRejected, ErrCELEvaluation, out.Value())
+		return false, fmt.Errorf(
+			"%w: %w: expression returned %T instead of bool",
+			domain.ErrEventRejected,
+			ErrCELEvaluation,
+			out.Value(),
+		)
 	}
 	return keep, nil
 }
 
-var (
-	emptyResource = &resourcepb.Resource{}
-	emptyScope    = &commonpb.InstrumentationScope{}
-)
-
 // activation provides the variables of one record to CEL. It is reused for
 // all records of an event to avoid an allocation per record.
 type activation struct {
+	// emptyResource and emptyScope stand in for missing ones.
+	emptyResource *resourcepb.Resource
+	emptyScope    *commonpb.InstrumentationScope
+
 	resource  *resourcepb.Resource
 	scope     *commonpb.InstrumentationScope
 	record    *logspb.LogRecord
@@ -186,10 +207,10 @@ type activation struct {
 func (a *activation) set(resource *resourcepb.Resource, scope *commonpb.InstrumentationScope) {
 	a.resource, a.scope = resource, scope
 	if a.resource == nil {
-		a.resource = emptyResource
+		a.resource = a.emptyResource
 	}
 	if a.scope == nil {
-		a.scope = emptyScope
+		a.scope = a.emptyScope
 	}
 }
 

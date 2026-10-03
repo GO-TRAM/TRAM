@@ -1,12 +1,13 @@
-// internal/adapters/stage/noop/noop.go
+// Package noop provides a stage that passes events on unchanged.
 package noop
 
 import (
 	"context"
 
+	"github.com/go-playground/validator/v10"
+
 	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
-	"github.com/go-playground/validator/v10"
 )
 
 const Type = "noop"

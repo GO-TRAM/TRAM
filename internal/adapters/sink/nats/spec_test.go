@@ -1,14 +1,19 @@
-package nats
+package nats_test
 
 import (
 	"testing"
 
-	"codeberg.org/eljoth/tram/internal/adapters/sink/base"
+	natssink "codeberg.org/eljoth/tram/internal/adapters/sink/nats"
+
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
+
+	"codeberg.org/eljoth/tram/internal/adapters/sink/base"
 )
 
 func TestSpecValidation(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name      string
 		subject   map[string]any
@@ -36,7 +41,9 @@ func TestSpecValidation(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := base.New[Spec]("nats", "src", map[string]any{
+			t.Parallel()
+
+			_, err := base.New[natssink.Spec]("nats", "src", map[string]any{
 				"url":     "nats://localhost:4222",
 				"stream":  "s",
 				"subject": c.subject,

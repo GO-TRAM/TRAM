@@ -1,6 +1,10 @@
-package nats
+package nats_test
 
 import (
+	"log/slog"
+
+	natssource "codeberg.org/eljoth/tram/internal/adapters/source/nats"
+
 	"context"
 	"fmt"
 	"sync"
@@ -8,12 +12,13 @@ import (
 	"testing"
 	"time"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
-	"codeberg.org/eljoth/tram/internal/testutil/natstest"
-	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 	"github.com/go-playground/validator/v10"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+
+	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/testutil/natstest"
+	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
 // countingSubscriber signals done once it has received want records.
@@ -61,56 +66,63 @@ func BenchmarkConsume(b *testing.B) {
 	run := 0
 	for _, workers := range []int{1, 8} {
 		for _, shape := range shapes {
-			_, payload, err := (&domain.Event{Logs: otlpgen.Logs(shape)}).MarshalOTLPData()
-			if err != nil {
-				b.Fatal(err)
+			_, payload, marshalErr := (&domain.Event{Logs: otlpgen.Logs(shape)}).MarshalOTLPData()
+			if marshalErr != nil {
+				b.Fatal(marshalErr)
 			}
 
 			b.Run(fmt.Sprintf("workers=%d/%s", workers, shape), func(b *testing.B) {
-				// Every run of the function gets a fresh stream holding
-				// exactly b.N messages.
+				// Every run of the function gets a fresh stream.
 				run++
-				name := fmt.Sprintf("consume-%d", run)
-				subject := name + ".logs"
-				ctx := context.Background()
-				if _, err := js.CreateStream(ctx, jetstream.StreamConfig{Name: name, Subjects: []string{subject}}); err != nil {
-					b.Fatal(err)
-				}
-				b.Cleanup(func() { _ = js.DeleteStream(context.Background(), name) })
-				publish(b, js, subject, payload, b.N)
-
-				src, err := New(domain.SourceSpec{Name: "nats", Spec: map[string]any{
-					"url":     url,
-					"stream":  name,
-					"subject": subject,
-					"workers": float64(workers),
-				}}, validator.New())
-				if err != nil {
-					b.Fatal(err)
-				}
-				counter := &countingSubscriber{want: int64(shape.Records * b.N), done: make(chan struct{})}
-				_ = src.Subscribe(counter)
-
-				b.ReportAllocs()
-				b.ResetTimer()
-				stopped := make(chan error, 1)
-				go func() { stopped <- src.Run(ctx) }()
-				select {
-				case <-counter.done:
-				case <-time.After(time.Minute):
-					b.Fatalf("received %d of %d records", counter.records.Load(), counter.want)
-				}
-				b.StopTimer()
-
-				_ = src.Stop()
-				if err := <-stopped; err != nil {
-					b.Fatal(err)
-				}
-				b.ReportMetric(float64(shape.Records*b.N)/b.Elapsed().Seconds(), "records/s")
-				b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "messages/s")
+				consume(b, js, url, fmt.Sprintf("consume-%d", run), workers, shape.Records, payload)
 			})
 		}
 	}
+}
+
+// consume runs one BenchmarkConsume case on a fresh stream holding exactly
+// b.N messages of payload, each with records log records.
+func consume(b *testing.B, js jetstream.JetStream, url, name string, workers, records int, payload []byte) {
+	subject := name + ".logs"
+	ctx := context.Background()
+	if _, createErr := js.CreateStream(
+		ctx,
+		jetstream.StreamConfig{Name: name, Subjects: []string{subject}},
+	); createErr != nil {
+		b.Fatal(createErr)
+	}
+	b.Cleanup(func() { _ = js.DeleteStream(context.Background(), name) })
+	publish(b, js, subject, payload, b.N)
+
+	src, newErr := natssource.New(domain.SourceSpec{Name: "nats", Spec: map[string]any{
+		"url":     url,
+		"stream":  name,
+		"subject": subject,
+		"workers": float64(workers),
+	}}, validator.New(), slog.New(slog.DiscardHandler))
+	if newErr != nil {
+		b.Fatal(newErr)
+	}
+	counter := &countingSubscriber{want: int64(records * b.N), done: make(chan struct{})}
+	_ = src.Subscribe(counter)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	stopped := make(chan error, 1)
+	go func() { stopped <- src.Run(ctx) }()
+	select {
+	case <-counter.done:
+	case <-time.After(time.Minute):
+		b.Fatalf("received %d of %d records", counter.records.Load(), counter.want)
+	}
+	b.StopTimer()
+
+	_ = src.Stop()
+	if runErr := <-stopped; runErr != nil {
+		b.Fatal(runErr)
+	}
+	b.ReportMetric(float64(records*b.N)/b.Elapsed().Seconds(), "records/s")
+	b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "messages/s")
 }
 
 // publish stores n copies of payload in the stream, the way the NATS sink
@@ -122,7 +134,7 @@ func publish(b *testing.B, js jetstream.JetStream, subject string, payload []byt
 		ack, err := js.PublishMsgAsync(&nats.Msg{
 			Subject: subject,
 			Data:    payload,
-			Header:  nats.Header{SignalHeader: []string{string(domain.SignalLogs)}},
+			Header:  nats.Header{natssource.SignalHeader: []string{string(domain.SignalLogs)}},
 		})
 		if err != nil {
 			b.Fatal(err)

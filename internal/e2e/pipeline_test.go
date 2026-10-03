@@ -1,4 +1,4 @@
-package e2e
+package e2e_test
 
 import (
 	"fmt"
@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
+
+	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 func batchStage(maxRecords int, timeout string) domain.StageSpec {
@@ -24,6 +25,8 @@ func batchStage(maxRecords int, timeout string) domain.StageSpec {
 // Concurrent requests fill one batch, which arrives as one event with every
 // record in its original resource and scope.
 func TestBatchMergesConcurrentRequests(t *testing.T) {
+	t.Parallel()
+
 	// The timeout is long, so only reaching max_records can flush the batch.
 	p := newPipeline(t, []domain.StageSpec{batchStage(6, "1h")}, []domain.SinkSpec{captureSinkSpec("out", "batch")})
 
@@ -33,10 +36,15 @@ func TestBatchMergesConcurrentRequests(t *testing.T) {
 		request("search", rec{"s1", "A"}, rec{"s2", "B"}),
 	)
 
-	assert.Equal(t, []int{http.StatusOK, http.StatusOK, http.StatusOK}, codes, "every caller gets the result of the delivered batch")
+	assert.Equal(
+		t,
+		[]int{http.StatusOK, http.StatusOK, http.StatusOK},
+		codes,
+		"every caller gets the result of the delivered batch",
+	)
 	events := p.sinks.sink(t, "out").received()
 	require.Len(t, events, 1, "the three requests are delivered as one batch")
-	assert.Len(t, events[0].Logs.ResourceLogs, 3, "each request keeps its resource entry")
+	assert.Len(t, events[0].Logs.GetResourceLogs(), 3, "each request keeps its resource entry")
 	assert.ElementsMatch(t, []string{
 		"checkout/e2e/c1", "checkout/e2e/c2",
 		"cart/e2e/k1", "cart/e2e/k2",
@@ -45,6 +53,8 @@ func TestBatchMergesConcurrentRequests(t *testing.T) {
 }
 
 func TestBatchFlushesAfterTimeout(t *testing.T) {
+	t.Parallel()
+
 	p := newPipeline(t, []domain.StageSpec{batchStage(100, "50ms")}, []domain.SinkSpec{captureSinkSpec("out", "batch")})
 
 	start := time.Now()
@@ -55,7 +65,13 @@ func TestBatchFlushesAfterTimeout(t *testing.T) {
 
 // A client that gives up before the batch is flushed withdraws its records.
 func TestCancelledRequestIsNotDelivered(t *testing.T) {
-	p := newPipeline(t, []domain.StageSpec{batchStage(100, "500ms")}, []domain.SinkSpec{captureSinkSpec("out", "batch")})
+	t.Parallel()
+
+	p := newPipeline(
+		t,
+		[]domain.StageSpec{batchStage(100, "500ms")},
+		[]domain.SinkSpec{captureSinkSpec("out", "batch")},
+	)
 
 	var wg sync.WaitGroup
 	var cancelled, kept int
@@ -74,6 +90,8 @@ func TestCancelledRequestIsNotDelivered(t *testing.T) {
 // Records of several customers in one resource and scope are split so that
 // every record arrives in exactly one branch.
 func TestSplitByCustomer(t *testing.T) {
+	t.Parallel()
+
 	p := newPipeline(t,
 		[]domain.StageSpec{
 			customerFilter("customer-a", "in", isCustomerA),
@@ -84,13 +102,24 @@ func TestSplitByCustomer(t *testing.T) {
 			captureSinkSpec("sink-rest", "other-customers"),
 		})
 
-	assert.Equal(t, http.StatusOK, p.post(t, request("shop", rec{"r1", "A"}, rec{"r2", "B"}, rec{"r3", "A"}, rec{"r4", "C"}), 10*time.Second))
+	assert.Equal(
+		t,
+		http.StatusOK,
+		p.post(t, request("shop", rec{"r1", "A"}, rec{"r2", "B"}, rec{"r3", "A"}, rec{"r4", "C"}), 10*time.Second),
+	)
 
-	assert.Equal(t, []string{"shop/e2e/r1", "shop/e2e/r3"}, arrived(p.sinks.sink(t, "sink-a").received()), "order within the branch is kept")
+	assert.Equal(
+		t,
+		[]string{"shop/e2e/r1", "shop/e2e/r3"},
+		arrived(p.sinks.sink(t, "sink-a").received()),
+		"order within the branch is kept",
+	)
 	assert.Equal(t, []string{"shop/e2e/r2", "shop/e2e/r4"}, arrived(p.sinks.sink(t, "sink-rest").received()))
 }
 
 func TestSplitWithoutMatchesDeliversNothing(t *testing.T) {
+	t.Parallel()
+
 	p := newPipeline(t,
 		[]domain.StageSpec{customerFilter("customer-a", "in", isCustomerA)},
 		[]domain.SinkSpec{captureSinkSpec("sink-a", "customer-a")})
@@ -101,6 +130,8 @@ func TestSplitWithoutMatchesDeliversNothing(t *testing.T) {
 
 // The recommended layout: merge requests first, then split the batch.
 func TestBatchThenSplit(t *testing.T) {
+	t.Parallel()
+
 	p := newPipeline(t,
 		[]domain.StageSpec{
 			batchStage(4, "1h"),
@@ -129,6 +160,8 @@ func TestBatchThenSplit(t *testing.T) {
 // Clients learn whether their data was delivered: rejections and permanent
 // sink errors are 400, temporary sink errors 500.
 func TestDeliveryResultReachesClient(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name     string
 		stages   []domain.StageSpec
@@ -155,14 +188,24 @@ func TestDeliveryResultReachesClient(t *testing.T) {
 			expected: http.StatusBadRequest,
 		},
 		{
-			name:     "permanent sink error",
-			sink:     domain.SinkSpec{Name: "out", Type: captureType, From: "in", Spec: map[string]any{"fail": "permanent"}},
+			name: "permanent sink error",
+			sink: domain.SinkSpec{
+				Name: "out",
+				Type: captureType,
+				From: "in",
+				Spec: map[string]any{"fail": "permanent"},
+			},
 			payload:  request("shop", rec{"r1", "A"}),
 			expected: http.StatusBadRequest,
 		},
 		{
-			name:     "temporary sink error",
-			sink:     domain.SinkSpec{Name: "out", Type: captureType, From: "in", Spec: map[string]any{"fail": "temporary"}},
+			name: "temporary sink error",
+			sink: domain.SinkSpec{
+				Name: "out",
+				Type: captureType,
+				From: "in",
+				Spec: map[string]any{"fail": "temporary"},
+			},
 			payload:  request("shop", rec{"r1", "A"}),
 			expected: http.StatusInternalServerError,
 		},
@@ -170,6 +213,8 @@ func TestDeliveryResultReachesClient(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
 			p := newPipeline(t, c.stages, []domain.SinkSpec{c.sink})
 			assert.Equal(t, c.expected, p.post(t, c.payload, 10*time.Second))
 			if c.arrives {
@@ -184,6 +229,8 @@ func TestDeliveryResultReachesClient(t *testing.T) {
 // Replacing the sinks of a stream while clients keep sending loses and
 // duplicates nothing, and the OTLP port stays open.
 func TestUpdateUnderLoadKeepsEveryRecord(t *testing.T) {
+	t.Parallel()
+
 	p := newPipeline(t, nil, []domain.SinkSpec{captureSinkSpec("before", "in")})
 
 	const clients, perClient = 4, 50
@@ -203,7 +250,11 @@ func TestUpdateUnderLoadKeepsEveryRecord(t *testing.T) {
 	}
 
 	require.Eventually(t, func() bool { return sent.Load() >= clients*perClient/2 }, 10*time.Second, time.Millisecond)
-	p.update(t, []domain.StageSpec{customerFilter("filter", "in", isCustomerA)}, []domain.SinkSpec{captureSinkSpec("after", "filter")})
+	p.update(
+		t,
+		[]domain.StageSpec{customerFilter("filter", "in", isCustomerA)},
+		[]domain.SinkSpec{captureSinkSpec("after", "filter")},
+	)
 	wg.Wait()
 
 	assert.Zero(t, failed.Load(), "no request failed during the update")

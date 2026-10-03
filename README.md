@@ -281,7 +281,7 @@ Besides the API, streams can be managed from two further sources. All of them ch
 Every `<name>.json` file in the directory describes one stream, in the same format as the API request body (`{"stream": {...}}`); see `setup/config/` for examples. The file name, without `.json`, is the stream name. The sync works in both directions:
 
 - Adding, changing or deleting a file creates, updates or deletes the stream
-- Streams created or changed through the API or the Kubernetes operator are written to files, and deleted streams have their file removed
+- Streams created or changed through the API or the Kubernetes operator are written to files (new files are readable only by the owner, mode `0600`), and deleted streams have their file removed
 - Streams without a file are deleted when the directory is synced
 
 ### Kubernetes Operator

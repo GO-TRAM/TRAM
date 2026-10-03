@@ -1,4 +1,4 @@
-package batch
+package batch_test
 
 import (
 	"context"
@@ -6,11 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
-	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"codeberg.org/eljoth/tram/internal/adapters/stage/batch"
+	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
 // recorder collects delivered events. If block is set, Notify waits for it
@@ -45,9 +47,9 @@ func (r *recorder) delivered() []int {
 	return counts
 }
 
-func newBatch(t *testing.T, spec map[string]any, rec *recorder) *Batch {
+func newBatch(t *testing.T, spec map[string]any, rec *recorder) *batch.Batch {
 	t.Helper()
-	b, err := New(domain.StageSpec{Name: "batch", From: "source", Spec: spec}, validator.New())
+	b, err := batch.New(domain.StageSpec{Name: "batch", From: "source", Spec: spec}, validator.New())
 	require.NoError(t, err)
 	require.NoError(t, b.Subscribe(rec))
 	t.Cleanup(func() { _ = b.Stop() })
@@ -59,19 +61,18 @@ func logs(records int) *domain.Event {
 }
 
 // notifyAsync calls Notify in the background and returns its result channel.
-func notifyAsync(ctx context.Context, b *Batch, event *domain.Event) <-chan error {
+func notifyAsync(ctx context.Context, b *batch.Batch, event *domain.Event) <-chan error {
 	result := make(chan error, 1)
 	go func() { result <- b.Notify(ctx, event) }()
 	return result
 }
 
 // waitForRecords waits until the open batch holds n records.
-func waitForRecords(t *testing.T, b *Batch, n int) {
+func waitForRecords(t *testing.T, b *batch.Batch, n int) {
 	t.Helper()
 	require.Eventually(t, func() bool {
-		b.mu.Lock()
-		defer b.mu.Unlock()
-		return b.current != nil && b.current.records == n
+		records, open := batch.OpenRecords(b)
+		return open && records == n
 	}, time.Second, time.Millisecond)
 }
 
@@ -87,6 +88,8 @@ func receive(t *testing.T, result <-chan error) error {
 }
 
 func TestNew(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name          string
 		spec          map[string]any
@@ -95,31 +98,51 @@ func TestNew(t *testing.T) {
 		expectMax     int
 		expectTimeout time.Duration
 	}{
-		{name: "defaults", expectMax: defaultMaxRecords, expectTimeout: defaultTimeout},
-		{name: "custom", spec: map[string]any{"max_records": 10, "timeout": "1s"}, expectMax: 10, expectTimeout: time.Second},
-		{name: "invalid timeout", spec: map[string]any{"timeout": "soon"}, expectErr: true, expectErrIs: ErrInvalidTimeout},
-		{name: "zero timeout", spec: map[string]any{"timeout": "0s"}, expectErr: true, expectErrIs: ErrInvalidTimeout},
+		{name: "defaults", expectMax: batch.DefaultMaxRecords, expectTimeout: batch.DefaultTimeout},
+		{
+			name:          "custom",
+			spec:          map[string]any{"max_records": 10, "timeout": "1s"},
+			expectMax:     10,
+			expectTimeout: time.Second,
+		},
+		{
+			name:        "invalid timeout",
+			spec:        map[string]any{"timeout": "soon"},
+			expectErr:   true,
+			expectErrIs: batch.ErrInvalidTimeout,
+		},
+		{
+			name:        "zero timeout",
+			spec:        map[string]any{"timeout": "0s"},
+			expectErr:   true,
+			expectErrIs: batch.ErrInvalidTimeout,
+		},
 		{name: "negative max records", spec: map[string]any{"max_records": -1}, expectErr: true},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			b, err := New(domain.StageSpec{Name: "batch", Spec: c.spec}, validator.New())
+			t.Parallel()
+
+			b, err := batch.New(domain.StageSpec{Name: "batch", Spec: c.spec}, validator.New())
 			if c.expectErr {
 				assert.Error(t, err)
 				if c.expectErrIs != nil {
-					assert.ErrorIs(t, err, c.expectErrIs)
+					require.ErrorIs(t, err, c.expectErrIs)
 				}
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, c.expectMax, b.maxRecords)
-			assert.Equal(t, c.expectTimeout, b.timeout)
+			maxRecords, timeout := batch.Limits(b)
+			assert.Equal(t, c.expectMax, maxRecords)
+			assert.Equal(t, c.expectTimeout, timeout)
 		})
 	}
 }
 
 func TestFlushOnMaxRecords(t *testing.T) {
+	t.Parallel()
+
 	rec := &recorder{}
 	b := newBatch(t, map[string]any{"max_records": 5, "timeout": "1h"}, rec)
 
@@ -133,6 +156,8 @@ func TestFlushOnMaxRecords(t *testing.T) {
 }
 
 func TestConcurrentCallersDoNotOvershootBatches(t *testing.T) {
+	t.Parallel()
+
 	rec := &recorder{}
 	b := newBatch(t, map[string]any{"max_records": 2, "timeout": "1h"}, rec)
 
@@ -141,7 +166,7 @@ func TestConcurrentCallersDoNotOvershootBatches(t *testing.T) {
 		results[i] = notifyAsync(t.Context(), b, logs(1))
 	}
 	for _, result := range results {
-		assert.NoError(t, receive(t, result))
+		require.NoError(t, receive(t, result))
 	}
 
 	delivered := rec.delivered()
@@ -152,32 +177,40 @@ func TestConcurrentCallersDoNotOvershootBatches(t *testing.T) {
 }
 
 func TestFlushOnTimeout(t *testing.T) {
+	t.Parallel()
+
 	rec := &recorder{}
 	b := newBatch(t, map[string]any{"max_records": 100, "timeout": "20ms"}, rec)
 
 	start := time.Now()
-	assert.NoError(t, receive(t, notifyAsync(t.Context(), b, logs(3))))
+	require.NoError(t, receive(t, notifyAsync(t.Context(), b, logs(3))))
 	assert.GreaterOrEqual(t, time.Since(start), 20*time.Millisecond)
 	assert.Equal(t, []int{3}, rec.delivered())
 }
 
 func TestEventLargerThanMaxRecordsIsFlushedWhole(t *testing.T) {
+	t.Parallel()
+
 	rec := &recorder{}
 	b := newBatch(t, map[string]any{"max_records": 2, "timeout": "1h"}, rec)
 
-	assert.NoError(t, receive(t, notifyAsync(t.Context(), b, logs(10))))
+	require.NoError(t, receive(t, notifyAsync(t.Context(), b, logs(10))))
 	assert.Equal(t, []int{10}, rec.delivered())
 }
 
 func TestEmptyEventIsNotBatched(t *testing.T) {
+	t.Parallel()
+
 	rec := &recorder{}
 	b := newBatch(t, map[string]any{"timeout": "1h"}, rec)
 
-	assert.NoError(t, b.Notify(t.Context(), &domain.Event{}))
+	require.NoError(t, b.Notify(t.Context(), &domain.Event{}))
 	assert.Empty(t, rec.delivered())
 }
 
 func TestCancelBeforeFlushWithdrawsEvent(t *testing.T) {
+	t.Parallel()
+
 	rec := &recorder{}
 	b := newBatch(t, map[string]any{"max_records": 100, "timeout": "100ms"}, rec)
 
@@ -188,13 +221,15 @@ func TestCancelBeforeFlushWithdrawsEvent(t *testing.T) {
 	waitForRecords(t, b, 5)
 
 	cancel()
-	assert.ErrorIs(t, receive(t, cancelled), context.Canceled)
+	require.ErrorIs(t, receive(t, cancelled), context.Canceled)
 
-	assert.NoError(t, receive(t, kept))
+	require.NoError(t, receive(t, kept))
 	assert.Equal(t, []int{2}, rec.delivered(), "the cancelled event must not be delivered")
 }
 
 func TestCancelledBatchIsNotDelivered(t *testing.T) {
+	t.Parallel()
+
 	rec := &recorder{}
 	b := newBatch(t, map[string]any{"max_records": 100, "timeout": "20ms"}, rec)
 
@@ -203,12 +238,14 @@ func TestCancelledBatchIsNotDelivered(t *testing.T) {
 	waitForRecords(t, b, 3)
 	cancel()
 
-	assert.ErrorIs(t, receive(t, result), context.Canceled)
+	require.ErrorIs(t, receive(t, result), context.Canceled)
 	time.Sleep(50 * time.Millisecond)
 	assert.Empty(t, rec.delivered())
 }
 
 func TestCancelAfterFlushStartedWaitsForResult(t *testing.T) {
+	t.Parallel()
+
 	rec := &recorder{block: make(chan struct{})}
 	b := newBatch(t, map[string]any{"max_records": 2, "timeout": "1h"}, rec)
 
@@ -220,9 +257,8 @@ func TestCancelAfterFlushStartedWaitsForResult(t *testing.T) {
 	// The batch is sealed and stuck in delivery; cancelling cannot withdraw
 	// the event anymore.
 	require.Eventually(t, func() bool {
-		b.mu.Lock()
-		defer b.mu.Unlock()
-		return b.current == nil
+		_, open := batch.OpenRecords(b)
+		return !open
 	}, time.Second, time.Millisecond)
 	cancel()
 
@@ -239,6 +275,8 @@ func TestCancelAfterFlushStartedWaitsForResult(t *testing.T) {
 }
 
 func TestDeliveryErrorReachesAllCallers(t *testing.T) {
+	t.Parallel()
+
 	rec := &recorder{err: domain.ErrEventRejected}
 	b := newBatch(t, map[string]any{"max_records": 2, "timeout": "1h"}, rec)
 
@@ -246,11 +284,13 @@ func TestDeliveryErrorReachesAllCallers(t *testing.T) {
 	waitForRecords(t, b, 1)
 	second := notifyAsync(t.Context(), b, logs(1))
 
-	assert.ErrorIs(t, receive(t, first), domain.ErrEventRejected)
+	require.ErrorIs(t, receive(t, first), domain.ErrEventRejected)
 	assert.ErrorIs(t, receive(t, second), domain.ErrEventRejected)
 }
 
 func TestStopDeliversOpenBatch(t *testing.T) {
+	t.Parallel()
+
 	rec := &recorder{}
 	b := newBatch(t, map[string]any{"max_records": 100, "timeout": "1h"}, rec)
 
@@ -261,30 +301,34 @@ func TestStopDeliversOpenBatch(t *testing.T) {
 	assert.NoError(t, receive(t, result))
 	assert.Equal(t, []int{3}, rec.delivered())
 
-	assert.ErrorIs(t, b.Notify(t.Context(), logs(1)), ErrBatchStopped)
+	assert.ErrorIs(t, b.Notify(t.Context(), logs(1)), batch.ErrBatchStopped)
 }
 
 func TestMerge(t *testing.T) {
+	t.Parallel()
+
 	shape := otlpgen.Shape{Records: 4, Resources: 2, Teams: 1}
 	first := &domain.Event{Logs: otlpgen.Logs(shape), Traces: otlpgen.Traces(shape)}
 	second := &domain.Event{Logs: otlpgen.Logs(shape), Metrics: otlpgen.Metrics(shape)}
 
-	merged := merge([]*entry{{event: first}, {event: second}})
+	merged := batch.Merge(first, second)
 
-	assert.Len(t, merged.Logs.ResourceLogs, 4)
-	assert.Len(t, merged.Metrics.ResourceMetrics, 2)
-	assert.Len(t, merged.Traces.ResourceSpans, 2)
+	assert.Len(t, merged.Logs.GetResourceLogs(), 4)
+	assert.Len(t, merged.Metrics.GetResourceMetrics(), 2)
+	assert.Len(t, merged.Traces.GetResourceSpans(), 2)
 	assert.Equal(t, first.RecordCount()+second.RecordCount(), merged.RecordCount())
 
 	// The inputs are shared with other branches and must stay untouched.
-	assert.Len(t, first.Logs.ResourceLogs, 2)
+	assert.Len(t, first.Logs.GetResourceLogs(), 2)
 	assert.Nil(t, first.Metrics)
-	assert.Len(t, second.Logs.ResourceLogs, 2)
+	assert.Len(t, second.Logs.GetResourceLogs(), 2)
 	assert.Nil(t, second.Traces)
-	assert.Same(t, first.Logs.ResourceLogs[0], merged.Logs.ResourceLogs[0])
+	assert.Same(t, first.Logs.GetResourceLogs()[0], merged.Logs.GetResourceLogs()[0])
 }
 
 func TestMergeSingleEventIsForwardedAsIs(t *testing.T) {
+	t.Parallel()
+
 	event := logs(3)
-	assert.Same(t, event, merge([]*entry{{event: event}}))
+	assert.Same(t, event, batch.Merge(event))
 }

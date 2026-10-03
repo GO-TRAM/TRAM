@@ -172,7 +172,7 @@ package heartbeat
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -187,12 +187,14 @@ const Type = "heartbeat"
 
 type Heartbeat struct {
 	*base.Source[Spec]
+	logger   *slog.Logger
 	interval time.Duration
 	shutdown chan struct{}
 	stopOnce sync.Once
 }
 
-func New(source domain.SourceSpec, validator *validator.Validate) (*Heartbeat, error) {
+// New takes a logger because Run logs; components that do not log leave it out.
+func New(source domain.SourceSpec, validator *validator.Validate, logger *slog.Logger) (*Heartbeat, error) {
 	// Decodes the spec and checks its validate tags.
 	base, err := base.New[Spec](source.Name, source.Spec, validator)
 	if err != nil {
@@ -208,6 +210,7 @@ func New(source domain.SourceSpec, validator *validator.Validate) (*Heartbeat, e
 
 	return &Heartbeat{
 		Source:   base,
+		logger:   logger,
 		interval: interval,
 		shutdown: make(chan struct{}),
 	}, nil
@@ -234,7 +237,8 @@ func (h *Heartbeat) Run(ctx context.Context) error {
 
 			// Returns once all children have processed the event.
 			if err := h.NotifySubscribers(ctx, event); err != nil {
-				log.Printf("heartbeat %s: %v", h.Name(), err)
+				h.logger.ErrorContext(ctx, "Could not deliver event",
+					slog.String("source", h.Name()), slog.Any("error", err))
 			}
 		}
 	}
@@ -258,7 +262,7 @@ func (f *Factory) New(spec domain.SourceSpec) (domain.Source, error) {
 	switch spec.Type {
 	// ... existing sources
 	case heartbeat.Type:
-		return heartbeat.New(spec, f.validator)
+		return heartbeat.New(spec, f.validator, f.logger)
 	default:
 		return nil, fmt.Errorf("%w: %q", domain.ErrInvalidSourceType, spec.Type)
 	}

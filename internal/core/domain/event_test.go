@@ -3,8 +3,6 @@ package domain_test
 import (
 	"testing"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
-	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
@@ -12,33 +10,65 @@ import (
 	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/proto"
+
+	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
 func TestOTLPDataRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name   string
 		event  *domain.Event
 		signal domain.Signal
 	}{
 		{
-			name:   "logs",
-			event:  &domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{SeverityText: "INFO"}}}}}}}},
+			name: "logs",
+			event: &domain.Event{
+				Logs: &logspb.LogsData{
+					ResourceLogs: []*logspb.ResourceLogs{
+						{ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{SeverityText: "INFO"}}}}},
+					},
+				},
+			},
 			signal: domain.SignalLogs,
 		},
 		{
-			name:   "metrics",
-			event:  &domain.Event{Metrics: &metricspb.MetricsData{ResourceMetrics: []*metricspb.ResourceMetrics{{ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{{Name: "requests"}}}}}}}},
+			name: "metrics",
+			event: &domain.Event{
+				Metrics: &metricspb.MetricsData{
+					ResourceMetrics: []*metricspb.ResourceMetrics{
+						{ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{{Name: "requests"}}}}},
+					},
+				},
+			},
 			signal: domain.SignalMetrics,
 		},
 		{
-			name:   "traces",
-			event:  &domain.Event{Traces: &tracepb.TracesData{ResourceSpans: []*tracepb.ResourceSpans{{ScopeSpans: []*tracepb.ScopeSpans{{Scope: &commonpb.InstrumentationScope{Name: "scope"}, Spans: []*tracepb.Span{{Name: "span"}}}}}}}},
+			name: "traces",
+			event: &domain.Event{
+				Traces: &tracepb.TracesData{
+					ResourceSpans: []*tracepb.ResourceSpans{
+						{
+							ScopeSpans: []*tracepb.ScopeSpans{
+								{
+									Scope: &commonpb.InstrumentationScope{Name: "scope"},
+									Spans: []*tracepb.Span{{Name: "span"}},
+								},
+							},
+						},
+					},
+				},
+			},
 			signal: domain.SignalTraces,
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
 			signal, data, err := c.event.MarshalOTLPData()
 			require.NoError(t, err)
 			assert.Equal(t, c.signal, signal)
@@ -53,6 +83,8 @@ func TestOTLPDataRoundTrip(t *testing.T) {
 }
 
 func TestRecordCount(t *testing.T) {
+	t.Parallel()
+
 	shape := otlpgen.Shape{Records: 30, Resources: 3, Teams: 1}
 	histogram := &metricspb.Metric{Data: &metricspb.Metric_Histogram{Histogram: &metricspb.Histogram{
 		DataPoints: []*metricspb.HistogramDataPoint{{}, {}},
@@ -76,20 +108,28 @@ func TestRecordCount(t *testing.T) {
 			expected: 2,
 		},
 		{
-			name:     "all signals",
-			event:    &domain.Event{Logs: otlpgen.Logs(shape), Metrics: otlpgen.Metrics(shape), Traces: otlpgen.Traces(shape)},
+			name: "all signals",
+			event: &domain.Event{
+				Logs:    otlpgen.Logs(shape),
+				Metrics: otlpgen.Metrics(shape),
+				Traces:  otlpgen.Traces(shape),
+			},
 			expected: 90,
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
 			assert.Equal(t, c.expected, c.event.RecordCount())
 		})
 	}
 }
 
 func TestUnmarshalOTLPDataUnknownSignal(t *testing.T) {
+	t.Parallel()
+
 	_, err := domain.UnmarshalOTLPData("", nil)
 	assert.Error(t, err)
 }

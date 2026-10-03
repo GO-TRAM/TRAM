@@ -1,13 +1,14 @@
-// internal/adapters/stage/base/stage.go
+// Package base provides the common parts of all stages.
 package base
 
 import (
 	"context"
 	"sync"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 	"golang.org/x/sync/errgroup"
+
+	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 type Stage[T any] struct {
@@ -24,7 +25,7 @@ func New[T any](name, from string, spec map[string]any, validator *validator.Val
 		return nil, err
 	}
 
-	if err := validator.Struct(parsedSpec); err != nil {
+	if err = validator.Struct(parsedSpec); err != nil {
 		return nil, err
 	}
 

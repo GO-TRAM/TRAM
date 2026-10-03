@@ -5,18 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"time"
 
-	"codeberg.org/eljoth/tram/internal/adapters/source/base"
-	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/proto"
+
+	"codeberg.org/eljoth/tram/internal/adapters/source/base"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 const (
@@ -27,15 +28,21 @@ const (
 	shutdownTimeout = 5 * time.Second
 	// maxBodyBytes matches the OpenTelemetry Collector's default request size limit.
 	maxBodyBytes = 20 << 20
+
+	readTimeout  = 5 * time.Second
+	writeTimeout = 10 * time.Second
+	idleTimeout  = 15 * time.Second
 )
 
 type OTLP struct {
 	*base.Source[Spec]
+
+	logger     *slog.Logger
 	listener   net.Listener
 	httpServer *http.Server
 }
 
-func New(source domain.SourceSpec, validator *validator.Validate) (*OTLP, error) {
+func New(source domain.SourceSpec, validator *validator.Validate, logger *slog.Logger) (*OTLP, error) {
 	base, err := base.New[Spec](source.Name, source.Spec, validator)
 	if err != nil {
 		return nil, err
@@ -43,13 +50,15 @@ func New(source domain.SourceSpec, validator *validator.Validate) (*OTLP, error)
 
 	// Bind right away so a taken port fails stream creation instead of
 	// surfacing later in Run.
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", base.Spec().HttpPort))
+	var lc net.ListenConfig
+	listener, err := lc.Listen(context.Background(), "tcp", fmt.Sprintf(":%d", base.Spec().HTTPPort))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %d: %w", domain.ErrPortUnavailable, base.Spec().HttpPort, err)
+		return nil, fmt.Errorf("%w: %d: %w", domain.ErrPortUnavailable, base.Spec().HTTPPort, err)
 	}
 
 	o := &OTLP{
 		Source:   base,
+		logger:   logger,
 		listener: listener,
 	}
 
@@ -60,18 +69,19 @@ func New(source domain.SourceSpec, validator *validator.Validate) (*OTLP, error)
 
 	o.httpServer = &http.Server{
 		Handler:      mux,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  15 * time.Second,
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
+		IdleTimeout:  idleTimeout,
 	}
 
 	return o, nil
 }
 
-func (o *OTLP) Run(_ context.Context) error {
-	log.Printf("Starting OTLP HTTP server on port %d for source %s", o.Spec().HttpPort, o.Name())
+func (o *OTLP) Run(ctx context.Context) error {
+	o.logger.InfoContext(ctx, "Starting OTLP HTTP server",
+		slog.String("source", o.Name()), slog.Int("port", o.Spec().HTTPPort))
 	if err := o.httpServer.Serve(o.listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Printf("OTLP HTTP server error: %v", err)
+		o.logger.ErrorContext(ctx, "OTLP HTTP server failed", slog.String("source", o.Name()), slog.Any("error", err))
 	}
 	return nil
 }
@@ -98,8 +108,7 @@ func (o *OTLP) handle(w http.ResponseWriter, r *http.Request, msg proto.Message,
 
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodyBytes))
 	if err != nil {
-		var maxBytesErr *http.MaxBytesError
-		if errors.As(err, &maxBytesErr) {
+		if _, tooLarge := errors.AsType[*http.MaxBytesError](err); tooLarge {
 			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
 			return
 		}
@@ -107,12 +116,12 @@ func (o *OTLP) handle(w http.ResponseWriter, r *http.Request, msg proto.Message,
 		return
 	}
 
-	if err := proto.Unmarshal(body, msg); err != nil {
+	if err = proto.Unmarshal(body, msg); err != nil {
 		http.Error(w, "Error parsing request body", http.StatusBadRequest)
 		return
 	}
 
-	if err := o.NotifySubscribers(r.Context(), event); err != nil {
+	if err = o.NotifySubscribers(r.Context(), event); err != nil {
 		if errors.Is(err, domain.ErrEventRejected) {
 			http.Error(w, "Event rejected", http.StatusBadRequest)
 			return

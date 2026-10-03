@@ -1,11 +1,14 @@
-package celvalidator
+package celvalidator_test
 
 import (
 	"testing"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"codeberg.org/eljoth/tram/internal/adapters/stage/celvalidator"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
@@ -15,6 +18,8 @@ import (
 )
 
 func TestCELValidator(t *testing.T) {
+	t.Parallel()
+
 	validator := validator.New()
 	cases := []struct {
 		name        string
@@ -31,8 +36,8 @@ func TestCELValidator(t *testing.T) {
 					"on_mismatch": "drop",
 				},
 			},
-			initErr:     ErrCELInvalidLogsExpression,
-			validateErr: ErrCELEnvironmenInitialization,
+			initErr:     celvalidator.ErrCELInvalidLogsExpression,
+			validateErr: celvalidator.ErrCELEnvironmenInitialization,
 		},
 		{
 			name: "valid logs without cel",
@@ -41,7 +46,30 @@ func TestCELValidator(t *testing.T) {
 					"on_mismatch": "drop",
 				},
 			},
-			event: domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test"}}}}}}}}}}}},
+			event: domain.Event{
+				Logs: &logspb.LogsData{
+					ResourceLogs: []*logspb.ResourceLogs{
+						{
+							ScopeLogs: []*logspb.ScopeLogs{
+								{
+									LogRecords: []*logspb.LogRecord{
+										{
+											Attributes: []*commonpb.KeyValue{
+												{
+													Key: "service.name",
+													Value: &commonpb.AnyValue{
+														Value: &commonpb.AnyValue_StringValue{StringValue: "test"},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 		{
 			name: "valid logs with cel",
@@ -51,7 +79,30 @@ func TestCELValidator(t *testing.T) {
 					"on_mismatch": "drop",
 				},
 			},
-			event: domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test"}}}}}}}}}}}},
+			event: domain.Event{
+				Logs: &logspb.LogsData{
+					ResourceLogs: []*logspb.ResourceLogs{
+						{
+							ScopeLogs: []*logspb.ScopeLogs{
+								{
+									LogRecords: []*logspb.LogRecord{
+										{
+											Attributes: []*commonpb.KeyValue{
+												{
+													Key: "service.name",
+													Value: &commonpb.AnyValue{
+														Value: &commonpb.AnyValue_StringValue{StringValue: "test"},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 		{
 			name: "drop logs",
@@ -61,7 +112,30 @@ func TestCELValidator(t *testing.T) {
 					"on_mismatch": "drop",
 				},
 			},
-			event: domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test"}}}}}}}}}}}},
+			event: domain.Event{
+				Logs: &logspb.LogsData{
+					ResourceLogs: []*logspb.ResourceLogs{
+						{
+							ScopeLogs: []*logspb.ScopeLogs{
+								{
+									LogRecords: []*logspb.LogRecord{
+										{
+											Attributes: []*commonpb.KeyValue{
+												{
+													Key: "service.name",
+													Value: &commonpb.AnyValue{
+														Value: &commonpb.AnyValue_StringValue{StringValue: "test"},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 		{
 			name: "reject logs",
@@ -71,8 +145,31 @@ func TestCELValidator(t *testing.T) {
 					"on_mismatch": "reject",
 				},
 			},
-			event:       domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test2"}}}}}}}}}}}},
-			validateErr: ErrCELRejectingLogs,
+			event: domain.Event{
+				Logs: &logspb.LogsData{
+					ResourceLogs: []*logspb.ResourceLogs{
+						{
+							ScopeLogs: []*logspb.ScopeLogs{
+								{
+									LogRecords: []*logspb.LogRecord{
+										{
+											Attributes: []*commonpb.KeyValue{
+												{
+													Key: "service.name",
+													Value: &commonpb.AnyValue{
+														Value: &commonpb.AnyValue_StringValue{StringValue: "test2"},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			validateErr: celvalidator.ErrCELRejectingLogs,
 		},
 		{ // --------- METRICS ----------
 			name: "invalid metrics cel",
@@ -82,8 +179,8 @@ func TestCELValidator(t *testing.T) {
 					"on_mismatch": "drop",
 				},
 			},
-			initErr:     ErrCELInvalidMetricsExpression,
-			validateErr: ErrCELEnvironmenInitialization,
+			initErr:     celvalidator.ErrCELInvalidMetricsExpression,
+			validateErr: celvalidator.ErrCELEnvironmenInitialization,
 		},
 		{
 			name: "valid metrics without cel",
@@ -92,7 +189,13 @@ func TestCELValidator(t *testing.T) {
 					"on_mismatch": "drop",
 				},
 			},
-			event: domain.Event{Metrics: &metricspb.MetricsData{ResourceMetrics: []*metricspb.ResourceMetrics{{ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{}}}}}}},
+			event: domain.Event{
+				Metrics: &metricspb.MetricsData{
+					ResourceMetrics: []*metricspb.ResourceMetrics{
+						{ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{}}}},
+					},
+				},
+			},
 		},
 		{
 			name: "valid metrics with cel",
@@ -102,7 +205,25 @@ func TestCELValidator(t *testing.T) {
 					"on_mismatch": "drop",
 				},
 			},
-			event: domain.Event{Metrics: &metricspb.MetricsData{ResourceMetrics: []*metricspb.ResourceMetrics{{Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test"}}}}}, ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{}}}}}}},
+			event: domain.Event{
+				Metrics: &metricspb.MetricsData{
+					ResourceMetrics: []*metricspb.ResourceMetrics{
+						{
+							Resource: &resourcepb.Resource{
+								Attributes: []*commonpb.KeyValue{
+									{
+										Key: "service.name",
+										Value: &commonpb.AnyValue{
+											Value: &commonpb.AnyValue_StringValue{StringValue: "test"},
+										},
+									},
+								},
+							},
+							ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{}}},
+						},
+					},
+				},
+			},
 		},
 		{
 			name: "drop metrics",
@@ -112,7 +233,25 @@ func TestCELValidator(t *testing.T) {
 					"on_mismatch": "drop",
 				},
 			},
-			event: domain.Event{Metrics: &metricspb.MetricsData{ResourceMetrics: []*metricspb.ResourceMetrics{{Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test2"}}}}}, ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{}}}}}}},
+			event: domain.Event{
+				Metrics: &metricspb.MetricsData{
+					ResourceMetrics: []*metricspb.ResourceMetrics{
+						{
+							Resource: &resourcepb.Resource{
+								Attributes: []*commonpb.KeyValue{
+									{
+										Key: "service.name",
+										Value: &commonpb.AnyValue{
+											Value: &commonpb.AnyValue_StringValue{StringValue: "test2"},
+										},
+									},
+								},
+							},
+							ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{}}},
+						},
+					},
+				},
+			},
 		},
 		{
 			name: "reject metrics",
@@ -122,8 +261,26 @@ func TestCELValidator(t *testing.T) {
 					"on_mismatch": "reject",
 				},
 			},
-			event:       domain.Event{Metrics: &metricspb.MetricsData{ResourceMetrics: []*metricspb.ResourceMetrics{{Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test2"}}}}}, ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{}}}}}}},
-			validateErr: ErrCELRejectingMetrics,
+			event: domain.Event{
+				Metrics: &metricspb.MetricsData{
+					ResourceMetrics: []*metricspb.ResourceMetrics{
+						{
+							Resource: &resourcepb.Resource{
+								Attributes: []*commonpb.KeyValue{
+									{
+										Key: "service.name",
+										Value: &commonpb.AnyValue{
+											Value: &commonpb.AnyValue_StringValue{StringValue: "test2"},
+										},
+									},
+								},
+							},
+							ScopeMetrics: []*metricspb.ScopeMetrics{{Metrics: []*metricspb.Metric{}}},
+						},
+					},
+				},
+			},
+			validateErr: celvalidator.ErrCELRejectingMetrics,
 		},
 		{ // --------- TRACES ----------
 			name: "invalid traces cel",
@@ -133,8 +290,8 @@ func TestCELValidator(t *testing.T) {
 					"on_mismatch": "drop",
 				},
 			},
-			initErr:     ErrCELInvalidTracesExpression,
-			validateErr: ErrCELEnvironmenInitialization,
+			initErr:     celvalidator.ErrCELInvalidTracesExpression,
+			validateErr: celvalidator.ErrCELEnvironmenInitialization,
 		},
 		{
 			name: "valid traces without cel",
@@ -143,7 +300,13 @@ func TestCELValidator(t *testing.T) {
 					"on_mismatch": "drop",
 				},
 			},
-			event: domain.Event{Traces: &tracespb.TracesData{ResourceSpans: []*tracespb.ResourceSpans{{ScopeSpans: []*tracespb.ScopeSpans{{Spans: []*tracespb.Span{}}}}}}},
+			event: domain.Event{
+				Traces: &tracespb.TracesData{
+					ResourceSpans: []*tracespb.ResourceSpans{
+						{ScopeSpans: []*tracespb.ScopeSpans{{Spans: []*tracespb.Span{}}}},
+					},
+				},
+			},
 		},
 		{
 			name: "valid traces with cel",
@@ -153,7 +316,25 @@ func TestCELValidator(t *testing.T) {
 					"on_mismatch": "drop",
 				},
 			},
-			event: domain.Event{Traces: &tracespb.TracesData{ResourceSpans: []*tracespb.ResourceSpans{{Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test"}}}}}, ScopeSpans: []*tracespb.ScopeSpans{{Spans: []*tracespb.Span{}}}}}}},
+			event: domain.Event{
+				Traces: &tracespb.TracesData{
+					ResourceSpans: []*tracespb.ResourceSpans{
+						{
+							Resource: &resourcepb.Resource{
+								Attributes: []*commonpb.KeyValue{
+									{
+										Key: "service.name",
+										Value: &commonpb.AnyValue{
+											Value: &commonpb.AnyValue_StringValue{StringValue: "test"},
+										},
+									},
+								},
+							},
+							ScopeSpans: []*tracespb.ScopeSpans{{Spans: []*tracespb.Span{}}},
+						},
+					},
+				},
+			},
 		},
 		{
 			name: "drop traces",
@@ -163,7 +344,25 @@ func TestCELValidator(t *testing.T) {
 					"on_mismatch": "drop",
 				},
 			},
-			event: domain.Event{Traces: &tracespb.TracesData{ResourceSpans: []*tracespb.ResourceSpans{{Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test2"}}}}}, ScopeSpans: []*tracespb.ScopeSpans{{Spans: []*tracespb.Span{}}}}}}},
+			event: domain.Event{
+				Traces: &tracespb.TracesData{
+					ResourceSpans: []*tracespb.ResourceSpans{
+						{
+							Resource: &resourcepb.Resource{
+								Attributes: []*commonpb.KeyValue{
+									{
+										Key: "service.name",
+										Value: &commonpb.AnyValue{
+											Value: &commonpb.AnyValue_StringValue{StringValue: "test2"},
+										},
+									},
+								},
+							},
+							ScopeSpans: []*tracespb.ScopeSpans{{Spans: []*tracespb.Span{}}},
+						},
+					},
+				},
+			},
 		},
 		{
 			name: "reject traces",
@@ -173,15 +372,35 @@ func TestCELValidator(t *testing.T) {
 					"on_mismatch": "reject",
 				},
 			},
-			event:       domain.Event{Traces: &tracespb.TracesData{ResourceSpans: []*tracespb.ResourceSpans{{Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "test2"}}}}}, ScopeSpans: []*tracespb.ScopeSpans{{Spans: []*tracespb.Span{}}}}}}},
-			validateErr: ErrCELRejectingTraces,
+			event: domain.Event{
+				Traces: &tracespb.TracesData{
+					ResourceSpans: []*tracespb.ResourceSpans{
+						{
+							Resource: &resourcepb.Resource{
+								Attributes: []*commonpb.KeyValue{
+									{
+										Key: "service.name",
+										Value: &commonpb.AnyValue{
+											Value: &commonpb.AnyValue_StringValue{StringValue: "test2"},
+										},
+									},
+								},
+							},
+							ScopeSpans: []*tracespb.ScopeSpans{{Spans: []*tracespb.Span{}}},
+						},
+					},
+				},
+			},
+			validateErr: celvalidator.ErrCELRejectingTraces,
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			cel, err := New(c.spec, validator)
-			assert.ErrorIs(t, err, c.initErr)
+			t.Parallel()
+
+			cel, err := celvalidator.New(c.spec, validator)
+			require.ErrorIs(t, err, c.initErr)
 			assert.ErrorIs(t, cel.Notify(t.Context(), &c.event), c.validateErr)
 		})
 	}
@@ -189,7 +408,9 @@ func TestCELValidator(t *testing.T) {
 
 // The event is shared with sibling branches, so dropping must not alter it.
 func TestCELValidatorDropDoesNotMutateEvent(t *testing.T) {
-	cel, err := New(domain.StageSpec{
+	t.Parallel()
+
+	cel, err := celvalidator.New(domain.StageSpec{
 		Spec: map[string]any{
 			"logs":        "false",
 			"on_mismatch": "drop",

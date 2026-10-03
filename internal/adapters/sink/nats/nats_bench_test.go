@@ -1,12 +1,16 @@
-package nats
+package nats_test
 
 import (
+	"log/slog"
 	"testing"
+
+	natssink "codeberg.org/eljoth/tram/internal/adapters/sink/nats"
+
+	"github.com/go-playground/validator/v10"
 
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/natstest"
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
-	"github.com/go-playground/validator/v10"
 )
 
 // BenchmarkNotify measures the whole sink against a NATS server in a
@@ -27,7 +31,7 @@ func BenchmarkNotify(b *testing.B) {
 	}
 
 	for _, shape := range shapes {
-		sink, err := New(domain.SinkSpec{Name: "nats", From: "in", Spec: map[string]any{
+		sink, err := natssink.New(domain.SinkSpec{Name: "nats", From: "in", Spec: map[string]any{
 			"url":    url,
 			"stream": "bench",
 			// Bounds the container's storage; old messages are discarded.
@@ -37,7 +41,7 @@ func BenchmarkNotify(b *testing.B) {
 				"register": []any{"bench.>"},
 				"logs":     "'bench.' + logs.resource_logs[0].scope_logs[0].log_records[0].attributes.get_attr('team')",
 			},
-		}}, validator.New())
+		}}, validator.New(), slog.New(slog.DiscardHandler))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -47,8 +51,8 @@ func BenchmarkNotify(b *testing.B) {
 		b.Run(shape.String(), func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				if err := sink.Notify(b.Context(), event); err != nil {
-					b.Fatal(err)
+				if notifyErr := sink.Notify(b.Context(), event); notifyErr != nil {
+					b.Fatal(notifyErr)
 				}
 			}
 			b.ReportMetric(float64(shape.Records*b.N)/b.Elapsed().Seconds(), "records/s")

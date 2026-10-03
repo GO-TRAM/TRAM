@@ -154,7 +154,7 @@ All AI agents should respect this project structure:
 
 All AI agents should be aware of these common issues:
 1. **Circular Dependencies**: Don't create circular imports between packages
-2. **Global State**: Avoid global variables; use dependency injection
+2. **Global State**: Avoid global variables; use dependency injection. This includes logging: components that log take a `*slog.Logger` in `New` (passed on by their factory) and log with the `...Context` methods; only `cmd/tram/main.go` creates the logger
 3. **Blocking Operations**: Only block in Notify while delivering downstream or when waiting is the component's documented purpose (`batch`, `delay`); always return when the context is done
 4. **Shared Events**: Never modify an incoming event; build a new one (e.g. with `domain.FilterLogs`) instead
 5. **Live Updates**: Stages and sinks can be replaced below a running source (`Source.SetSubscribers`); never keep state in a stage or sink that assumes it lives as long as the source

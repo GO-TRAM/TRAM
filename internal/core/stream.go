@@ -3,7 +3,7 @@ package core
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
@@ -41,47 +41,51 @@ func newTree(spec domain.StreamSpec) (*domain.Tree, error) {
 
 // buildStream creates and wires all components of tree. On failure, the
 // components created so far are stopped again.
-func (c *Core) buildStream(tree *domain.Tree) (err error) {
-	defer func() {
-		if err != nil {
-			if stopErr := stopNodes(tree, true); stopErr != nil {
-				log.Printf("failed to stop components of unbuilt stream %s: %v", tree.Spec.Name, stopErr)
-			}
-		}
-	}()
+func (c *Core) buildStream(tree *domain.Tree) error {
+	err := c.createAll(tree)
+	if err == nil {
+		err = wire(tree, true)
+	}
+	if err != nil {
+		c.stopUnbuilt(tree, true)
+	}
+	return err
+}
 
+func (c *Core) createAll(tree *domain.Tree) error {
 	spec := tree.Spec
 	source, err := c.sourceFactory.New(spec.Source)
 	if err != nil {
 		return errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, spec.Source.Name), err)
 	}
-	if err := tree.Root().AddSource(source); err != nil {
+	if err = tree.Root().AddSource(source); err != nil {
 		return errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, spec.Source.Name), err)
 	}
-
-	if err := c.createReceivers(tree); err != nil {
-		return err
-	}
-	return wire(tree, true)
+	return c.createReceivers(tree)
 }
 
 // buildReceivers creates and wires the stages and sinks of tree below a
 // source that is already set on its root. The source is not subscribed to its
 // children; see replaceReceivers. On failure, the stages and sinks created so
 // far are stopped again, the source is left untouched.
-func (c *Core) buildReceivers(tree *domain.Tree) (err error) {
-	defer func() {
-		if err != nil {
-			if stopErr := stopNodes(tree, false); stopErr != nil {
-				log.Printf("failed to stop components of unbuilt stream %s: %v", tree.Spec.Name, stopErr)
-			}
-		}
-	}()
-
-	if err := c.createReceivers(tree); err != nil {
-		return err
+func (c *Core) buildReceivers(tree *domain.Tree) error {
+	err := c.createReceivers(tree)
+	if err == nil {
+		err = wire(tree, false)
 	}
-	return wire(tree, false)
+	if err != nil {
+		c.stopUnbuilt(tree, false)
+	}
+	return err
+}
+
+// stopUnbuilt stops the components created for a stream that could not be
+// built.
+func (c *Core) stopUnbuilt(tree *domain.Tree, includeSource bool) {
+	if err := stopNodes(tree, includeSource); err != nil {
+		c.logger.ErrorContext(c.ctx, "Could not stop components of unbuilt stream",
+			slog.String("stream", tree.Spec.Name), slog.Any("error", err))
+	}
 }
 
 // createReceivers creates the stages and sinks of tree.
@@ -91,7 +95,7 @@ func (c *Core) createReceivers(tree *domain.Tree) error {
 		if err != nil {
 			return errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, stageSpec.Name), err)
 		}
-		if err := tree.GetNode(stageSpec.Name).AddStage(stage); err != nil {
+		if err = tree.GetNode(stageSpec.Name).AddStage(stage); err != nil {
 			return errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, stageSpec.Name), err)
 		}
 	}
@@ -101,7 +105,7 @@ func (c *Core) createReceivers(tree *domain.Tree) error {
 		if err != nil {
 			return errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, sinkSpec.Name), err)
 		}
-		if err := tree.GetNode(sinkSpec.Name).AddSink(sink); err != nil {
+		if err = tree.GetNode(sinkSpec.Name).AddSink(sink); err != nil {
 			return errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, sinkSpec.Name), err)
 		}
 	}
@@ -124,7 +128,7 @@ func wire(tree *domain.Tree, includeRoot bool) error {
 		if err != nil {
 			return err
 		}
-		if err := observer.Subscribe(subscriber); err != nil {
+		if err = observer.Subscribe(subscriber); err != nil {
 			return err
 		}
 	}
@@ -141,18 +145,18 @@ func (c *Core) replaceReceivers(old *stream, tree *domain.Tree) error {
 	if err != nil {
 		return err
 	}
-	if err := tree.Root().AddSource(source); err != nil {
+	if err = tree.Root().AddSource(source); err != nil {
 		return err
 	}
-	if err := c.buildReceivers(tree); err != nil {
+	if err = c.buildReceivers(tree); err != nil {
 		return err
 	}
 
 	children := make([]domain.Subscriber, 0, len(tree.Root().Children))
 	for _, child := range tree.Root().Children {
-		subscriber, err := child.GetSubscriber()
-		if err != nil {
-			return err
+		subscriber, childErr := child.GetSubscriber()
+		if childErr != nil {
+			return childErr
 		}
 		children = append(children, subscriber)
 	}
@@ -160,8 +164,9 @@ func (c *Core) replaceReceivers(old *stream, tree *domain.Tree) error {
 	// Waits for events still being delivered to the old stages and sinks, so
 	// they can be stopped right after.
 	source.SetSubscribers(children)
-	if err := stopNodes(old.tree, false); err != nil {
-		log.Printf("failed to cleanly stop replaced components of stream %s: %v", tree.Spec.Name, err)
+	if err = stopNodes(old.tree, false); err != nil {
+		c.logger.ErrorContext(c.ctx, "Could not cleanly stop replaced components of stream",
+			slog.String("stream", tree.Spec.Name), slog.Any("error", err))
 	}
 
 	c.streams[tree.Spec.Name] = &stream{tree: tree, done: old.done}
@@ -179,15 +184,16 @@ func (c *Core) runStream(tree *domain.Tree) {
 
 	c.wg.Go(func() {
 		defer close(s.done)
-		log.Println("Running stream", tree.Spec.Name)
+		c.logger.InfoContext(c.ctx, "Running stream", slog.String("stream", tree.Spec.Name))
 		source, err := tree.Root().GetSource()
 		if err != nil {
-			log.Println("Failed to get source for stream", tree.Spec.Name, err)
+			c.logger.ErrorContext(c.ctx, "Could not get source of stream",
+				slog.String("stream", tree.Spec.Name), slog.Any("error", err))
 			return
 		}
-		if err := source.Run(c.ctx); err != nil {
-			log.Println("Failed to run stream", tree.Spec.Name, err)
-			return
+		if err = source.Run(c.ctx); err != nil {
+			c.logger.ErrorContext(c.ctx, "Stream stopped with an error",
+				slog.String("stream", tree.Spec.Name), slog.Any("error", err))
 		}
 	})
 }
@@ -200,7 +206,8 @@ func (c *Core) restoreStream(spec domain.StreamSpec) {
 		err = c.buildStream(tree)
 	}
 	if err != nil {
-		log.Printf("failed to restore stream %s after failed update: %v", spec.Name, err)
+		c.logger.ErrorContext(c.ctx, "Could not restore stream after failed update",
+			slog.String("stream", spec.Name), slog.Any("error", err))
 		return
 	}
 	c.runStream(tree)
@@ -215,12 +222,12 @@ func (c *Core) stopStream(s *stream) error {
 	}
 
 	var errs []error
-	if err := source.Stop(); err != nil {
+	if err = source.Stop(); err != nil {
 		errs = append(errs, fmt.Errorf("%s: %w", source.Name(), err))
 	}
 	<-s.done
 
-	if err := stopNodes(s.tree, false); err != nil {
+	if err = stopNodes(s.tree, false); err != nil {
 		errs = append(errs, err)
 	}
 

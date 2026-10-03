@@ -3,14 +3,16 @@ package core_test
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
 
-	"codeberg.org/eljoth/tram/internal/core"
-	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"codeberg.org/eljoth/tram/internal/core"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 const brokenType = "broken"
@@ -112,6 +114,7 @@ func (f sourceFactory) New(spec domain.SourceSpec) (domain.Source, error) {
 
 type fakeStage struct {
 	fakeSink
+
 	subs []domain.Subscriber
 }
 
@@ -140,7 +143,7 @@ func (f sinkFactory) New(spec domain.SinkSpec) (domain.Sink, error) {
 func newCore(t *testing.T) (*core.Core, *registry) {
 	t.Helper()
 	reg := &registry{}
-	c := core.New(t.Context(), sourceFactory{reg}, stageFactory{reg}, sinkFactory{reg})
+	c := core.New(t.Context(), slog.New(slog.DiscardHandler), sourceFactory{reg}, stageFactory{reg}, sinkFactory{reg})
 	t.Cleanup(func() { _ = c.Close() })
 	return c, reg
 }
@@ -168,6 +171,8 @@ func sink(name, typ string) domain.SinkSpec {
 }
 
 func TestUpsertStream(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name         string
 		update       domain.StreamSpec
@@ -201,6 +206,8 @@ func TestUpsertStream(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			c, reg := newCore(t)
 
 			_, err := c.UpsertStream(t.Context(), streamSpec(1, sink("old", "fake")))
@@ -208,9 +215,9 @@ func TestUpsertStream(t *testing.T) {
 
 			_, err = c.UpsertStream(t.Context(), tc.update)
 			if tc.expectErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 
 			got, err := c.GetStream(t.Context(), "stream")
@@ -230,6 +237,8 @@ func TestUpsertStream(t *testing.T) {
 }
 
 func TestUpsertUnchangedStreamDoesNothing(t *testing.T) {
+	t.Parallel()
+
 	c, reg := newCore(t)
 
 	spec := streamSpec(1, sink("out", "fake"))
@@ -252,6 +261,8 @@ func TestUpsertUnchangedStreamDoesNothing(t *testing.T) {
 }
 
 func TestUpsertWithUnchangedSourceReplacesOnlyStagesAndSinks(t *testing.T) {
+	t.Parallel()
+
 	c, reg := newCore(t)
 
 	_, err := c.UpsertStream(t.Context(), streamSpec(1, sink("old", "fake")))
@@ -285,13 +296,15 @@ func TestUpsertWithUnchangedSourceReplacesOnlyStagesAndSinks(t *testing.T) {
 }
 
 func TestUpsertWithUnchangedSourceLeavesStreamUntouchedOnFailure(t *testing.T) {
+	t.Parallel()
+
 	c, reg := newCore(t)
 
 	_, err := c.UpsertStream(t.Context(), streamSpec(1, sink("old", "fake")))
 	require.NoError(t, err)
 
 	_, err = c.UpsertStream(t.Context(), streamSpec(1, sink("a", "fake"), sink("b", brokenType)))
-	assert.ErrorIs(t, err, domain.ErrStreamBuildFailed)
+	require.ErrorIs(t, err, domain.ErrStreamBuildFailed)
 
 	assert.Equal(t, []string{"a"}, reg.stoppedNames(), "only the sink created for the failed update is stopped")
 	assert.Equal(t, []string{"old"}, names(reg.sources[0].subs), "the source still delivers to the old sink")
@@ -303,6 +316,8 @@ func TestUpsertWithUnchangedSourceLeavesStreamUntouchedOnFailure(t *testing.T) {
 
 // Stages like a batch flush on Stop, so they have to stop before their children.
 func TestDeleteStreamStopsTopDown(t *testing.T) {
+	t.Parallel()
+
 	c, reg := newCore(t)
 
 	spec := domain.StreamSpec{
@@ -322,6 +337,8 @@ func TestDeleteStreamStopsTopDown(t *testing.T) {
 }
 
 func TestDeleteStreamStopsAllComponents(t *testing.T) {
+	t.Parallel()
+
 	c, reg := newCore(t)
 
 	_, err := c.UpsertStream(t.Context(), streamSpec(1, sink("a", "fake"), sink("b", "fake")))
@@ -334,15 +351,19 @@ func TestDeleteStreamStopsAllComponents(t *testing.T) {
 }
 
 func TestFailedBuildStopsCreatedComponents(t *testing.T) {
+	t.Parallel()
+
 	c, reg := newCore(t)
 
 	_, err := c.UpsertStream(t.Context(), streamSpec(1, sink("a", "fake"), sink("b", brokenType)))
-	assert.ErrorIs(t, err, domain.ErrStreamBuildFailed)
+	require.ErrorIs(t, err, domain.ErrStreamBuildFailed)
 
 	assert.ElementsMatch(t, []string{"source", "a"}, reg.stoppedNames())
 }
 
 func TestWatch(t *testing.T) {
+	t.Parallel()
+
 	c, _ := newCore(t)
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -371,7 +392,7 @@ func TestWatch(t *testing.T) {
 
 	select {
 	case err := <-deleted:
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	case <-time.After(time.Second):
 		t.Fatal("DeleteStream blocked on a cancelled watcher")
 	}

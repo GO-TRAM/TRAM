@@ -64,13 +64,16 @@ type Stream struct {
 	Status StreamStatus `json:"status,omitempty"`
 }
 
+// StreamList is a list of Stream resources.
 // +kubebuilder:object:root=true
 type StreamList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Stream `json:"items"`
+
+	Items []Stream `json:"items"`
 }
 
+//nolint:gochecknoinits // Registers the types with SchemeBuilder, as Kubebuilder expects.
 func init() {
 	SchemeBuilder.Register(func(s *runtime.Scheme) error {
 		s.AddKnownTypes(SchemeGroupVersion, &Stream{}, &StreamList{})

@@ -11,12 +11,14 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"regexp"
 	"slices"
 	"sort"
@@ -27,38 +29,61 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/natstest"
 )
 
-const scenarioPackage = "./internal/scenario/"
+const (
+	scenarioPackage = "./internal/scenario/"
+
+	// pageFilePermissions are those of a file in the repository.
+	pageFilePermissions = 0o644
+	// failureLines of go test's output are shown when it fails.
+	failureLines = 30
+	// maxLineBytes allows long benchmark lines.
+	maxLineBytes = 1 << 20
+	percent      = 100
+	// spreadWarning flags results whose runs differ by more than this percentage.
+	spreadWarning = 10
+)
+
+// options are the command-line flags.
+type options struct {
+	out, input, raw             string
+	count                       int
+	scenarioTime, componentTime string
+}
 
 func main() {
-	out := flag.String("out", "BENCHMARK.md", "page to update")
-	input := flag.String("input", "", "use this saved benchmark output instead of running the benchmarks")
-	raw := flag.String("raw", "", "save the raw benchmark output to this file")
-	count := flag.Int("count", 3, "runs per benchmark; the page shows medians")
-	scenarioTime := flag.String("scenario-benchtime", "1s", "benchtime of the scenario benchmarks")
-	componentTime := flag.String("component-benchtime", "300ms", "benchtime of the component benchmarks")
+	var opts options
+	flag.StringVar(&opts.out, "out", "BENCHMARK.md", "page to update")
+	flag.StringVar(&opts.input, "input", "", "use this saved benchmark output instead of running the benchmarks")
+	flag.StringVar(&opts.raw, "raw", "", "save the raw benchmark output to this file")
+	flag.IntVar(&opts.count, "count", 3, "runs per benchmark; the page shows medians")
+	flag.StringVar(&opts.scenarioTime, "scenario-benchtime", "1s", "benchtime of the scenario benchmarks")
+	flag.StringVar(&opts.componentTime, "component-benchtime", "300ms", "benchtime of the component benchmarks")
 	flag.Parse()
 
-	page, err := os.ReadFile(*out)
-	if err != nil {
-		log.Fatal(err)
+	if err := runInterruptible(opts); err != nil {
+		log.Print(err)
+		os.Exit(1)
 	}
-	env := environment()
+}
 
-	var output []byte
-	if *input != "" {
-		if output, err = os.ReadFile(*input); err != nil {
-			log.Fatal(err)
-		}
-	} else {
-		// The commit and date are stored with the output, so pages
-		// regenerated from it later still show when it was measured.
-		output = fmt.Appendf(nil, "%s%s\n%s%s\n", commitPrefix, env.commit, datePrefix, env.date)
-		output = append(output, runBenchmarks(*count, *scenarioTime, *componentTime)...)
-		if *raw != "" {
-			if err := os.WriteFile(*raw, output, 0o644); err != nil {
-				log.Fatal(err)
-			}
-		}
+// runInterruptible runs until done or interrupted with Ctrl-C, which also
+// stops a running go test.
+func runInterruptible(opts options) error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	return run(ctx, opts)
+}
+
+func run(ctx context.Context, opts options) error {
+	page, err := os.ReadFile(opts.out)
+	if err != nil {
+		return err
+	}
+	env := environment(ctx)
+
+	output, err := benchmarkOutput(ctx, opts, env)
+	if err != nil {
+		return err
 	}
 
 	results, meta := parse(output)
@@ -67,70 +92,102 @@ func main() {
 		env.commit, env.date = meta.commit, meta.date
 	}
 	sections := map[string]string{
-		"environment":           renderEnvironment(env, *count, *scenarioTime, *componentTime),
+		"environment":           renderEnvironment(env, opts.count, opts.scenarioTime, opts.componentTime),
 		"scenarios":             renderScenarios(results),
 		"sizing":                renderSizing(results),
-		"components-per-record": renderComponents(results, perRecordComponents, true),
-		"components-per-event":  renderComponents(results, perEventComponents, false),
+		"components-per-record": renderComponents(results, perRecordComponents(), true),
+		"components-per-event":  renderComponents(results, perEventComponents(), false),
 	}
 	for name, content := range sections {
 		if page, err = replaceSection(page, name, content); err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
-	if err := os.WriteFile(*out, page, 0o644); err != nil {
-		log.Fatal(err)
+	//nolint:gosec // BENCHMARK.md is a repository file that everyone may read.
+	if err = os.WriteFile(opts.out, page, pageFilePermissions); err != nil {
+		return err
 	}
-	log.Printf("updated %s", *out)
+	log.Printf("updated %s", opts.out)
+	return nil
+}
+
+// benchmarkOutput reads saved output or runs the benchmarks. The commit and
+// date are stored with new output, so pages regenerated from it later still
+// show when it was measured.
+func benchmarkOutput(ctx context.Context, opts options, env env) ([]byte, error) {
+	if opts.input != "" {
+		return os.ReadFile(opts.input)
+	}
+
+	output := fmt.Appendf(nil, "%s%s\n%s%s\n", commitPrefix, env.commit, datePrefix, env.date)
+	measured, err := runBenchmarks(ctx, opts.count, opts.scenarioTime, opts.componentTime)
+	if err != nil {
+		return nil, err
+	}
+	output = append(output, measured...)
+	if opts.raw != "" {
+		if err = os.WriteFile(opts.raw, output, pageFilePermissions); err != nil {
+			return nil, err
+		}
+	}
+	return output, nil
 }
 
 // runBenchmarks runs the scenario and component benchmarks one package at a
 // time; parallel packages would distort each other's results.
-func runBenchmarks(count int, scenarioTime, componentTime string) []byte {
+func runBenchmarks(ctx context.Context, count int, scenarioTime, componentTime string) ([]byte, error) {
 	var out bytes.Buffer
 	log.Print("running scenario benchmarks")
-	goTest(&out, "Scenario", scenarioTime, count, scenarioPackage)
+	if err := goTest(ctx, &out, "Scenario", scenarioTime, count, scenarioPackage); err != nil {
+		return nil, err
+	}
 
-	packages := goList("./internal/...")
+	packages, err := goList(ctx, "./internal/...")
+	if err != nil {
+		return nil, err
+	}
 	packages = slices.DeleteFunc(packages, func(p string) bool { return strings.HasSuffix(p, "/internal/scenario") })
 	log.Print("running component benchmarks")
-	goTest(&out, ".", componentTime, count, packages...)
-	return out.Bytes()
+	if err = goTest(ctx, &out, ".", componentTime, count, packages...); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
 }
 
-func goTest(out *bytes.Buffer, pattern, benchtime string, count int, packages ...string) {
+func goTest(ctx context.Context, out *bytes.Buffer, pattern, benchtime string, count int, packages ...string) error {
 	args := append([]string{"test", "-p", "1", "-run", "^$", "-bench", pattern, "-benchmem",
 		"-benchtime", benchtime, "-count", strconv.Itoa(count)}, packages...)
 	var stdout bytes.Buffer
-	cmd := exec.Command("go", args...)
+	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Stdout = io.MultiWriter(&stdout, progress{})
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		// go test reports failures on stdout, which is otherwise only parsed.
 		lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
-		log.Fatalf("go test: %v\n%s", err, strings.Join(lines[max(0, len(lines)-30):], "\n"))
+		return fmt.Errorf("go test: %w\n%s", err, strings.Join(lines[max(0, len(lines)-failureLines):], "\n"))
 	}
 	out.Write(stdout.Bytes())
+	return nil
 }
 
 // progress prints the package currently being benchmarked.
 type progress struct{}
 
 func (progress) Write(p []byte) (int, error) {
-	for _, line := range strings.Split(string(p), "\n") {
-		if strings.HasPrefix(line, "pkg: ") {
-			log.Print(strings.TrimPrefix(line, "pkg: "))
+	for line := range strings.SplitSeq(string(p), "\n") {
+		if after, ok := strings.CutPrefix(line, "pkg: "); ok {
+			log.Print(after)
 		}
 	}
 	return len(p), nil
 }
 
-func goList(pattern string) []string {
-	out, err := exec.Command("go", "list", pattern).Output()
+func goList(ctx context.Context, pattern string) ([]string, error) {
+	out, err := exec.CommandContext(ctx, "go", "list", pattern).Output()
 	if err != nil {
-		log.Fatalf("go list: %v", err)
+		return nil, fmt.Errorf("go list: %w", err)
 	}
-	return strings.Fields(string(out))
+	return strings.Fields(string(out)), nil
 }
 
 type env struct {
@@ -147,20 +204,20 @@ type metadata struct {
 	commit, date, cpu string
 }
 
-func environment() env {
-	commit := strings.TrimSpace(command("git", "rev-parse", "--short", "HEAD"))
-	if strings.TrimSpace(command("git", "status", "--porcelain", "--untracked-files=no")) != "" {
+func environment(ctx context.Context) env {
+	commit := strings.TrimSpace(command(ctx, "git", "rev-parse", "--short", "HEAD"))
+	if strings.TrimSpace(command(ctx, "git", "status", "--porcelain", "--untracked-files=no")) != "" {
 		commit += " (with uncommitted changes)"
 	}
 	return env{
 		commit:    commit,
-		date:      time.Now().Format("2006-01-02"),
-		goVersion: strings.TrimSpace(command("go", "env", "GOVERSION")),
+		date:      time.Now().Format(time.DateOnly),
+		goVersion: strings.TrimSpace(command(ctx, "go", "env", "GOVERSION")),
 	}
 }
 
-func command(name string, args ...string) string {
-	out, err := exec.Command(name, args...).Output()
+func command(ctx context.Context, name string, args ...string) string {
+	out, err := exec.CommandContext(ctx, name, args...).Output()
 	if err != nil {
 		return "unknown"
 	}
@@ -183,7 +240,7 @@ func parse(output []byte) (map[string]result, metadata) {
 	runs := map[string][]map[string]float64{}
 	pkg, meta := "", metadata{}
 	scanner := bufio.NewScanner(bytes.NewReader(output))
-	scanner.Buffer(make([]byte, 1<<20), 1<<20)
+	scanner.Buffer(make([]byte, maxLineBytes), maxLineBytes)
 	for scanner.Scan() {
 		line := scanner.Text()
 		switch {
@@ -196,19 +253,8 @@ func parse(output []byte) (map[string]result, metadata) {
 		case strings.HasPrefix(line, datePrefix):
 			meta.date = strings.TrimPrefix(line, datePrefix)
 		default:
-			m := benchLine.FindStringSubmatch(line)
-			if m == nil {
-				continue
-			}
-			fields := strings.Fields(m[3])
-			metrics := map[string]float64{}
-			for i := 0; i+1 < len(fields); i += 2 {
-				if v, err := strconv.ParseFloat(fields[i], 64); err == nil {
-					metrics[fields[i+1]] = v
-				}
-			}
-			if _, ok := metrics["ns/op"]; ok {
-				key := pkg + "|" + m[1]
+			if name, metrics, ok := parseBenchLine(line); ok {
+				key := pkg + "|" + name
 				runs[key] = append(runs[key], metrics)
 			}
 		}
@@ -216,32 +262,54 @@ func parse(output []byte) (map[string]result, metadata) {
 
 	results := map[string]result{}
 	for key, rs := range runs {
-		r := result{metrics: map[string]float64{}}
-		for unit := range rs[0] {
-			var values []float64
-			for _, run := range rs {
-				values = append(values, run[unit])
-			}
-			r.metrics[unit] = median(values)
-		}
-		var ns []float64
-		for _, run := range rs {
-			ns = append(ns, run["ns/op"])
-		}
-		r.spread = (slices.Max(ns) - slices.Min(ns)) / median(ns) * 100
-		results[key] = r
+		results[key] = summarize(rs)
 	}
 	return results, meta
+}
+
+// parseBenchLine returns the name and metrics of a benchmark result line.
+func parseBenchLine(line string) (string, map[string]float64, bool) {
+	m := benchLine.FindStringSubmatch(line)
+	if m == nil {
+		return "", nil, false
+	}
+	fields := strings.Fields(m[3])
+	metrics := map[string]float64{}
+	for i := 0; i+1 < len(fields); i += 2 {
+		if v, err := strconv.ParseFloat(fields[i], 64); err == nil {
+			metrics[fields[i+1]] = v
+		}
+	}
+	_, ok := metrics["ns/op"]
+	return m[1], metrics, ok
+}
+
+// summarize takes the medians of all runs of a benchmark.
+func summarize(runs []map[string]float64) result {
+	r := result{metrics: map[string]float64{}}
+	for unit := range runs[0] {
+		var values []float64
+		for _, run := range runs {
+			values = append(values, run[unit])
+		}
+		r.metrics[unit] = median(values)
+	}
+	var ns []float64
+	for _, run := range runs {
+		ns = append(ns, run["ns/op"])
+	}
+	r.spread = (slices.Max(ns) - slices.Min(ns)) / median(ns) * percent
+	return r
 }
 
 func median(values []float64) float64 {
 	sorted := slices.Clone(values)
 	sort.Float64s(sorted)
-	n := len(sorted)
-	if n%2 == 1 {
-		return sorted[n/2]
+	middle := len(sorted) / 2 //nolint:mnd // Halving finds the middle.
+	if len(sorted)%2 == 1 {
+		return sorted[middle]
 	}
-	return (sorted[n/2-1] + sorted[n/2]) / 2
+	return (sorted[middle-1] + sorted[middle]) / 2 //nolint:mnd // The mean of the two middle values.
 }
 
 var recordsInName = regexp.MustCompile(`records=(\d+)`)
@@ -263,22 +331,31 @@ func renderEnvironment(e env, count int, scenarioTime, componentTime string) str
 	fmt.Fprintf(&b, "| CPU | %s |\n", or(e.cpu, "unknown"))
 	fmt.Fprintf(&b, "| Go | %s |\n", e.goVersion)
 	fmt.Fprintf(&b, "| NATS | `%s` in a local container |\n", natstest.Image)
-	fmt.Fprintf(&b, "| Runs | %d per benchmark, medians shown; scenarios `-benchtime=%s`, components `-benchtime=%s` |\n", count, scenarioTime, componentTime)
+	fmt.Fprintf(
+		&b,
+		"| Runs | %d per benchmark, medians shown; scenarios `-benchtime=%s`, components `-benchtime=%s` |\n",
+		count,
+		scenarioTime,
+		componentTime,
+	)
 	return b.String()
 }
 
-var scenarioOrder = []struct{ name, title string }{
-	{"otlp-nats", "OTLP → NATS"},
-	{"otlp-batch-nats", "OTLP → batch → NATS"},
-	{"otlp-split-nats", "OTLP → 2 × cel_filter → 2 × NATS"},
-	{"nats-filter-nats", "NATS → cel_filter → NATS"},
+// scenarioOrder lists the scenarios in the order they appear on the page.
+func scenarioOrder() []struct{ name, title string } {
+	return []struct{ name, title string }{
+		{"otlp-nats", "OTLP → NATS"},
+		{"otlp-batch-nats", "OTLP → batch → NATS"},
+		{"otlp-split-nats", "OTLP → 2 × cel_filter → 2 × NATS"},
+		{"nats-filter-nats", "NATS → cel_filter → NATS"},
+	}
 }
 
 const scenarioPkg = "internal/scenario"
 
 func renderScenarios(results map[string]result) string {
 	var b strings.Builder
-	for _, sc := range scenarioOrder {
+	for _, sc := range scenarioOrder() {
 		var keys []string
 		for key := range results {
 			if strings.HasPrefix(key, scenarioPkg+"|Scenario/"+sc.name+"/") {
@@ -291,7 +368,9 @@ func renderScenarios(results map[string]result) string {
 		sort.Slice(keys, func(i, j int) bool { return scenarioSortKey(keys[i]) < scenarioSortKey(keys[j]) })
 
 		fmt.Fprintf(&b, "#### `%s`: %s\n\n", sc.name, sc.title)
-		b.WriteString("| Callers | Records per event | Records/s | Events/s | CPU per record | Records/s per core | p50 latency | p99 latency | Allocs per record | Spread |\n")
+		b.WriteString(
+			"| Callers | Records per event | Records/s | Events/s | CPU per record | Records/s per core | p50 latency | p99 latency | Allocs per record | Spread |\n",
+		)
 		b.WriteString("|---|---|---|---|---|---|---|---|---|---|\n")
 		for _, key := range keys {
 			r := results[key]
@@ -325,7 +404,12 @@ func param(name, key string) string {
 }
 
 func resourcesLabel(name string) string {
-	return fmt.Sprintf("%s (%s %s)", param(name, "records"), param(name, "resources"), plural(param(name, "resources"), "service", "services"))
+	return fmt.Sprintf(
+		"%s (%s %s)",
+		param(name, "records"),
+		param(name, "resources"),
+		plural(param(name, "resources"), "service", "services"),
+	)
 }
 
 func plural(n, one, many string) string {
@@ -336,57 +420,143 @@ func plural(n, one, many string) string {
 }
 
 // sizingRows are the scenarios the sizing table is based on.
-var sizingRows = []struct{ label, name string }{
-	{"Batched: OTLP → batch → NATS, 1,000 records per request, 8 callers", "Scenario/otlp-batch-nats/concurrency=8/records=1000/resources=10/teams=1"},
-	{"Split: OTLP → 2 × cel_filter → 2 × NATS, 1,000 records per request, 8 callers", "Scenario/otlp-split-nats/concurrency=8/records=1000/resources=10/teams=2"},
-	{"Forwarding: NATS → cel_filter → NATS, 1,000 records per message, 8 workers", "Scenario/nats-filter-nats/concurrency=8/records=1000/resources=10/teams=1"},
-	{"Unbatched: OTLP → NATS, 1 record per request, 8 callers", "Scenario/otlp-nats/concurrency=8/records=1/resources=1/teams=1"},
+func sizingRows() []struct{ label, name string } {
+	return []struct{ label, name string }{
+		{
+			"Batched: OTLP → batch → NATS, 1,000 records per request, 8 callers",
+			"Scenario/otlp-batch-nats/concurrency=8/records=1000/resources=10/teams=1",
+		},
+		{
+			"Split: OTLP → 2 × cel_filter → 2 × NATS, 1,000 records per request, 8 callers",
+			"Scenario/otlp-split-nats/concurrency=8/records=1000/resources=10/teams=2",
+		},
+		{
+			"Forwarding: NATS → cel_filter → NATS, 1,000 records per message, 8 workers",
+			"Scenario/nats-filter-nats/concurrency=8/records=1000/resources=10/teams=1",
+		},
+		{
+			"Unbatched: OTLP → NATS, 1 record per request, 8 callers",
+			"Scenario/otlp-nats/concurrency=8/records=1/resources=1/teams=1",
+		},
+	}
 }
 
 func renderSizing(results map[string]result) string {
 	var b strings.Builder
-	b.WriteString("| Pipeline | CPU per record | Cores for 100 k records/s | Cores for 1 M records/s |\n|---|---|---|---|\n")
-	for _, row := range sizingRows {
+	b.WriteString(
+		"| Pipeline | CPU per record | Cores for 100 k records/s | Cores for 1 M records/s |\n|---|---|---|---|\n",
+	)
+	for _, row := range sizingRows() {
 		r, ok := results[scenarioPkg+"|"+row.name]
 		if !ok {
 			fmt.Fprintf(&b, "| %s | n/a | n/a | n/a |\n", row.label)
 			continue
 		}
 		cpu := r.metrics["cpu-ns/record"]
-		fmt.Fprintf(&b, "| %s | %s | %.1f | %.1f |\n", row.label, duration(cpu), cpu*1e5/1e9, cpu*1e6/1e9)
+		fmt.Fprintf(&b, "| %s | %s | %.1f | %.1f |\n",
+			row.label, duration(cpu), cpu*hundredThousand/billion, cpu*million/billion)
 	}
 	return b.String()
 }
 
 type component struct{ label, pkg, name string }
 
+// Packages of the component benchmarks.
+const (
+	pkgCore         = "internal/core"
+	pkgDomain       = "internal/core/domain"
+	pkgNATSSink     = "internal/adapters/sink/nats"
+	pkgNATSSource   = "internal/adapters/source/nats"
+	pkgOTLPSource   = "internal/adapters/source/otlp"
+	pkgSourceBase   = "internal/adapters/source/base"
+	pkgBatch        = "internal/adapters/stage/batch"
+	pkgCELFilter    = "internal/adapters/stage/celfilter"
+	pkgCELValidator = "internal/adapters/stage/celvalidator"
+)
+
 // perRecordComponents are measured with batches of 1,000 records from 10
 // services, so their cost is shown per record.
-var perRecordComponents = []component{
-	{"NATS sink: group and publish, 10 subjects", "internal/adapters/sink/nats", "Notify/records=1000/resources=10/teams=10"},
-	{"NATS sink: group and publish, 1 subject", "internal/adapters/sink/nats", "Notify/records=1000/resources=10/teams=1"},
-	{"NATS sink: grouping by subject only", "internal/adapters/sink/nats", "GroupEventsBySubjects/records=1000/resources=10/teams=1"},
-	{"Serializing for NATS and back (logs)", "internal/core/domain", "OTLPDataRoundTrip/logs/records=1000/resources=10/teams=1"},
-	{"NATS source, 1 worker", "internal/adapters/source/nats", "Consume/workers=1/records=1000/resources=10/teams=1"},
-	{"NATS source, 8 workers", "internal/adapters/source/nats", "Consume/workers=8/records=1000/resources=10/teams=1"},
-	{"OTLP source: decoding a request", "internal/adapters/source/otlp", "HandleLogs/records=1000/resources=10/teams=1"},
-	{"cel_filter, keeping half of the records", "internal/adapters/stage/celfilter", "CELFilter/keep-half/records=1000/resources=10/teams=2"},
-	{"cel_filter, keeping all records", "internal/adapters/stage/celfilter", "CELFilter/keep-all/records=1000/resources=10/teams=2"},
-	{"cel_validator, record-level expression", "internal/adapters/stage/celvalidator", "CELValidator/record-attribute/records=1000/resources=10/teams=1"},
-	{"cel_validator, resource-level expression", "internal/adapters/stage/celvalidator", "CELValidator/resource-attribute/records=1000/resources=10/teams=1"},
-	{"Record filter helper without CEL", "internal/core/domain", "Filter/logs/keep-half/records=1000/resources=10/teams=2"},
-	{"batch, 8 concurrent callers", "internal/adapters/stage/batch", "Batch/parallel-8-events/records=1000/resources=10/teams=1"},
-	{"noop stage", "internal/core", "Pipeline/noop/records=1000/resources=10/teams=1"},
+func perRecordComponents() []component {
+	return []component{
+		{
+			"NATS sink: group and publish, 10 subjects",
+			pkgNATSSink,
+			"Notify/records=1000/resources=10/teams=10",
+		},
+		{
+			"NATS sink: group and publish, 1 subject",
+			pkgNATSSink,
+			"Notify/records=1000/resources=10/teams=1",
+		},
+		{
+			"NATS sink: grouping by subject only",
+			pkgNATSSink,
+			"GroupEventsBySubjects/records=1000/resources=10/teams=1",
+		},
+		{
+			"Serializing for NATS and back (logs)",
+			pkgDomain,
+			"OTLPDataRoundTrip/logs/records=1000/resources=10/teams=1",
+		},
+		{"NATS source, 1 worker", pkgNATSSource, "Consume/workers=1/records=1000/resources=10/teams=1"},
+		{"NATS source, 8 workers", pkgNATSSource, "Consume/workers=8/records=1000/resources=10/teams=1"},
+		{
+			"OTLP source: decoding a request",
+			pkgOTLPSource,
+			"HandleLogs/records=1000/resources=10/teams=1",
+		},
+		{
+			"cel_filter, keeping half of the records",
+			pkgCELFilter,
+			"CELFilter/keep-half/records=1000/resources=10/teams=2",
+		},
+		{
+			"cel_filter, keeping all records",
+			pkgCELFilter,
+			"CELFilter/keep-all/records=1000/resources=10/teams=2",
+		},
+		{
+			"cel_validator, record-level expression",
+			pkgCELValidator,
+			"CELValidator/record-attribute/records=1000/resources=10/teams=1",
+		},
+		{
+			"cel_validator, resource-level expression",
+			pkgCELValidator,
+			"CELValidator/resource-attribute/records=1000/resources=10/teams=1",
+		},
+		{
+			"Record filter helper without CEL",
+			pkgDomain,
+			"Filter/logs/keep-half/records=1000/resources=10/teams=2",
+		},
+		{
+			"batch, 8 concurrent callers",
+			pkgBatch,
+			"Batch/parallel-8-events/records=1000/resources=10/teams=1",
+		},
+		{"noop stage", pkgCore, "Pipeline/noop/records=1000/resources=10/teams=1"},
+	}
 }
 
 // perEventComponents do not depend on the payload size.
-var perEventComponents = []component{
-	{"NATS sink: one record (waits for the acknowledgement)", "internal/adapters/sink/nats", "Notify/records=1/resources=1/teams=1"},
-	{"OTLP source: request with one record", "internal/adapters/source/otlp", "HandleLogs/records=1/resources=1/teams=1"},
-	{"batch, one caller", "internal/adapters/stage/batch", "Batch/flush-per-event/records=1/resources=1/teams=1"},
-	{"Passing an event to 1 child", "internal/adapters/source/base", "NotifySubscribers/children=1"},
-	{"Passing an event to 8 children", "internal/adapters/source/base", "NotifySubscribers/children=8"},
-	{"Each additional noop stage", "internal/core", "Pipeline/noop/records=1/resources=1/teams=1"},
+func perEventComponents() []component {
+	return []component{
+		{
+			"NATS sink: one record (waits for the acknowledgement)",
+			pkgNATSSink,
+			"Notify/records=1/resources=1/teams=1",
+		},
+		{
+			"OTLP source: request with one record",
+			pkgOTLPSource,
+			"HandleLogs/records=1/resources=1/teams=1",
+		},
+		{"batch, one caller", pkgBatch, "Batch/flush-per-event/records=1/resources=1/teams=1"},
+		{"Passing an event to 1 child", pkgSourceBase, "NotifySubscribers/children=1"},
+		{"Passing an event to 8 children", pkgSourceBase, "NotifySubscribers/children=8"},
+		{"Each additional noop stage", pkgCore, "Pipeline/noop/records=1/resources=1/teams=1"},
+	}
 }
 
 func renderComponents(results map[string]result, components []component, perRecord bool) string {
@@ -409,14 +579,22 @@ func renderComponents(results map[string]result, components []component, perReco
 		ns, allocs := r.metrics["ns/op"], r.metrics["allocs/op"]
 		if c.name == "Pipeline/noop/records=1/resources=1/teams=1" {
 			// The noop scenario includes the source's own hop; subtract it.
-			if direct, ok := results[c.pkg+"|Pipeline/direct/records=1/resources=1/teams=1"]; ok {
+			if direct, found := results[c.pkg+"|Pipeline/direct/records=1/resources=1/teams=1"]; found {
 				ns -= direct.metrics["ns/op"]
 				allocs -= direct.metrics["allocs/op"]
 			}
 		}
 		if perRecord {
 			records := recordsPerOp(c.name)
-			fmt.Fprintf(&b, "| %s | %s | %.1f | %s | %s |\n", c.label, duration(ns/records), allocs/records, count(records*1e9/ns), spread(r.spread))
+			fmt.Fprintf(
+				&b,
+				"| %s | %s | %.1f | %s | %s |\n",
+				c.label,
+				duration(ns/records),
+				allocs/records,
+				count(records*billion/ns),
+				spread(r.spread),
+			)
 		} else {
 			fmt.Fprintf(&b, "| %s | %s | %.0f | %s |\n", c.label, duration(ns), allocs, spread(r.spread))
 		}
@@ -435,12 +613,20 @@ func replaceSection(page []byte, name, content string) ([]byte, error) {
 	return []byte(s[:i+len(begin)] + "\n" + content + s[j:]), nil
 }
 
+const (
+	thousand        = 1e3
+	tenThousand     = 1e4
+	hundredThousand = 1e5
+	million         = 1e6
+	billion         = 1e9
+)
+
 func duration(ns float64) string {
 	switch {
-	case ns >= 1e6:
-		return fmt.Sprintf("%.1f ms", ns/1e6)
-	case ns >= 1e3:
-		return fmt.Sprintf("%.2f µs", ns/1e3)
+	case ns >= million:
+		return fmt.Sprintf("%.1f ms", ns/million)
+	case ns >= thousand:
+		return fmt.Sprintf("%.2f µs", ns/thousand)
 	default:
 		return fmt.Sprintf("%.1f ns", ns)
 	}
@@ -448,14 +634,14 @@ func duration(ns float64) string {
 
 func count(x float64) string {
 	switch {
-	case x >= 1e9:
-		return fmt.Sprintf("%.2f G", x/1e9)
-	case x >= 1e6:
-		return fmt.Sprintf("%.2f M", x/1e6)
-	case x >= 1e4:
-		return fmt.Sprintf("%.0f k", x/1e3)
-	case x >= 1e3:
-		return fmt.Sprintf("%.1f k", x/1e3)
+	case x >= billion:
+		return fmt.Sprintf("%.2f G", x/billion)
+	case x >= million:
+		return fmt.Sprintf("%.2f M", x/million)
+	case x >= tenThousand:
+		return fmt.Sprintf("%.0f k", x/thousand)
+	case x >= thousand:
+		return fmt.Sprintf("%.1f k", x/thousand)
 	default:
 		return fmt.Sprintf("%.0f", x)
 	}
@@ -469,12 +655,12 @@ func millis(metrics map[string]float64, unit string) string {
 	return fmt.Sprintf("%.2f ms", v)
 }
 
-// spread flags results whose runs differ by more than 10%.
-func spread(percent float64) string {
-	if percent > 10 {
-		return fmt.Sprintf("±%.0f%% ⚠️", percent)
+// spread flags results whose runs differ by more than spreadWarning percent.
+func spread(percentage float64) string {
+	if percentage > spreadWarning {
+		return fmt.Sprintf("±%.0f%% ⚠️", percentage)
 	}
-	return fmt.Sprintf("±%.0f%%", percent)
+	return fmt.Sprintf("±%.0f%%", percentage)
 }
 
 func or(s, fallback string) string {

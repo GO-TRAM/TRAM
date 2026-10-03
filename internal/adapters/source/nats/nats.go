@@ -4,15 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
-	"codeberg.org/eljoth/tram/internal/adapters/source/base"
-	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+
+	"codeberg.org/eljoth/tram/internal/adapters/source/base"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 const (
@@ -36,9 +37,11 @@ const (
 
 type NATS struct {
 	*base.Source[Spec]
-	nc *nats.Conn
-	js jetstream.JetStream
-	wg sync.WaitGroup
+
+	logger *slog.Logger
+	nc     *nats.Conn
+	js     jetstream.JetStream
+	wg     sync.WaitGroup
 
 	// stop is cancelled by Stop and interrupts pending fetches.
 	stop   context.Context
@@ -49,7 +52,7 @@ type NATS struct {
 	stopped bool
 }
 
-func New(source domain.SourceSpec, validator *validator.Validate) (*NATS, error) {
+func New(source domain.SourceSpec, validator *validator.Validate, logger *slog.Logger) (*NATS, error) {
 	base, err := base.New[Spec](source.Name, source.Spec, validator)
 	if err != nil {
 		return nil, err
@@ -69,6 +72,7 @@ func New(source domain.SourceSpec, validator *validator.Validate) (*NATS, error)
 	stop, cancel := context.WithCancel(context.Background())
 	return &NATS{
 		Source: base,
+		logger: logger,
 		nc:     nc,
 		js:     js,
 		stop:   stop,
@@ -127,7 +131,12 @@ func (n *NATS) worker(ctx context.Context, cons jetstream.Consumer) {
 		if err != nil {
 			cancel()
 			if n.stop.Err() == nil {
-				log.Printf("Error fetching messages: %v", err)
+				n.logger.ErrorContext(
+					ctx,
+					"Could not fetch messages",
+					slog.String("source", n.Name()),
+					slog.Any("error", err),
+				)
 			}
 			continue
 		}
@@ -144,10 +153,8 @@ func (n *NATS) handle(ctx context.Context, msg jetstream.Msg) {
 	event, err := domain.UnmarshalOTLPData(signal, msg.Data())
 	if err != nil {
 		// Redelivery cannot fix a message that does not decode.
-		log.Printf("Error parsing OTLP data, terminating message: %v", err)
-		if err := msg.Term(); err != nil {
-			log.Printf("Error terminating message: %v", err)
-		}
+		n.logger.WarnContext(ctx, "Terminated message that is not valid OTLP data", slog.Any("error", err))
+		n.term(ctx, msg)
 		return
 	}
 
@@ -155,22 +162,27 @@ func (n *NATS) handle(ctx context.Context, msg jetstream.Msg) {
 	// message reaches all branches again.
 	err = n.NotifySubscribers(ctx, event)
 	if errors.Is(err, domain.ErrEventRejected) {
-		log.Printf("Message rejected, terminating it: %v", err)
-		if err := msg.Term(); err != nil {
-			log.Printf("Error terminating message: %v", err)
-		}
+		n.logger.WarnContext(ctx, "Terminated rejected message", slog.Any("error", err))
+		n.term(ctx, msg)
 		return
 	}
 	if err != nil {
-		log.Printf("Error notifying subscribers, requesting redelivery: %v", err)
-		if err := msg.NakWithDelay(redeliveryDelay); err != nil {
-			log.Printf("Error rejecting message: %v", err)
+		n.logger.WarnContext(ctx, "Could not deliver message, requesting redelivery", slog.Any("error", err))
+		if err = msg.NakWithDelay(redeliveryDelay); err != nil {
+			n.logger.ErrorContext(ctx, "Could not request redelivery of message", slog.Any("error", err))
 		}
 		return
 	}
 
-	if err := msg.Ack(); err != nil {
-		log.Printf("Error acknowledging message: %v", err)
+	if err = msg.Ack(); err != nil {
+		n.logger.ErrorContext(ctx, "Could not acknowledge message", slog.Any("error", err))
+	}
+}
+
+// term terminates a message, so it is not delivered again.
+func (n *NATS) term(ctx context.Context, msg jetstream.Msg) {
+	if err := msg.Term(); err != nil {
+		n.logger.ErrorContext(ctx, "Could not terminate message", slog.Any("error", err))
 	}
 }
 

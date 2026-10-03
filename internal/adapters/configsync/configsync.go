@@ -5,59 +5,73 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
+
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/ports"
-	"github.com/fsnotify/fsnotify"
+)
+
+const (
+	// fsEventBuffer holds file system events while a sync runs.
+	fsEventBuffer = 100
+	// debounceDuration waits for a burst of file changes to settle.
+	debounceDuration = 100 * time.Millisecond
+	// filePermissions keeps stream files private; specs can contain
+	// credentials, e.g. in NATS URLs.
+	filePermissions = 0o600
+	fileExtension   = ".json"
 )
 
 type ConfigSync struct {
 	dir              string
 	core             ports.Core
+	logger           *slog.Logger
 	watcher          *fsnotify.Watcher
 	fsEvents         chan fsnotify.Event
 	debouncer        *time.Timer
 	debounceDuration time.Duration
 }
 
-func New(c ports.Core, dir string) (*ConfigSync, error) {
+func New(c ports.Core, dir string, logger *slog.Logger) (*ConfigSync, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file watcher: %w", err)
 	}
 
-	if err := watcher.Add(dir); err != nil {
-		watcher.Close()
-		return nil, fmt.Errorf("failed to watch directory %q: %w", dir, err)
+	if err = watcher.Add(dir); err != nil {
+		return nil, errors.Join(fmt.Errorf("failed to watch directory %q: %w", dir, err), watcher.Close())
 	}
 
 	cs := &ConfigSync{
 		dir:              dir,
 		core:             c,
+		logger:           logger,
 		watcher:          watcher,
-		fsEvents:         make(chan fsnotify.Event, 100),
-		debounceDuration: 100 * time.Millisecond,
+		fsEvents:         make(chan fsnotify.Event, fsEventBuffer),
+		debounceDuration: debounceDuration,
 	}
 
-	if err := cs.sync(); err != nil {
-		watcher.Close()
-		return nil, err
+	if err = cs.sync(context.Background()); err != nil {
+		return nil, errors.Join(err, watcher.Close())
 	}
 
 	return cs, nil
 }
 
 func (c *ConfigSync) Run(ctx context.Context) error {
-	slog.Info("Starting configuration sync", "directory", c.dir)
+	c.logger.InfoContext(ctx, "Starting configuration sync", slog.String("directory", c.dir))
 
 	go func() {
 		for event := range c.watcher.Events {
-			slog.Debug("File system event received", "path", event.Name, "op", event.Op)
+			c.logger.DebugContext(ctx, "Received file system event",
+				slog.String("path", event.Name), slog.String("op", event.Op.String()))
 			c.fsEvents <- event
 		}
 	}()
@@ -78,22 +92,21 @@ func (c *ConfigSync) Run(ctx context.Context) error {
 			return nil
 
 		case err := <-c.watcher.Errors:
-			slog.Error("Watcher error", "error", err)
 			return fmt.Errorf("watcher error: %w", err)
 
 		case event := <-ch:
 			if err := c.onCoreChange(event); err != nil {
-				slog.Error("Error during core change", "error", err)
+				c.logger.ErrorContext(ctx, "Could not write stream change to file", slog.Any("error", err))
 			}
 
 		case event := <-c.fsEvents:
 			if c.debouncer != nil {
 				c.debouncer.Stop()
 			}
-			if filepath.Ext(event.Name) == ".json" {
+			if filepath.Ext(event.Name) == fileExtension {
 				c.debouncer = time.AfterFunc(c.debounceDuration, func() {
-					if err := c.sync(); err != nil {
-						slog.Error("Error during file sync", "error", err)
+					if err := c.sync(ctx); err != nil {
+						c.logger.ErrorContext(ctx, "Could not sync stream files", slog.Any("error", err))
 					}
 				})
 			}
@@ -101,84 +114,96 @@ func (c *ConfigSync) Run(ctx context.Context) error {
 	}
 }
 
-func (c *ConfigSync) sync() error {
-	files, err := os.ReadDir(c.dir)
+// sync makes the core's streams match the stream files: it creates or
+// updates a stream for every file and deletes streams without a file.
+func (c *ConfigSync) sync(ctx context.Context) error {
+	files, err := c.readStreamFiles(ctx)
 	if err != nil {
 		return err
 	}
 
-	configured, err := c.core.GetStreams(context.Background())
+	configured, err := c.core.GetStreams(ctx)
 	if err != nil {
 		return err
 	}
-
-	toDelete := make(map[string]domain.StreamSpec, len(configured))
 	for _, stream := range configured {
-		toDelete[stream.Name] = stream
-	}
-
-	streamSpecs := make([]Stream, 0, len(files))
-
-	for _, file := range files {
-		if file.IsDir() || filepath.Ext(file.Name()) != ".json" {
+		if _, ok := files[stream.Name]; ok {
 			continue
 		}
-
-		config, err := c.StreamFromFile(file.Name())
-		if err != nil {
-			continue
-		}
-
-		nameWithoutExt := strings.TrimSuffix(file.Name(), filepath.Ext(file.Name()))
-		config.Stream.Name = nameWithoutExt
-		streamSpecs = append(streamSpecs, config)
-		delete(toDelete, nameWithoutExt)
-	}
-
-	for _, spec := range streamSpecs {
-		slog.Debug("Processing stream", "name", spec.Stream.Name)
-		configured, err := c.core.GetStream(context.Background(), spec.Stream.Name)
-		if err != nil && !errors.Is(err, domain.ErrStreamNotFound) {
-			slog.Error("Failed to get stream", "name", spec.Stream.Name, "error", err)
-			continue
-		}
-
-		if configured != nil && spec.Equals(StreamFromDomain(*configured)) {
-			slog.Debug("Stream unchanged, skipping", "name", spec.Stream.Name)
-			continue
-		}
-
-		slog.Debug("Upserting stream", "name", spec.Stream.Name)
-		if _, err := c.core.UpsertStream(context.Background(), *spec.AsDomain()); err != nil {
-			slog.Error("Failed to upsert stream", "name", spec.Stream.Name, "error", err)
+		c.logger.DebugContext(ctx, "Deleting stream", slog.String("stream", stream.Name))
+		if err = c.core.DeleteStream(ctx, stream.Name); err != nil {
+			c.logger.ErrorContext(
+				ctx,
+				"Could not delete stream",
+				slog.String("stream", stream.Name),
+				slog.Any("error", err),
+			)
 		}
 	}
 
-	for name := range toDelete {
-		slog.Debug("Deleting stream", "name", name)
-		if err := c.core.DeleteStream(context.Background(), name); err != nil {
-			slog.Error("Failed to delete stream", "name", name, "error", err)
-		}
+	for name, file := range files {
+		c.apply(ctx, name, file)
 	}
-
 	return nil
 }
 
+// readStreamFiles reads all stream files, keyed by stream name. Files that
+// cannot be read are skipped.
+func (c *ConfigSync) readStreamFiles(ctx context.Context) (map[string]Stream, error) {
+	entries, err := os.ReadDir(c.dir)
+	if err != nil {
+		return nil, err
+	}
+
+	files := make(map[string]Stream, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != fileExtension {
+			continue
+		}
+		stream, readErr := c.StreamFromFile(entry.Name())
+		if readErr != nil {
+			c.logger.ErrorContext(ctx, "Could not read stream file",
+				slog.String("file", entry.Name()), slog.Any("error", readErr))
+			continue
+		}
+		name := strings.TrimSuffix(entry.Name(), fileExtension)
+		stream.Stream.Name = name
+		files[name] = stream
+	}
+	return files, nil
+}
+
+// apply creates or updates the stream from its file, unless it is unchanged.
+func (c *ConfigSync) apply(ctx context.Context, name string, file Stream) {
+	configured, err := c.core.GetStream(ctx, name)
+	if err != nil && !errors.Is(err, domain.ErrStreamNotFound) {
+		c.logger.ErrorContext(ctx, "Could not get stream", slog.String("stream", name), slog.Any("error", err))
+		return
+	}
+	if configured != nil && file.Equals(StreamFromDomain(*configured)) {
+		return
+	}
+
+	c.logger.DebugContext(ctx, "Upserting stream", slog.String("stream", name))
+	if _, err = c.core.UpsertStream(ctx, *file.AsDomain()); err != nil {
+		c.logger.ErrorContext(ctx, "Could not upsert stream", slog.String("stream", name), slog.Any("error", err))
+	}
+}
+
 func (c *ConfigSync) onCoreChange(event domain.StreamSpecWatchEvent) error {
+	path := filepath.Join(c.dir, event.StreamSpec.Name+fileExtension)
+
 	switch event.EventType {
 	case domain.StreamSpecWatchEventTypeDelete:
-		path := filepath.Join(c.dir, event.StreamSpec.Name+".json")
-		if _, err := os.Stat(path); os.IsNotExist(err) {
+		err := os.Remove(path)
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil
-		} else if err != nil {
-			return err
 		}
-		return os.Remove(path)
+		return err
 
 	case domain.StreamSpecWatchEventTypeUpsert:
-		path := filepath.Join(c.dir, event.StreamSpec.Name+".json")
-		stored, err := c.StreamFromFile(event.StreamSpec.Name + ".json")
-		if err != nil && !os.IsNotExist(err) {
+		stored, err := c.StreamFromFile(event.StreamSpec.Name + fileExtension)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 
@@ -191,32 +216,27 @@ func (c *ConfigSync) onCoreChange(event domain.StreamSpecWatchEvent) error {
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(path, content, 0644)
+		return os.WriteFile(path, content, filePermissions)
 	}
 	return nil
 }
 
-func (c ConfigSync) StreamFromFile(fileName string) (Stream, error) {
-	filePath := filepath.Join(c.dir, fileName)
-	content, err := os.ReadFile(filePath)
+func (c *ConfigSync) StreamFromFile(fileName string) (Stream, error) {
+	content, err := os.ReadFile(filepath.Join(c.dir, fileName))
 	if err != nil {
-		slog.Error("Failed to read config file", "path", filePath, "error", err)
 		return Stream{}, err
 	}
 
 	var stream Stream
-	if err := json.Unmarshal(content, &stream); err != nil {
-		slog.Error("Failed to parse config file", "path", filePath, "error", err)
-		return Stream{}, err
+	if err = json.Unmarshal(content, &stream); err != nil {
+		return Stream{}, fmt.Errorf("failed to parse %s: %w", fileName, err)
 	}
 	return stream, nil
 }
 
-func (c ConfigSync) Close() error {
-	if c.watcher != nil {
-		if err := c.watcher.Close(); err != nil {
-			return err
-		}
+func (c *ConfigSync) Close() error {
+	if c.watcher == nil {
+		return nil
 	}
-	return nil
+	return c.watcher.Close()
 }

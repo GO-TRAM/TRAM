@@ -3,24 +3,24 @@ package core_test
 import (
 	"context"
 	"fmt"
-	"io"
-	"log"
-	"os"
+	"log/slog"
 	"sync/atomic"
 	"testing"
+
+	"github.com/go-playground/validator/v10"
 
 	sourcebase "codeberg.org/eljoth/tram/internal/adapters/source/base"
 	"codeberg.org/eljoth/tram/internal/adapters/stage"
 	"codeberg.org/eljoth/tram/internal/core"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
-	"github.com/go-playground/validator/v10"
 )
 
 // benchSource uses the real source base for fan-out but is driven by the
 // benchmark instead of producing events itself.
 type benchSource struct {
 	*sourcebase.Source[struct{}]
+
 	shutdown chan struct{}
 }
 
@@ -56,9 +56,9 @@ func (s *countingSink) Notify(_ context.Context, e *domain.Event) error {
 		return nil
 	}
 	n := 0
-	for _, rl := range e.Logs.ResourceLogs {
-		for _, sl := range rl.ScopeLogs {
-			n += len(sl.LogRecords)
+	for _, rl := range e.Logs.GetResourceLogs() {
+		for _, sl := range rl.GetScopeLogs() {
+			n += len(sl.GetLogRecords())
 		}
 	}
 	s.records.Add(int64(n))
@@ -90,18 +90,20 @@ func noopChain(n int) []domain.StageSpec {
 	return stages
 }
 
-var topologies = []topology{
-	{name: "direct", sinks: 1},
-	{name: "noop", stages: noopChain(1), sinks: 1},
-	{name: "noop-x5", stages: noopChain(5), sinks: 1},
-	{name: "cel-record-attribute", stages: []domain.StageSpec{{
-		Name: "cel", Type: "cel_validator", From: "in",
-		Spec: map[string]any{
-			"logs":        "logs.resource_logs.all(r, r.scope_logs.all(s, s.log_records.all(l, l.attributes.exists(a, a.key == 'team'))))",
-			"on_mismatch": "drop",
-		},
-	}}, sinks: 1},
-	{name: "fanout-4-sinks", sinks: 4},
+func topologies() []topology {
+	return []topology{
+		{name: "direct", sinks: 1},
+		{name: "noop", stages: noopChain(1), sinks: 1},
+		{name: "noop-x5", stages: noopChain(5), sinks: 1},
+		{name: "cel-record-attribute", stages: []domain.StageSpec{{
+			Name: "cel", Type: "cel_validator", From: "in",
+			Spec: map[string]any{
+				"logs":        "logs.resource_logs.all(r, r.scope_logs.all(s, s.log_records.all(l, l.attributes.exists(a, a.key == 'team'))))",
+				"on_mismatch": "drop",
+			},
+		}}, sinks: 1},
+		{name: "fanout-4-sinks", sinks: 4},
+	}
 }
 
 func (t topology) spec() domain.StreamSpec {
@@ -123,41 +125,48 @@ func (t topology) spec() domain.StreamSpec {
 // BenchmarkPipeline measures a whole stream built by the core with real
 // stages, reporting throughput in records/s so payload sizes are comparable.
 func BenchmarkPipeline(b *testing.B) {
-	// The core logs every stream it starts and stops, which would break up the
-	// benchmark output.
-	log.SetOutput(io.Discard)
-	b.Cleanup(func() { log.SetOutput(os.Stderr) })
-
-	for _, topo := range topologies {
-		for _, shape := range otlpgen.Shapes {
+	for _, topo := range topologies() {
+		for _, shape := range otlpgen.Shapes() {
 			b.Run(topo.name+"/"+shape.String(), func(b *testing.B) {
-				src := &benchSource{shutdown: make(chan struct{})}
-				base, err := sourcebase.New[struct{}]("in", nil, validator.New())
-				if err != nil {
-					b.Fatal(err)
-				}
-				src.Source = base
-
-				var records atomic.Int64
-				c := core.New(b.Context(), benchSourceFactory{src}, stage.NewFactory(), countingSinkFactory{&records})
-				b.Cleanup(func() { _ = c.Close() })
-				if _, err := c.UpsertStream(b.Context(), topo.spec()); err != nil {
-					b.Fatal(err)
-				}
-
-				event := &domain.Event{Logs: otlpgen.Logs(shape)}
-				b.ReportAllocs()
-				for b.Loop() {
-					if err := src.NotifySubscribers(b.Context(), event); err != nil {
-						b.Fatal(err)
-					}
-				}
-
-				b.ReportMetric(float64(shape.Records*b.N)/b.Elapsed().Seconds(), "records/s")
-				if want := int64(shape.Records * b.N * topo.sinks); records.Load() != want {
-					b.Fatalf("sinks received %d records, want %d", records.Load(), want)
-				}
+				pipeline(b, topo.spec(), topo.sinks, shape)
 			})
 		}
+	}
+}
+
+// pipeline runs one BenchmarkPipeline case: it builds spec and checks that its
+// sinks together receive every record once per sink.
+func pipeline(b *testing.B, spec domain.StreamSpec, sinks int, shape otlpgen.Shape) {
+	src := &benchSource{shutdown: make(chan struct{})}
+	base, err := sourcebase.New[struct{}]("in", nil, validator.New())
+	if err != nil {
+		b.Fatal(err)
+	}
+	src.Source = base
+
+	var records atomic.Int64
+	c := core.New(
+		b.Context(),
+		slog.New(slog.DiscardHandler),
+		benchSourceFactory{src},
+		stage.NewFactory(),
+		countingSinkFactory{&records},
+	)
+	b.Cleanup(func() { _ = c.Close() })
+	if _, upsertErr := c.UpsertStream(b.Context(), spec); upsertErr != nil {
+		b.Fatal(upsertErr)
+	}
+
+	event := &domain.Event{Logs: otlpgen.Logs(shape)}
+	b.ReportAllocs()
+	for b.Loop() {
+		if notifyErr := src.NotifySubscribers(b.Context(), event); notifyErr != nil {
+			b.Fatal(notifyErr)
+		}
+	}
+
+	b.ReportMetric(float64(shape.Records*b.N)/b.Elapsed().Seconds(), "records/s")
+	if want := int64(shape.Records * b.N * sinks); records.Load() != want {
+		b.Fatalf("sinks received %d records, want %d", records.Load(), want)
 	}
 }

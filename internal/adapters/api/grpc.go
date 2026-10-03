@@ -3,30 +3,33 @@ package api
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 
 	"buf.build/go/protovalidate"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/ports"
 	v1 "codeberg.org/eljoth/tram/pkg/gen/go/api/proto/stream/v1"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type streamServer struct {
 	v1.UnimplementedStreamServiceServer
-	core ports.Core
+
+	core   ports.Core
+	logger *slog.Logger
 }
 
 func (s streamServer) PutStream(ctx context.Context, req *v1.PutStreamRequest) (*v1.PutStreamResponse, error) {
 	if err := protovalidate.Validate(req); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	streamSpec := pbStreamToStreamSpec(req.Stream)
+	streamSpec := pbStreamToStreamSpec(req.GetStream())
 
 	stream, err := s.core.UpsertStream(ctx, streamSpec)
 	if err != nil {
-		return nil, toStatus(err)
+		return nil, s.statusOf(ctx, err)
 	}
 
 	return &v1.PutStreamResponse{
@@ -34,9 +37,9 @@ func (s streamServer) PutStream(ctx context.Context, req *v1.PutStreamRequest) (
 	}, nil
 }
 func (s streamServer) GetStream(ctx context.Context, req *v1.GetStreamRequest) (*v1.GetStreamResponse, error) {
-	stream, err := s.core.GetStream(ctx, req.Name)
+	stream, err := s.core.GetStream(ctx, req.GetName())
 	if err != nil {
-		return nil, toStatus(err)
+		return nil, s.statusOf(ctx, err)
 	}
 	return &v1.GetStreamResponse{
 		Stream: streamSpecToPBStream(*stream),
@@ -44,8 +47,8 @@ func (s streamServer) GetStream(ctx context.Context, req *v1.GetStreamRequest) (
 }
 
 func (s streamServer) DeleteStream(ctx context.Context, req *v1.DeleteStreamRequest) (*v1.DeleteStreamResponse, error) {
-	if err := s.core.DeleteStream(ctx, req.Name); err != nil {
-		return nil, toStatus(err)
+	if err := s.core.DeleteStream(ctx, req.GetName()); err != nil {
+		return nil, s.statusOf(ctx, err)
 	}
 	return &v1.DeleteStreamResponse{}, nil
 }
@@ -61,7 +64,16 @@ func toStatus(err error) error {
 	case errors.Is(err, domain.ErrCoreClosed):
 		return status.Error(codes.Unavailable, err.Error())
 	default:
-		log.Println(err)
 		return status.Error(codes.Internal, err.Error())
 	}
+}
+
+// statusOf converts err with toStatus and logs errors the client cannot act
+// on.
+func (s streamServer) statusOf(ctx context.Context, err error) error {
+	st := toStatus(err)
+	if status.Code(st) == codes.Internal {
+		s.logger.ErrorContext(ctx, "Could not handle API request", slog.Any("error", err))
+	}
+	return st
 }

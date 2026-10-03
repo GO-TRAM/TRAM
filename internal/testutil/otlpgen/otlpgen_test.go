@@ -1,36 +1,42 @@
-package otlpgen
+package otlpgen_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
 func TestShapeCounts(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
-		shape     Shape
+		shape     otlpgen.Shape
 		resources int
 		records   int
 	}{
-		{shape: Shape{Records: 1, Resources: 1}, resources: 1, records: 1},
-		{shape: Shape{Records: 1000, Resources: 10}, resources: 10, records: 1000},
-		{shape: Shape{Records: 5, Resources: 0}, resources: 1, records: 5},
+		{shape: otlpgen.Shape{Records: 1, Resources: 1}, resources: 1, records: 1},
+		{shape: otlpgen.Shape{Records: 1000, Resources: 10}, resources: 10, records: 1000},
+		{shape: otlpgen.Shape{Records: 5, Resources: 0}, resources: 1, records: 5},
 	}
 
 	for _, c := range cases {
 		t.Run(c.shape.String(), func(t *testing.T) {
-			logs := Logs(c.shape)
-			assert.Len(t, logs.ResourceLogs, c.resources)
+			t.Parallel()
+
+			logs := otlpgen.Logs(c.shape)
+			assert.Len(t, logs.GetResourceLogs(), c.resources)
 
 			records := 0
-			for _, rl := range logs.ResourceLogs {
-				for _, sl := range rl.ScopeLogs {
-					records += len(sl.LogRecords)
+			for _, rl := range logs.GetResourceLogs() {
+				for _, sl := range rl.GetScopeLogs() {
+					records += len(sl.GetLogRecords())
 				}
 			}
 			assert.Equal(t, c.records, records)
-			assert.Len(t, Metrics(c.shape).ResourceMetrics, c.resources)
-			assert.Len(t, Traces(c.shape).ResourceSpans, c.resources)
+			assert.Len(t, otlpgen.Metrics(c.shape).GetResourceMetrics(), c.resources)
+			assert.Len(t, otlpgen.Traces(c.shape).GetResourceSpans(), c.resources)
 		})
 	}
 }

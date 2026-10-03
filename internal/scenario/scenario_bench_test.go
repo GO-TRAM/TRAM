@@ -1,20 +1,23 @@
-package scenario
+package scenario_test
 
 import (
 	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"slices"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
+	"google.golang.org/protobuf/proto"
 
 	"codeberg.org/eljoth/tram/internal/adapters/sink"
 	"codeberg.org/eljoth/tram/internal/adapters/source"
@@ -23,9 +26,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/natstest"
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
-	"github.com/nats-io/nats.go"
-	"github.com/nats-io/nats.go/jetstream"
-	"google.golang.org/protobuf/proto"
 )
 
 // signalHeader must match the header of Tram's NATS sink and source.
@@ -43,52 +43,54 @@ type scenario struct {
 	build func(e *env) ([]domain.StageSpec, []domain.SinkSpec)
 }
 
-var scenarios = []scenario{
-	{
-		name:   "otlp-nats",
-		source: "otlp",
-		teams:  1,
-		build: func(e *env) ([]domain.StageSpec, []domain.SinkSpec) {
-			return nil, []domain.SinkSpec{e.natsSink("out", "in")}
+func scenarios() []scenario {
+	return []scenario{
+		{
+			name:   "otlp-nats",
+			source: "otlp",
+			teams:  1,
+			build: func(e *env) ([]domain.StageSpec, []domain.SinkSpec) {
+				return nil, []domain.SinkSpec{e.natsSink("out", "in")}
+			},
 		},
-	},
-	{
-		name:   "otlp-batch-nats",
-		source: "otlp",
-		teams:  1,
-		build: func(e *env) ([]domain.StageSpec, []domain.SinkSpec) {
-			return []domain.StageSpec{{
-				Name: "batch", Type: "batch", From: "in",
-				Spec: map[string]any{"max_records": float64(batchMaxRecords), "timeout": batchTimeout},
-			}}, []domain.SinkSpec{e.natsSink("out", "batch")}
+		{
+			name:   "otlp-batch-nats",
+			source: "otlp",
+			teams:  1,
+			build: func(e *env) ([]domain.StageSpec, []domain.SinkSpec) {
+				return []domain.StageSpec{{
+					Name: "batch", Type: "batch", From: "in",
+					Spec: map[string]any{"max_records": float64(batchMaxRecords), "timeout": batchTimeout},
+				}}, []domain.SinkSpec{e.natsSink("out", "batch")}
+			},
 		},
-	},
-	{
-		name:   "otlp-split-nats",
-		source: "otlp",
-		teams:  2,
-		build: func(e *env) ([]domain.StageSpec, []domain.SinkSpec) {
-			const teamZero = "record.attributes.exists(a, a.key == 'team' && a.value.string_value == 'team-0')"
-			return []domain.StageSpec{
+		{
+			name:   "otlp-split-nats",
+			source: "otlp",
+			teams:  2,
+			build: func(e *env) ([]domain.StageSpec, []domain.SinkSpec) {
+				const teamZero = "record.attributes.exists(a, a.key == 'team' && a.value.string_value == 'team-0')"
+				return []domain.StageSpec{
 					{Name: "team-zero", Type: "cel_filter", From: "in", Spec: map[string]any{"logs": teamZero}},
 					{Name: "other-teams", Type: "cel_filter", From: "in", Spec: map[string]any{"logs": "!" + teamZero}},
 				}, []domain.SinkSpec{
 					e.natsSink("out-a", "team-zero"),
 					e.natsSink("out-b", "other-teams"),
 				}
+			},
 		},
-	},
-	{
-		name:   "nats-filter-nats",
-		source: "nats",
-		teams:  1,
-		build: func(e *env) ([]domain.StageSpec, []domain.SinkSpec) {
-			return []domain.StageSpec{{
-				Name: "filter", Type: "cel_filter", From: "in",
-				Spec: map[string]any{"logs": "record.attributes.exists(a, a.key == 'team')"},
-			}}, []domain.SinkSpec{e.natsSink("out", "filter")}
+		{
+			name:   "nats-filter-nats",
+			source: "nats",
+			teams:  1,
+			build: func(e *env) ([]domain.StageSpec, []domain.SinkSpec) {
+				return []domain.StageSpec{{
+					Name: "filter", Type: "cel_filter", From: "in",
+					Spec: map[string]any{"logs": "record.attributes.exists(a, a.key == 'team')"},
+				}}, []domain.SinkSpec{e.natsSink("out", "filter")}
+			},
 		},
-	},
+	}
 }
 
 // The batch stage is configured to flush 1,000 records or after 10ms, so
@@ -98,14 +100,17 @@ const (
 	batchTimeout    = "10ms"
 )
 
-var (
-	concurrencies = []int{1, 4, 8}
-	shapes        = []otlpgen.Shape{
+func concurrencies() []int {
+	return []int{1, 4, 8}
+}
+
+func shapes() []otlpgen.Shape {
+	return []otlpgen.Shape{
 		{Records: 1, Resources: 1, Attributes: 4},
 		{Records: 100, Resources: 1, Attributes: 4},
 		{Records: 1000, Resources: 10, Attributes: 4},
 	}
-)
+}
 
 // BenchmarkScenario runs every scenario for every concurrency and payload
 // size. One iteration is one OTLP request or one NATS message. Besides
@@ -115,11 +120,6 @@ var (
 // Requires Docker or Podman; skipped otherwise.
 func BenchmarkScenario(b *testing.B) {
 	natsURL := natstest.Start(b)
-
-	// The core logs every stream it starts and stops, which would break up
-	// the benchmark output.
-	log.SetOutput(io.Discard)
-	b.Cleanup(func() { log.SetOutput(os.Stderr) })
 
 	nc, err := nats.Connect(natsURL)
 	if err != nil {
@@ -131,13 +131,14 @@ func BenchmarkScenario(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	for _, sc := range scenarios {
-		for _, concurrency := range concurrencies {
-			for _, shape := range shapes {
+	var runs atomic.Int64
+	for _, sc := range scenarios() {
+		for _, concurrency := range concurrencies() {
+			for _, shape := range shapes() {
 				shape.Teams = sc.teams
 				name := fmt.Sprintf("%s/concurrency=%d/%s", sc.name, concurrency, shape)
 				b.Run(name, func(b *testing.B) {
-					e := newEnv(b, natsURL, js)
+					e := newEnv(b, natsURL, js, &runs)
 					switch sc.source {
 					case "otlp":
 						benchmarkOTLP(b, e, sc, shape, concurrency)
@@ -160,9 +161,8 @@ type env struct {
 	streams []string
 }
 
-var runs atomic.Int64
-
-func newEnv(b *testing.B, natsURL string, js jetstream.JetStream) *env {
+// newEnv numbers the environments with runs, so their stream names are unique.
+func newEnv(b *testing.B, natsURL string, js jetstream.JetStream, runs *atomic.Int64) *env {
 	e := &env{b: b, natsURL: natsURL, js: js, prefix: fmt.Sprintf("bench%d", runs.Add(1))}
 	b.Cleanup(func() {
 		for _, s := range e.streams {
@@ -188,16 +188,23 @@ func (e *env) natsSink(name, from string) domain.SinkSpec {
 		"retention": "1m",
 		"subject": map[string]any{
 			"register": []any{stream + ".>"},
-			"logs":     fmt.Sprintf("'%s.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')", stream),
+			"logs": fmt.Sprintf(
+				"'%s.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
+				stream,
+			),
 		},
 	}}
 }
 
 // startStream builds the stream through the core, like `tram server` does.
 func startStream(b *testing.B, in domain.SourceSpec, stages []domain.StageSpec, sinks []domain.SinkSpec) {
-	c := core.New(context.Background(), source.NewFactory(), stage.NewFactory(), sink.NewFactory())
+	logger := slog.New(slog.DiscardHandler)
+	c := core.New(context.Background(), logger, source.NewFactory(logger), stage.NewFactory(), sink.NewFactory(logger))
 	b.Cleanup(func() { _ = c.Close() })
-	_, err := c.UpsertStream(context.Background(), domain.StreamSpec{Name: "scenario", Source: in, Stages: stages, Sinks: sinks})
+	_, err := c.UpsertStream(
+		context.Background(),
+		domain.StreamSpec{Name: "scenario", Source: in, Stages: stages, Sinks: sinks},
+	)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -206,7 +213,12 @@ func startStream(b *testing.B, in domain.SourceSpec, stages []domain.StageSpec, 
 func benchmarkOTLP(b *testing.B, e *env, sc scenario, shape otlpgen.Shape, concurrency int) {
 	port := freePort(b)
 	stages, sinks := sc.build(e)
-	startStream(b, domain.SourceSpec{Name: "in", Type: "otlp", Spec: map[string]any{"http_port": float64(port)}}, stages, sinks)
+	startStream(
+		b,
+		domain.SourceSpec{Name: "in", Type: "otlp", Spec: map[string]any{"http_port": float64(port)}},
+		stages,
+		sinks,
+	)
 
 	body, err := proto.Marshal(otlpgen.Logs(shape))
 	if err != nil {
@@ -218,9 +230,9 @@ func benchmarkOTLP(b *testing.B, e *env, sc scenario, shape otlpgen.Shape, concu
 
 	send := func() (time.Duration, error) {
 		start := time.Now()
-		resp, err := client.Post(url, "application/x-protobuf", bytes.NewReader(body))
-		if err != nil {
-			return 0, err
+		resp, postErr := client.Post(url, "application/x-protobuf", bytes.NewReader(body))
+		if postErr != nil {
+			return 0, postErr
 		}
 		_, _ = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
@@ -229,8 +241,8 @@ func benchmarkOTLP(b *testing.B, e *env, sc scenario, shape otlpgen.Shape, concu
 		}
 		return time.Since(start), nil
 	}
-	if _, err := send(); err != nil { // warm-up, also waits for the server
-		b.Fatal(err)
+	if _, sendErr := send(); sendErr != nil { // warm-up, also waits for the server
+		b.Fatal(sendErr)
 	}
 
 	latencies := make([]time.Duration, b.N)
@@ -247,9 +259,9 @@ func benchmarkOTLP(b *testing.B, e *env, sc scenario, shape otlpgen.Shape, concu
 				if i >= int64(b.N) {
 					return
 				}
-				latency, err := send()
-				if err != nil {
-					b.Error(err)
+				latency, sendErr := send()
+				if sendErr != nil {
+					b.Error(sendErr)
 					return
 				}
 				latencies[i] = latency
@@ -269,7 +281,10 @@ func benchmarkOTLP(b *testing.B, e *env, sc scenario, shape otlpgen.Shape, concu
 func benchmarkNATS(b *testing.B, e *env, sc scenario, shape otlpgen.Shape, concurrency int) {
 	ctx := context.Background()
 	input := e.stream("in")
-	if _, err := e.js.CreateStream(ctx, jetstream.StreamConfig{Name: input, Subjects: []string{input + ".logs"}}); err != nil {
+	if _, err := e.js.CreateStream(
+		ctx,
+		jetstream.StreamConfig{Name: input, Subjects: []string{input + ".logs"}},
+	); err != nil {
 		b.Fatal(err)
 	}
 	signal, payload, err := (&domain.Event{Logs: otlpgen.Logs(shape)}).MarshalOTLPData()
@@ -369,8 +384,8 @@ func waitForMessages(b *testing.B, js jetstream.JetStream, stream string, want u
 	for time.Now().Before(deadline) {
 		s, err := js.Stream(ctx, stream)
 		if err == nil {
-			info, err := s.Info(ctx)
-			if err == nil && info.State.Msgs >= want {
+			info, infoErr := s.Info(ctx)
+			if infoErr == nil && info.State.Msgs >= want {
 				return
 			}
 		}

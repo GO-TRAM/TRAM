@@ -3,6 +3,7 @@
 package otlpgen
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
@@ -25,14 +26,27 @@ type Shape struct {
 	Attributes int
 }
 
-// Shapes are the payload sizes benchmarks are expected to cover: a single
+const (
+	// defaultAttributes is the number of attributes per record besides "team".
+	defaultAttributes = 4
+	sdkBatch          = 100
+	largeBatch        = 1000
+	manyServices      = 10
+
+	traceIDBytes = 16
+	spanIDBytes  = 8
+)
+
+// Shapes returns the payload sizes benchmarks are expected to cover: a single
 // record, typical SDK batches, and a large batch from many services as an
 // upstream collector would send it.
-var Shapes = []Shape{
-	{Records: 1, Resources: 1, Teams: 1, Attributes: 4},
-	{Records: 100, Resources: 1, Teams: 1, Attributes: 4},
-	{Records: 1000, Resources: 1, Teams: 1, Attributes: 4},
-	{Records: 1000, Resources: 10, Teams: 1, Attributes: 4},
+func Shapes() []Shape {
+	return []Shape{
+		{Records: 1, Resources: 1, Teams: 1, Attributes: defaultAttributes},
+		{Records: sdkBatch, Resources: 1, Teams: 1, Attributes: defaultAttributes},
+		{Records: largeBatch, Resources: 1, Teams: 1, Attributes: defaultAttributes},
+		{Records: largeBatch, Resources: manyServices, Teams: 1, Attributes: defaultAttributes},
+	}
 }
 
 func (s Shape) String() string {
@@ -63,7 +77,10 @@ func scope() *commonpb.InstrumentationScope {
 }
 
 func stringAttr(key, value string) *commonpb.KeyValue {
-	return &commonpb.KeyValue{Key: key, Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: value}}}
+	return &commonpb.KeyValue{
+		Key:   key,
+		Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: value}},
+	}
 }
 
 func Logs(s Shape) *logspb.LogsData {
@@ -76,8 +93,10 @@ func Logs(s Shape) *logspb.LogsData {
 				TimeUnixNano:   uint64(record),
 				SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_INFO,
 				SeverityText:   "INFO",
-				Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: fmt.Sprintf("log message %d", record)}},
-				Attributes:     s.attributes(record),
+				Body: &commonpb.AnyValue{
+					Value: &commonpb.AnyValue_StringValue{StringValue: fmt.Sprintf("log message %d", record)},
+				},
+				Attributes: s.attributes(record),
 			})
 			record++
 		}
@@ -121,8 +140,8 @@ func Traces(s Shape) *tracepb.TracesData {
 		spans := make([]*tracepb.Span, 0, s.recordsPerResource())
 		for range s.recordsPerResource() {
 			spans = append(spans, &tracepb.Span{
-				TraceId:           id(16, record),
-				SpanId:            id(8, record),
+				TraceId:           id(traceIDBytes, uint64(record)),
+				SpanId:            id(spanIDBytes, uint64(record)),
 				Name:              fmt.Sprintf("span-%d", record),
 				Kind:              tracepb.Span_SPAN_KIND_SERVER,
 				StartTimeUnixNano: uint64(record),
@@ -139,10 +158,9 @@ func Traces(s Shape) *tracepb.TracesData {
 	return data
 }
 
-func id(size, n int) []byte {
+// id returns a big-endian ID of size bytes (at least 8) holding n.
+func id(size int, n uint64) []byte {
 	b := make([]byte, size)
-	for i := range min(size, 8) {
-		b[size-1-i] = byte(n >> (8 * i))
-	}
+	binary.BigEndian.PutUint64(b[size-spanIDBytes:], n)
 	return b
 }

@@ -4,9 +4,10 @@ import (
 	"context"
 	"time"
 
+	"github.com/go-playground/validator/v10"
+
 	"codeberg.org/eljoth/tram/internal/adapters/source/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
-	"github.com/go-playground/validator/v10"
 )
 
 const (
@@ -15,6 +16,7 @@ const (
 
 type Generator struct {
 	*base.Source[Spec]
+
 	interval time.Duration
 	shutdown chan struct{}
 }

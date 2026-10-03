@@ -4,13 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"reflect"
-	"sync"
 	"time"
 
-	"codeberg.org/eljoth/tram/internal/adapters/sink/base"
-	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
@@ -18,6 +15,9 @@ import (
 	"github.com/google/cel-go/ext"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+
+	"codeberg.org/eljoth/tram/internal/adapters/sink/base"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
@@ -32,21 +32,34 @@ const (
 	// SignalHeader carries the domain.Signal of the published payload. It must
 	// match the header the nats source reads.
 	SignalHeader = "Tram-Signal"
+
+	// Names of the variables the subject expressions see.
+	logsVariable    = "logs"
+	metricsVariable = "metrics"
+	tracesVariable  = "traces"
+
+	// getAttrArguments are the receiver and the key of get_attr.
+	getAttrArguments = 2
 )
 
 type NATS struct {
 	*base.Sink[Spec]
+	subjects
+
+	logger    *slog.Logger
 	natsConn  *nats.Conn
 	jetstream jetstream.JetStream
-	wg        sync.WaitGroup
 	stream    jetstream.Stream
+}
 
-	metrics cel.Program
+// subjects holds the compiled subject expressions per signal type.
+type subjects struct {
 	logs    cel.Program
+	metrics cel.Program
 	traces  cel.Program
 }
 
-func New(sink domain.SinkSpec, validator *validator.Validate) (_ *NATS, err error) {
+func New(sink domain.SinkSpec, validator *validator.Validate, logger *slog.Logger) (*NATS, error) {
 	base, err := base.New[Spec](sink.Name, sink.From, sink.Spec, validator)
 	if err != nil {
 		return nil, err
@@ -54,7 +67,7 @@ func New(sink domain.SinkSpec, validator *validator.Validate) (_ *NATS, err erro
 
 	// Compiled before connecting, so invalid expressions fail without
 	// touching NATS.
-	logs, metrics, traces, err := compileSubjects(base.Spec().Subject)
+	compiled, err := compileSubjects(base.Spec().Subject)
 	if err != nil {
 		return nil, err
 	}
@@ -63,53 +76,53 @@ func New(sink domain.SinkSpec, validator *validator.Validate) (_ *NATS, err erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
 	}
-	defer func() {
-		if err != nil {
-			nc.Close()
-		}
-	}()
 
-	js, err := jetstream.New(nc)
+	js, stream, err := setUpStream(nc, base.Spec())
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize JetStream: %w", err)
-	}
-
-	jetstreamConfig := jetstream.StreamConfig{
-		Name:     base.Spec().Stream,
-		Subjects: base.Spec().Subject.Register,
-	}
-
-	if retentionStr := base.Spec().Retention; retentionStr != "" {
-		retention, err := time.ParseDuration(base.Spec().Retention)
-		if err != nil {
-			return nil, err
-		}
-		jetstreamConfig.MaxAge = retention
-	}
-
-	if byteSize := base.Spec().Size; byteSize != 0 {
-		jetstreamConfig.MaxBytes = byteSize
-	}
-
-	s, err := js.CreateOrUpdateStream(context.Background(), jetstreamConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create stream: %w", err)
+		nc.Close()
+		return nil, err
 	}
 
 	return &NATS{
 		Sink:      base,
+		subjects:  compiled,
+		logger:    logger,
 		natsConn:  nc,
 		jetstream: js,
-		stream:    s,
-		logs:      logs,
-		metrics:   metrics,
-		traces:    traces,
+		stream:    stream,
 	}, nil
 }
 
-// compileSubjects builds the CEL programs that compute the subject for each
-// signal type.
-func compileSubjects(subject SubjectSpec) (logs, metrics, traces cel.Program, err error) {
+// setUpStream creates the JetStream stream or updates it to the spec.
+func setUpStream(nc *nats.Conn, spec *Spec) (jetstream.JetStream, jetstream.Stream, error) {
+	js, err := jetstream.New(nc)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to initialize JetStream: %w", err)
+	}
+
+	config := jetstream.StreamConfig{
+		Name:     spec.Stream,
+		Subjects: spec.Subject.Register,
+	}
+	if spec.Retention != "" {
+		retention, parseErr := time.ParseDuration(spec.Retention)
+		if parseErr != nil {
+			return nil, nil, fmt.Errorf("invalid retention: %w", parseErr)
+		}
+		config.MaxAge = retention
+	}
+	if spec.Size != 0 {
+		config.MaxBytes = spec.Size
+	}
+
+	stream, err := js.CreateOrUpdateStream(context.Background(), config)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create stream: %w", err)
+	}
+	return js, stream, nil
+}
+
+func compileSubjects(subject SubjectSpec) (subjects, error) {
 	getAttrFunc := cel.Function("get_attr",
 		cel.MemberOverload("attributes_get_attr",
 			[]*cel.Type{
@@ -117,34 +130,7 @@ func compileSubjects(subject SubjectSpec) (logs, metrics, traces cel.Program, er
 				cel.StringType,
 			},
 			cel.StringType,
-			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-				if len(args) != 2 {
-					return types.NewErr("get_attr expects exactly 2 arguments")
-				}
-
-				goList, err := args[0].ConvertToNative(reflect.TypeOf([]*commonpb.KeyValue{}))
-				if err != nil {
-					return types.NewErr("failed to convert attributes to Go slice: %v", err)
-				}
-
-				list, ok := goList.([]*commonpb.KeyValue)
-				if !ok {
-					return types.NewErr("attributes is not of type []*KeyValue")
-				}
-
-				searchKey, ok := args[1].Value().(string)
-				if !ok {
-					return types.NewErr("invalid key type")
-				}
-
-				for _, kv := range list {
-					if kv.Key == searchKey {
-						return types.String(kv.Value.GetStringValue())
-					}
-				}
-
-				return types.String("")
-			}),
+			cel.FunctionBinding(getAttr),
 		),
 	)
 
@@ -156,53 +142,93 @@ func compileSubjects(subject SubjectSpec) (logs, metrics, traces cel.Program, er
 			metricspb.File_opentelemetry_proto_metrics_v1_metrics_proto,
 			tracespb.File_opentelemetry_proto_trace_v1_trace_proto,
 		),
-		ext.NativeTypes(reflect.TypeOf(&domain.Event{})),
+		ext.NativeTypes(reflect.TypeFor[*domain.Event]()),
 		cel.Variable("event", cel.ObjectType("domain.Event")),
 		getAttrFunc,
 	)
 	if err != nil {
-		return nil, nil, nil, errors.Join(ErrCELEnvironmenInitialization, err)
+		return subjects{}, errors.Join(ErrCELEnvironmenInitialization, err)
 	}
 
-	logs, err = initCEL(baseEnv, subject.Logs, cel.Variable("logs", cel.ObjectType("opentelemetry.proto.logs.v1.LogsData")))
+	var compiled subjects
+	compiled.logs, err = initCEL(
+		baseEnv,
+		subject.Logs,
+		cel.Variable(logsVariable, cel.ObjectType("opentelemetry.proto.logs.v1.LogsData")),
+	)
 	if err != nil {
-		return nil, nil, nil, errors.Join(ErrCELInvalidLogsExpression, err)
+		return subjects{}, errors.Join(ErrCELInvalidLogsExpression, err)
 	}
 
-	metrics, err = initCEL(baseEnv, subject.Metrics, cel.Variable("metrics", cel.ObjectType("opentelemetry.proto.metrics.v1.MetricsData")))
+	compiled.metrics, err = initCEL(
+		baseEnv,
+		subject.Metrics,
+		cel.Variable(metricsVariable, cel.ObjectType("opentelemetry.proto.metrics.v1.MetricsData")),
+	)
 	if err != nil {
-		return nil, nil, nil, errors.Join(ErrCELInvalidMetricsExpression, err)
+		return subjects{}, errors.Join(ErrCELInvalidMetricsExpression, err)
 	}
 
-	traces, err = initCEL(baseEnv, subject.Traces, cel.Variable("traces", cel.ObjectType("opentelemetry.proto.trace.v1.TracesData")))
+	compiled.traces, err = initCEL(
+		baseEnv,
+		subject.Traces,
+		cel.Variable(tracesVariable, cel.ObjectType("opentelemetry.proto.trace.v1.TracesData")),
+	)
 	if err != nil {
-		return nil, nil, nil, errors.Join(ErrCELInvalidTracesExpression, err)
+		return subjects{}, errors.Join(ErrCELInvalidTracesExpression, err)
+	}
+	return compiled, nil
+}
+
+// getAttr implements get_attr: the string value of the attribute with the
+// given key, or "" if there is none.
+func getAttr(args ...ref.Val) ref.Val {
+	if len(args) != getAttrArguments {
+		return types.NewErr("get_attr expects exactly 2 arguments")
 	}
 
-	return logs, metrics, traces, nil
+	goList, err := args[0].ConvertToNative(reflect.TypeFor[[]*commonpb.KeyValue]())
+	if err != nil {
+		return types.NewErr("failed to convert attributes to Go slice: %v", err)
+	}
+
+	list, ok := goList.([]*commonpb.KeyValue)
+	if !ok {
+		return types.NewErr("attributes is not of type []*KeyValue")
+	}
+
+	searchKey, ok := args[1].Value().(string)
+	if !ok {
+		return types.NewErr("invalid key type")
+	}
+
+	for _, kv := range list {
+		if kv.GetKey() == searchKey {
+			return types.String(kv.GetValue().GetStringValue())
+		}
+	}
+	return types.String("")
 }
 
 func (n *NATS) Notify(ctx context.Context, event *domain.Event) error {
 	messages, err := n.groupEventsBySubjects(event)
 	if err != nil {
-		log.Printf("Failed to resolve subject template: %v. Dropping event.", err)
+		n.logger.ErrorContext(ctx, "Could not resolve subject, dropping event",
+			slog.String("sink", n.Name()), slog.Any("error", err))
 		return nil
 	}
 
 	for _, m := range messages {
-		signal, data, err := m.event.MarshalOTLPData()
-		if err != nil {
-			log.Println(err)
-			return fmt.Errorf("failed to marshal event: %w", err)
+		signal, data, marshalErr := m.event.MarshalOTLPData()
+		if marshalErr != nil {
+			return fmt.Errorf("failed to marshal event: %w", marshalErr)
 		}
 		msg := &nats.Msg{
 			Subject: m.subject,
 			Data:    data,
 			Header:  nats.Header{SignalHeader: []string{string(signal)}},
 		}
-		_, err = n.jetstream.PublishMsg(ctx, msg)
-		if err != nil {
-			log.Println(err)
+		if _, err = n.jetstream.PublishMsg(ctx, msg); err != nil {
 			return fmt.Errorf("failed to publish event: %w", err)
 		}
 	}

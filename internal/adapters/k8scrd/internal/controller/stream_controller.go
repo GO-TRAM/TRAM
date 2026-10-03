@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -37,9 +36,10 @@ import (
 	"codeberg.org/eljoth/tram/internal/ports"
 )
 
-// StreamReconciler reconciles a Stream object
+// StreamReconciler reconciles a Stream object.
 type StreamReconciler struct {
 	client.Client
+
 	Core   ports.Core
 	Scheme *runtime.Scheme
 }
@@ -59,8 +59,9 @@ func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		if client.IgnoreNotFound(err) != nil {
 			return ctrl.Result{}, fmt.Errorf("get stream: %w", err)
 		}
-		if err := r.Core.DeleteStream(ctx, name); err != nil && !errors.Is(err, domain.ErrStreamNotFound) {
-			return ctrl.Result{}, fmt.Errorf("delete from core: %w", err)
+		if deleteErr := r.Core.DeleteStream(ctx, name); deleteErr != nil &&
+			!errors.Is(deleteErr, domain.ErrStreamNotFound) {
+			return ctrl.Result{}, fmt.Errorf("delete from core: %w", deleteErr)
 		}
 		log.Info("Deleted Stream from core", "stream", name)
 		return ctrl.Result{}, nil
@@ -78,8 +79,8 @@ func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	// Upserting restarts the stream, so only do it when the spec changed.
-	if current == nil || !reflect.DeepEqual(*current, *desired) {
-		if _, err := r.Core.UpsertStream(ctx, *desired); err != nil {
+	if current == nil || !current.Equal(*desired) {
+		if _, err = r.Core.UpsertStream(ctx, *desired); err != nil {
 			return ctrl.Result{}, errors.Join(r.setActive(ctx, &stream, false), fmt.Errorf("upsert into core: %w", err))
 		}
 		log.Info("Upserted Stream into core", "stream", name, "generation", stream.Generation)
@@ -123,9 +124,9 @@ func toDomain(name string, s tramv1.Stream) (*domain.StreamSpec, error) {
 	// Map stages (list)
 	var stages []domain.StageSpec
 	for _, stage := range s.Spec.Stages {
-		spec, err := specToMap(stage.Spec)
-		if err != nil {
-			return nil, fmt.Errorf("stage %s: %w", stage.Name, err)
+		spec, specErr := specToMap(stage.Spec)
+		if specErr != nil {
+			return nil, fmt.Errorf("stage %s: %w", stage.Name, specErr)
 		}
 		stages = append(stages, domain.StageSpec{
 			Name: stage.Name,
@@ -138,9 +139,9 @@ func toDomain(name string, s tramv1.Stream) (*domain.StreamSpec, error) {
 	// Map sinks (list)
 	var sinks []domain.SinkSpec
 	for _, sink := range s.Spec.Sinks {
-		spec, err := specToMap(sink.Spec)
-		if err != nil {
-			return nil, fmt.Errorf("sink %s: %w", sink.Name, err)
+		spec, specErr := specToMap(sink.Spec)
+		if specErr != nil {
+			return nil, fmt.Errorf("sink %s: %w", sink.Name, specErr)
 		}
 		sinks = append(sinks, domain.SinkSpec{
 			Name: sink.Name,
@@ -161,10 +162,10 @@ func toDomain(name string, s tramv1.Stream) (*domain.StreamSpec, error) {
 // specToMap decodes a component spec the same way the API and file sync do,
 // so all drivers hand identical values to the core.
 func specToMap(raw *runtime.RawExtension) (map[string]any, error) {
-	if raw == nil || len(raw.Raw) == 0 {
-		return nil, nil
-	}
 	var spec map[string]any
+	if raw == nil || len(raw.Raw) == 0 {
+		return spec, nil
+	}
 	if err := json.Unmarshal(raw.Raw, &spec); err != nil {
 		return nil, fmt.Errorf("decode spec: %w", err)
 	}

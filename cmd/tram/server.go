@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
-	"log"
-	"os"
+	"errors"
+	"log/slog"
 	"os/signal"
 	"syscall"
+
+	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 
 	"codeberg.org/eljoth/tram/internal/adapters/api"
 	"codeberg.org/eljoth/tram/internal/adapters/configsync"
@@ -13,106 +16,88 @@ import (
 	"codeberg.org/eljoth/tram/internal/adapters/sink"
 	"codeberg.org/eljoth/tram/internal/adapters/source"
 	"codeberg.org/eljoth/tram/internal/adapters/stage"
-	"github.com/spf13/cobra"
-	"golang.org/x/sync/errgroup"
 
 	"codeberg.org/eljoth/tram/internal/core"
 )
 
-var (
+type serverOptions struct {
 	grpcEndpoint      string
 	httpEndpoint      string
 	configDir         string
 	enableK8sOperator bool
 	kubeconfig        string
 	enableFileSync    bool
-)
-
-var serverCmd = &cobra.Command{
-	Use:   "server",
-	Short: "Start the gRPC Gateway HTTP server",
-	Long:  `Start the gRPC Gateway HTTP server that proxies requests to the gRPC backend.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		runServer(cmd.Context())
-	},
 }
 
-func runServer(ctx context.Context) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+func newServerCmd(logger *slog.Logger) *cobra.Command {
+	var opts serverOptions
+	cmd := &cobra.Command{
+		Use:   "server",
+		Short: "Start the gRPC Gateway HTTP server",
+		Long:  `Start the gRPC Gateway HTTP server that proxies requests to the gRPC backend.`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runServer(cmd.Context(), logger, opts)
+		},
+	}
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		log.Println("Shutting down...")
-		cancel()
-	}()
+	flags := cmd.Flags()
+	flags.StringVar(&opts.grpcEndpoint, "grpc-endpoint", "localhost:50051", "gRPC server endpoint")
+	flags.StringVar(&opts.httpEndpoint, "http-endpoint", "localhost:8080", "HTTP server endpoint")
+	flags.StringVarP(&opts.configDir, "config-directory", "c", "config", "Configuration directory")
+	flags.BoolVar(&opts.enableK8sOperator, "enable-k8s-operator", false, "Enable the Kubernetes operator")
+	flags.BoolVar(&opts.enableFileSync, "enable-file-sync", false, "Enable the file sync")
+	flags.StringVar(&opts.kubeconfig, "kubeconfig", "", "Kubernetes config file")
+	return cmd
+}
+
+func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (err error) {
+	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	// driven
-	sourceFac := source.NewFactory()
+	sourceFac := source.NewFactory(logger)
 	stageFac := stage.NewFactory()
-	sinkFac := sink.NewFactory()
+	sinkFac := sink.NewFactory(logger)
 
 	// core
-	c := core.New(
-		ctx,
-		sourceFac,
-		stageFac,
-		sinkFac,
-	)
+	c := core.New(ctx, logger, sourceFac, stageFac, sinkFac)
 	defer func() {
-		if err := c.Close(); err != nil {
-			log.Printf("Failed to close core: %v", err)
-		}
+		err = errors.Join(err, c.Close())
 	}()
 
-	// driver
+	a, err := api.New(c, opts.grpcEndpoint, opts.httpEndpoint, logger)
+	if err != nil {
+		return err
+	}
 
+	// drivers
 	eg := errgroup.Group{}
 
-	if enableFileSync {
+	if opts.enableFileSync {
 		eg.Go(func() error {
-			cs, err := configsync.New(c, configDir)
-			if err != nil {
-				return err
+			cs, syncErr := configsync.New(c, opts.configDir, logger)
+			if syncErr != nil {
+				return syncErr
 			}
-			defer cs.Close()
-			return cs.Run(ctx)
+			return errors.Join(cs.Run(ctx), cs.Close())
 		})
 	}
 
-	if enableK8sOperator {
+	if opts.enableK8sOperator {
 		eg.Go(func() error {
-			op, err := k8scrd.New(c, kubeconfig)
-			if err != nil {
-				return err
+			op, opErr := k8scrd.New(c, opts.kubeconfig, logger)
+			if opErr != nil {
+				return opErr
 			}
 			return op.Run(ctx)
 		})
-	}
-
-	a, err := api.New(c, grpcEndpoint, httpEndpoint)
-	if err != nil {
-		log.Fatal(err)
 	}
 
 	eg.Go(func() error {
 		return a.Run(ctx)
 	})
 
-	if err := eg.Wait(); err != nil {
-		log.Printf("Failed to run server: %v", err)
-	}
-}
-
-func init() {
-	rootCmd.AddCommand(serverCmd)
-
-	serverCmd.Flags().StringVar(&grpcEndpoint, "grpc-endpoint", "localhost:50051", "gRPC server endpoint")
-	serverCmd.Flags().StringVar(&httpEndpoint, "http-endpoint", "localhost:8080", "HTTP server endpoint")
-	serverCmd.Flags().StringVarP(&configDir, "config-directory", "c", "config", "Configuration directory")
-	serverCmd.Flags().BoolVar(&enableK8sOperator, "enable-k8s-operator", false, "Enable the Kubernetes operator")
-	serverCmd.Flags().BoolVar(&enableFileSync, "enable-file-sync", false, "Enable the file sync")
-	serverCmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Kubernetes config file")
+	err = eg.Wait()
+	logger.InfoContext(ctx, "Shutting down")
+	return err
 }

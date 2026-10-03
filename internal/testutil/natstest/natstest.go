@@ -37,7 +37,7 @@ func Start(tb testing.TB) string {
 }
 
 // skipWithoutContainerRuntime works like testcontainers.SkipIfProviderIsNotHealthy,
-// which only accepts *testing.T and not benchmarks.
+// which only accepts a [testing.T] and not benchmarks.
 func skipWithoutContainerRuntime(ctx context.Context, tb testing.TB) {
 	tb.Helper()
 	defer func() {
@@ -51,7 +51,7 @@ func skipWithoutContainerRuntime(ctx context.Context, tb testing.TB) {
 	if err != nil {
 		tb.Skipf("no container runtime available: %v", err)
 	}
-	if err := provider.Health(ctx); err != nil {
+	if err = provider.Health(ctx); err != nil {
 		tb.Skipf("no container runtime available: %v", err)
 	}
 }

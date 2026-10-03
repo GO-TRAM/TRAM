@@ -1,4 +1,4 @@
-package e2e
+package e2e_test
 
 import (
 	"bytes"
@@ -6,13 +6,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
+	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
+	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
+	"google.golang.org/protobuf/proto"
 
 	"codeberg.org/eljoth/tram/internal/adapters/sink"
 	"codeberg.org/eljoth/tram/internal/adapters/source"
@@ -20,19 +25,13 @@ import (
 	"codeberg.org/eljoth/tram/internal/core"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/ports"
-	"github.com/stretchr/testify/require"
-	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
-	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
-	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
-	"google.golang.org/protobuf/proto"
 )
 
 const isCustomerA = "record.attributes.exists(a, a.key == 'customer' && a.value.string_value == 'A')"
 
-func TestMain(m *testing.M) {
-	// The core logs every stream it starts and stops.
-	log.SetOutput(io.Discard)
-	os.Exit(m.Run())
+// discard returns a logger for streams whose log output is not of interest.
+func discard() *slog.Logger {
+	return slog.New(slog.DiscardHandler)
 }
 
 // captureType is the sink type handled by captureFactory.
@@ -116,7 +115,12 @@ type pipeline struct {
 func newPipeline(t *testing.T, stages []domain.StageSpec, sinks []domain.SinkSpec) *pipeline {
 	t.Helper()
 	port := freePort(t)
-	p := newStream(t, domain.SourceSpec{Name: "in", Type: "otlp", Spec: map[string]any{"http_port": float64(port)}}, stages, sinks)
+	p := newStream(
+		t,
+		domain.SourceSpec{Name: "in", Type: "otlp", Spec: map[string]any{"http_port": float64(port)}},
+		stages,
+		sinks,
+	)
 	p.baseURL = fmt.Sprintf("http://127.0.0.1:%d", port)
 	return p
 }
@@ -125,10 +129,10 @@ func newPipeline(t *testing.T, stages []domain.StageSpec, sinks []domain.SinkSpe
 func newStream(t *testing.T, in domain.SourceSpec, stages []domain.StageSpec, sinks []domain.SinkSpec) *pipeline {
 	t.Helper()
 	p := &pipeline{
-		sinks: &captureFactory{real: sink.NewFactory(), sinks: map[string]*captureSink{}},
+		sinks: &captureFactory{real: sink.NewFactory(discard()), sinks: map[string]*captureSink{}},
 		in:    in,
 	}
-	p.core = core.New(context.Background(), source.NewFactory(), stage.NewFactory(), p.sinks)
+	p.core = core.New(context.Background(), discard(), source.NewFactory(discard()), stage.NewFactory(), p.sinks)
 	t.Cleanup(func() { _ = p.core.Close() })
 	p.update(t, stages, sinks)
 	return p
@@ -137,7 +141,10 @@ func newStream(t *testing.T, in domain.SourceSpec, stages []domain.StageSpec, si
 // update replaces the stages and sinks of the running stream.
 func (p *pipeline) update(t *testing.T, stages []domain.StageSpec, sinks []domain.SinkSpec) {
 	t.Helper()
-	_, err := p.core.UpsertStream(context.Background(), domain.StreamSpec{Name: "e2e", Source: p.in, Stages: stages, Sinks: sinks})
+	_, err := p.core.UpsertStream(
+		context.Background(),
+		domain.StreamSpec{Name: "e2e", Source: p.in, Stages: stages, Sinks: sinks},
+	)
 	require.NoError(t, err)
 }
 
@@ -203,7 +210,10 @@ func request(service string, records ...rec) *logspb.LogsData {
 }
 
 func stringAttr(key, value string) *commonpb.KeyValue {
-	return &commonpb.KeyValue{Key: key, Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: value}}}
+	return &commonpb.KeyValue{
+		Key:   key,
+		Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: value}},
+	}
 }
 
 // arrived lists every record in the events as "<service>/<scope>/<id>", so
@@ -213,14 +223,17 @@ func arrived(events []*domain.Event) []string {
 	for _, e := range events {
 		for _, rl := range e.Logs.GetResourceLogs() {
 			service := ""
-			for _, a := range rl.Resource.GetAttributes() {
-				if a.Key == "service.name" {
-					service = a.Value.GetStringValue()
+			for _, a := range rl.GetResource().GetAttributes() {
+				if a.GetKey() == "service.name" {
+					service = a.GetValue().GetStringValue()
 				}
 			}
-			for _, sl := range rl.ScopeLogs {
-				for _, r := range sl.LogRecords {
-					out = append(out, fmt.Sprintf("%s/%s/%s", service, sl.Scope.GetName(), r.Body.GetStringValue()))
+			for _, sl := range rl.GetScopeLogs() {
+				for _, r := range sl.GetLogRecords() {
+					out = append(
+						out,
+						fmt.Sprintf("%s/%s/%s", service, sl.GetScope().GetName(), r.GetBody().GetStringValue()),
+					)
 				}
 			}
 		}

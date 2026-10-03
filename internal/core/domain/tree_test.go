@@ -3,11 +3,15 @@ package domain_test
 import (
 	"testing"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 func TestTreeString(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name        string
 		streamSpec  domain.StreamSpec
@@ -72,6 +76,8 @@ func TestTreeString(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
 			tree, err := domain.NewTree(c.streamSpec)
 			assert.Equal(t, c.expectedErr, err)
 			actual := tree.String()
@@ -83,6 +89,8 @@ func TestTreeString(t *testing.T) {
 }
 
 func TestNodeString(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name     string
 		node     domain.Node
@@ -166,6 +174,8 @@ func TestNodeString(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
 			actual := c.node.String()
 			if actual != c.expected {
 				t.Errorf("Expected %s, got %s", c.expected, actual)
@@ -175,6 +185,8 @@ func TestNodeString(t *testing.T) {
 }
 
 func TestNewTree(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name        string
 		streamSpec  domain.StreamSpec
@@ -288,6 +300,8 @@ func TestNewTree(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
 			_, err := domain.NewTree(c.streamSpec)
 			assert.Equal(t, c.expectedErr, err)
 		})
@@ -295,6 +309,8 @@ func TestNewTree(t *testing.T) {
 }
 
 func TestLeafNodes(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name       string
 		streamSpec domain.StreamSpec
@@ -353,22 +369,23 @@ func TestLeafNodes(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
 			tree, err := domain.NewTree(c.streamSpec)
-			assert.NoError(t, err)
-			actual := tree.LeafNodes()
-			if len(actual) != len(c.expected) {
-				t.Errorf("Expected %d leaf nodes, got %d", len(c.expected), len(actual))
+			require.NoError(t, err)
+			// The order of leaf nodes is not defined.
+			var actual []string
+			for _, node := range tree.LeafNodes() {
+				actual = append(actual, node.Name)
 			}
-			for i, v := range actual {
-				if v.Name != c.expected[i] {
-					t.Errorf("Expected leaf node %s at position %d, got %s", c.expected[i], i, v)
-				}
-			}
+			assert.ElementsMatch(t, c.expected, actual)
 		})
 	}
 }
 
 func TestIsTree(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name       string
 		streamSpec domain.StreamSpec
@@ -518,18 +535,21 @@ func TestIsTree(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
 			tree, err := domain.NewTree(c.streamSpec)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			actual := tree.IsTree()
 			if actual != c.expected {
 				t.Errorf("Expected %t, got %t", c.expected, actual)
 			}
 		})
 	}
-
 }
 
 func TestIsConnected(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name       string
 		streamSpec domain.StreamSpec
@@ -684,8 +704,10 @@ func TestIsConnected(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
 			tree, err := domain.NewTree(c.streamSpec)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			actual := tree.IsConnected()
 			if actual != c.expected {
 				t.Errorf("Expected %t, got %t", c.expected, actual)
@@ -732,7 +754,7 @@ func BenchmarkNewTree(b *testing.B) {
 
 	for _, c := range cases {
 		b.Run(c.name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				_, _ = domain.NewTree(c.streamSpec)
 			}
 		})

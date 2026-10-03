@@ -1,5 +1,5 @@
 package otlp
 
 type Spec struct {
-	HttpPort int `json:"http_port" validate:"required"`
+	HTTPPort int `json:"http_port" validate:"required"`
 }
