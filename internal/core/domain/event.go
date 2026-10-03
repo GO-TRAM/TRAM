@@ -21,29 +21,37 @@ type Event struct {
 // RecordCount returns the number of records in the event at the lowest level
 // each signal allows: log records, metric data points and spans.
 func (e *Event) RecordCount() int {
+	logs, metrics, traces := e.RecordCounts()
+	return logs + metrics + traces
+}
+
+// RecordCounts returns the number of records in the event per signal, in the
+// order log records, metric data points, spans.
+func (e *Event) RecordCounts() (int, int, int) {
 	if e == nil {
-		return 0
+		return 0, 0, 0
 	}
 
-	n := 0
+	var logs, metrics, traces int
+
 	for _, rl := range e.Logs.GetResourceLogs() {
 		for _, sl := range rl.GetScopeLogs() {
-			n += len(sl.GetLogRecords())
+			logs += len(sl.GetLogRecords())
 		}
 	}
 	for _, rm := range e.Metrics.GetResourceMetrics() {
 		for _, sm := range rm.GetScopeMetrics() {
 			for _, m := range sm.GetMetrics() {
-				n += dataPointCount(m)
+				metrics += dataPointCount(m)
 			}
 		}
 	}
 	for _, rs := range e.Traces.GetResourceSpans() {
 		for _, ss := range rs.GetScopeSpans() {
-			n += len(ss.GetSpans())
+			traces += len(ss.GetSpans())
 		}
 	}
-	return n
+	return logs, metrics, traces
 }
 
 func dataPointCount(m *metricspb.Metric) int {

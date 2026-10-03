@@ -45,7 +45,7 @@ func newTree(spec domain.StreamSpec) (*domain.Tree, error) {
 func (c *Core) buildStream(tree *domain.Tree) error {
 	err := c.createAll(tree)
 	if err == nil {
-		err = wire(tree, true)
+		err = c.wire(tree, true)
 	}
 	if err != nil {
 		c.stopUnbuilt(tree, true)
@@ -72,7 +72,7 @@ func (c *Core) createAll(tree *domain.Tree) error {
 func (c *Core) buildReceivers(tree *domain.Tree) error {
 	err := c.createReceivers(tree)
 	if err == nil {
-		err = wire(tree, false)
+		err = c.wire(tree, false)
 	}
 	if err != nil {
 		c.stopUnbuilt(tree, false)
@@ -115,7 +115,7 @@ func (c *Core) createReceivers(tree *domain.Tree) error {
 
 // wire subscribes every node to its parent. With includeRoot unset, the
 // root's children are left out.
-func wire(tree *domain.Tree, includeRoot bool) error {
+func (c *Core) wire(tree *domain.Tree, includeRoot bool) error {
 	root := tree.Root()
 	for _, node := range tree.Map() {
 		if node.Parent == nil || (node.Parent == root && !includeRoot) {
@@ -125,7 +125,7 @@ func wire(tree *domain.Tree, includeRoot bool) error {
 		if err != nil {
 			return err
 		}
-		subscriber, err := node.GetSubscriber()
+		subscriber, err := c.subscriber(tree, node)
 		if err != nil {
 			return err
 		}
@@ -134,6 +134,16 @@ func wire(tree *domain.Tree, includeRoot bool) error {
 		}
 	}
 	return nil
+}
+
+// subscriber returns the subscriber of node, wrapped so that it is measured.
+// Every subscriber the core connects has to come from here.
+func (c *Core) subscriber(tree *domain.Tree, node *domain.Node) (domain.Subscriber, error) {
+	subscriber, err := node.GetSubscriber()
+	if err != nil {
+		return nil, err
+	}
+	return c.metrics.instrument(tree.Spec.Name, node, subscriber), nil
 }
 
 // replaceReceivers updates a running stream whose source is unchanged: it
@@ -155,7 +165,7 @@ func (c *Core) replaceReceivers(old *stream, tree *domain.Tree) error {
 
 	children := make([]domain.Subscriber, 0, len(tree.Root().Children))
 	for _, child := range tree.Root().Children {
-		subscriber, childErr := child.GetSubscriber()
+		subscriber, childErr := c.subscriber(tree, child)
 		if childErr != nil {
 			return childErr
 		}

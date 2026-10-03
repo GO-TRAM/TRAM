@@ -127,6 +127,25 @@ func TestRecordCount(t *testing.T) {
 	}
 }
 
+func TestRecordCounts(t *testing.T) {
+	t.Parallel()
+
+	event := &domain.Event{
+		Logs:    otlpgen.Logs(otlpgen.Shape{Records: 10, Resources: 1, Teams: 1}),
+		Metrics: otlpgen.Metrics(otlpgen.Shape{Records: 20, Resources: 2, Teams: 1}),
+		Traces:  otlpgen.Traces(otlpgen.Shape{Records: 30, Resources: 3, Teams: 1}),
+	}
+
+	logs, metrics, traces := event.RecordCounts()
+	assert.Equal(t, 10, logs)
+	assert.Equal(t, 20, metrics)
+	assert.Equal(t, 30, traces)
+
+	var nilEvent *domain.Event
+	logs, metrics, traces = nilEvent.RecordCounts()
+	assert.Zero(t, logs+metrics+traces)
+}
+
 func TestMarshalOTLPPayloads(t *testing.T) {
 	t.Parallel()
 

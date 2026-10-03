@@ -54,6 +54,15 @@ func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (er
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// The meter provider has to be set before the core creates its metrics.
+	metricsHandler, shutdownMetrics, err := setupMetrics()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = errors.Join(err, shutdownMetrics(context.WithoutCancel(ctx)))
+	}()
+
 	// driven
 	sourceFac := source.NewFactory(logger)
 	stageFac := stage.NewFactory()
@@ -65,7 +74,7 @@ func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (er
 		err = errors.Join(err, c.Close())
 	}()
 
-	a, err := api.New(c, opts.grpcEndpoint, opts.httpEndpoint, logger)
+	a, err := api.New(c, opts.grpcEndpoint, opts.httpEndpoint, metricsHandler, logger)
 	if err != nil {
 		return err
 	}

@@ -49,6 +49,7 @@ The Tram service provides the following HTTP endpoints:
 | PUT | `/v1/streams/{name}` | Create or update a stream |
 | GET | `/v1/streams/{name}` | Get a stream configuration |
 | DELETE | `/v1/streams/{name}` | Delete a stream |
+| GET | `/metrics` | Metrics of Tram in the Prometheus format, see [Metrics](#metrics) |
 
 The stream name is taken from the URL; a `name` in the request body is replaced by it.
 
@@ -65,6 +66,25 @@ A `PUT` to an existing stream changes as little as possible:
 If an update fails, e.g. because of an invalid component spec, the request returns an error and the previous version of the stream keeps running. Delete and create a stream to restart it completely.
 
 If the source of a stream stops on its own, e.g. because its NATS stream does not exist yet, Tram restarts the stream after a delay that grows from 1 second to 1 minute while it keeps failing. A `PUT` of the unchanged stream restarts it right away.
+
+### Metrics
+
+`GET /metrics` on the HTTP API serves Tram's metrics in the Prometheus format, for Prometheus or any other scraper. Every stage and sink of every stream is measured, whatever its type:
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `tram_node_records_total` | Counter | `stream`, `node`, `kind`, `signal` | Records the node received: log records, metric data points and spans. `kind` is `stage` or `sink`, `signal` is `logs`, `metrics` or `traces` |
+| `tram_node_duration_seconds` | Histogram | `stream`, `node`, `kind`, `outcome` | Time the node took to handle an event. `outcome` is `ok`, `rejected` (the event was refused for good, e.g. by a `cel_validator`) or `error` |
+
+The endpoint also serves the Go runtime (`go_*`) and process (`process_*`) metrics.
+
+Events pass through a stream synchronously, so the duration of a stage includes the stages and sinks below it, and for a `batch` stage the time an event waits for its batch to be flushed. Only the duration of a sink is its own. The records a node passes on are the records its children receive, so the share a filter drops is, for example:
+
+```promql
+1 - sum(rate(tram_node_records_total{node="batch"}[5m])) / sum(rate(tram_node_records_total{node="filter"}[5m]))
+```
+
+Sources are not measured yet.
 
 ---
 

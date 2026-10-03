@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -35,7 +36,7 @@ func TestRunFailsWhenPortIsInUse(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = taken.Close() })
 
-	a, err := api.New(nil, "127.0.0.1:0", taken.Addr().String(), slog.New(slog.DiscardHandler))
+	a, err := api.New(nil, "127.0.0.1:0", taken.Addr().String(), nil, slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -55,7 +56,7 @@ func TestRunFailsWhenPortIsInUse(t *testing.T) {
 func TestRunStopsWithContext(t *testing.T) {
 	t.Parallel()
 
-	a, err := api.New(nil, "127.0.0.1:0", "127.0.0.1:0", slog.New(slog.DiscardHandler))
+	a, err := api.New(nil, "127.0.0.1:0", "127.0.0.1:0", nil, slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -88,7 +89,7 @@ func TestListStreams(t *testing.T) {
 	// The gateway dials the gRPC endpoint by its address, so it needs a port
 	// known in advance.
 	httpAddr, grpcAddr := freeAddr(t), freeAddr(t)
-	a, err := api.New(c, grpcAddr, httpAddr, logger)
+	a, err := api.New(c, grpcAddr, httpAddr, nil, logger)
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := run(ctx, a)
@@ -116,6 +117,38 @@ func TestListStreams(t *testing.T) {
 	require.Len(t, body.Streams, 2)
 	assert.Equal(t, "a", body.Streams[0].Name, "ordered by name")
 	assert.Equal(t, "b", body.Streams[1].Name)
+}
+
+func TestMetricsEndpoint(t *testing.T) {
+	t.Parallel()
+
+	metrics := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("tram_metric 1\n"))
+	})
+	httpAddr, grpcAddr := freeAddr(t), freeAddr(t)
+	a, err := api.New(nil, grpcAddr, httpAddr, metrics, slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := run(ctx, a)
+	t.Cleanup(func() {
+		cancel()
+		require.NoError(t, <-done)
+	})
+
+	var body []byte
+	require.Eventually(t, func() bool {
+		req, reqErr := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+httpAddr+"/metrics", nil)
+		require.NoError(t, reqErr)
+		resp, getErr := http.DefaultClient.Do(req)
+		if getErr != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		body, getErr = io.ReadAll(resp.Body)
+		return resp.StatusCode == http.StatusOK && getErr == nil
+	}, 5*time.Second, 20*time.Millisecond)
+
+	assert.Equal(t, "tram_metric 1\n", string(body))
 }
 
 // freeAddr returns a local address nothing listens on right now.

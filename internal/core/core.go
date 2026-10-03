@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel"
+
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/ports"
 )
@@ -30,6 +32,7 @@ type Core struct {
 	stageFactory  ports.Factory[domain.StageSpec, domain.Stage]
 	sinkFactory   ports.Factory[domain.SinkSpec, domain.Sink]
 	watchers      map[*watcher]struct{}
+	metrics       *metrics
 
 	minRestartDelay time.Duration
 	maxRestartDelay time.Duration
@@ -68,6 +71,13 @@ func New(
 	stageFactory ports.Factory[domain.StageSpec, domain.Stage],
 	sinkFactory ports.Factory[domain.SinkSpec, domain.Sink],
 ) *Core {
+	// The metrics go to the global meter provider, which records nothing
+	// unless the application sets one up.
+	m, err := newMetrics(otel.GetMeterProvider())
+	if err != nil {
+		logger.ErrorContext(ctx, "Could not create metrics", slog.Any("error", err))
+	}
+
 	return &Core{
 		ctx:           ctx,
 		logger:        logger,
@@ -77,6 +87,7 @@ func New(
 		stageFactory:  stageFactory,
 		sinkFactory:   sinkFactory,
 		watchers:      map[*watcher]struct{}{},
+		metrics:       m,
 
 		minRestartDelay: minRestartDelay,
 		maxRestartDelay: maxRestartDelay,

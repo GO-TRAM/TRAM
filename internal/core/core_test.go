@@ -15,7 +15,12 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
-const brokenType = "broken"
+const (
+	brokenType = "broken"
+	// Sinks of these types fail every event, permanently or not.
+	rejectingType = "rejecting"
+	failingType   = "failing"
+)
 
 // registry tracks the components created by the fake factories.
 type registry struct {
@@ -105,11 +110,13 @@ type fakeSink struct {
 	reg  *registry
 	name string
 	from string
+	// err is returned for every event.
+	err error
 }
 
 func (s *fakeSink) Name() string                                { return s.name }
 func (s *fakeSink) From() string                                { return s.from }
-func (s *fakeSink) Notify(context.Context, *domain.Event) error { return nil }
+func (s *fakeSink) Notify(context.Context, *domain.Event) error { return s.err }
 func (s *fakeSink) Stop() error                                 { s.reg.stop(s.name); return nil }
 
 type sourceFactory struct{ reg *registry }
@@ -159,7 +166,14 @@ func (f sinkFactory) New(spec domain.SinkSpec) (domain.Sink, error) {
 		return nil, errors.New("broken sink")
 	}
 	f.reg.create(spec.Name)
-	return &fakeSink{reg: f.reg, name: spec.Name, from: spec.From}, nil
+	sink := &fakeSink{reg: f.reg, name: spec.Name, from: spec.From}
+	switch spec.Type {
+	case rejectingType:
+		sink.err = domain.ErrEventRejected
+	case failingType:
+		sink.err = errors.New("sink unavailable")
+	}
+	return sink, nil
 }
 
 func newCore(t *testing.T) (*core.Core, *registry) {
@@ -408,7 +422,7 @@ func TestUpsertWithUnchangedSourceReplacesOnlyStagesAndSinks(t *testing.T) {
 	require.Len(t, reg.sources, 1)
 	source := reg.sources[0]
 	assert.Equal(t, []string{"filter"}, names(source.subs), "the running source delivers to the new stage")
-	assert.Equal(t, []string{"new"}, names(source.subs[0].(*fakeStage).subs))
+	assert.Equal(t, []string{"new"}, names(core.Unwrap(source.subs[0]).(*fakeStage).subs))
 
 	got, err := c.GetStream(t.Context(), "stream")
 	require.NoError(t, err)

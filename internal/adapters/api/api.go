@@ -31,14 +31,23 @@ type API struct {
 	httpServerEndpoint string
 	grpcServer         *grpc.Server
 	core               ports.Core
+	metricsHandler     http.Handler
 	logger             *slog.Logger
 }
 
-func New(core ports.Core, grpcServerEndpoint, httpServerEndpoint string, logger *slog.Logger) (*API, error) {
+// New creates the API. If metricsHandler is set, the HTTP gateway serves it
+// on GET /metrics.
+func New(
+	core ports.Core,
+	grpcServerEndpoint, httpServerEndpoint string,
+	metricsHandler http.Handler,
+	logger *slog.Logger,
+) (*API, error) {
 	return &API{
 		grpcServerEndpoint: grpcServerEndpoint,
 		httpServerEndpoint: httpServerEndpoint,
 		core:               core,
+		metricsHandler:     metricsHandler,
 		logger:             logger,
 	}, nil
 }
@@ -57,6 +66,14 @@ func (a *API) Run(ctx context.Context) error {
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 	if err := v1.RegisterStreamServiceHandlerFromEndpoint(ctx, mux, a.grpcServerEndpoint, opts); err != nil {
 		return fmt.Errorf("failed to register gateway handler: %w", err)
+	}
+	if a.metricsHandler != nil {
+		serveMetrics := func(w http.ResponseWriter, r *http.Request, _ map[string]string) {
+			a.metricsHandler.ServeHTTP(w, r)
+		}
+		if err := mux.HandlePath(http.MethodGet, "/metrics", serveMetrics); err != nil {
+			return fmt.Errorf("failed to register metrics handler: %w", err)
+		}
 	}
 
 	// Both ports are bound before serving, so a port in use fails Run right
