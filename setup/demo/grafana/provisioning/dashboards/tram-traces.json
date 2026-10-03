@@ -1,0 +1,426 @@
+{
+  "uid": "tram-traces",
+  "title": "Traces through Tram",
+  "description": "Traces that the OTLP clients send to Tram and Tram forwards to OpenObserve. Tram's traces cel_filter stage drops all spans of the debug-noise service, so only checkout shows up.",
+  "editable": true,
+  "refresh": "10s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "schemaVersion": 39,
+  "links": [
+    {
+      "title": "Logs through Tram",
+      "type": "link",
+      "url": "/d/tram-logs"
+    },
+    {
+      "title": "Metrics through Tram",
+      "type": "link",
+      "url": "/d/tram-metrics"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "trace_id",
+        "label": "Trace",
+        "type": "query",
+        "datasource": {
+          "type": "yesoreyeram-infinity-datasource",
+          "uid": "openobserve-sql"
+        },
+        "refresh": 2,
+        "description": "The trace shown below; defaults to the latest one.",
+        "query": {
+          "queryType": "infinity",
+          "infinityQuery": {
+            "refId": "variable",
+            "datasource": {
+              "type": "yesoreyeram-infinity-datasource",
+              "uid": "openobserve-sql"
+            },
+            "type": "json",
+            "source": "url",
+            "parser": "backend",
+            "format": "table",
+            "url": "/_search?type=traces",
+            "url_options": {
+              "method": "POST",
+              "data": "{\"query\":{\"sql\":\"SELECT trace_id FROM \\\"tram_traces\\\" WHERE reference_parent_span_id IS NULL ORDER BY _timestamp DESC LIMIT 20\",\"start_time\":${__from}000,\"end_time\":${__to}000,\"from\":0,\"size\":20}}",
+              "body_type": "raw",
+              "body_content_type": "application/json"
+            },
+            "root_selector": "hits",
+            "columns": [
+              {
+                "selector": "trace_id",
+                "text": "trace_id",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "current": {},
+        "options": [],
+        "sort": 0,
+        "includeAll": false,
+        "multi": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Spans by service",
+      "description": "Spans per histogram interval, which OpenObserve picks from the time range.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "openobserve-sql"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "transformations": [
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": [
+              "service_name"
+            ],
+            "keepFields": false
+          }
+        }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "openobserve-sql"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "/_search?type=traces",
+          "url_options": {
+            "method": "POST",
+            "data": "{\"query\":{\"sql\":\"SELECT histogram(_timestamp) AS zo_sql_key, service_name, count(*) AS spans FROM \\\"tram_traces\\\" GROUP BY zo_sql_key, service_name ORDER BY zo_sql_key\",\"start_time\":${__from}000,\"end_time\":${__to}000,\"from\":0,\"size\":1000}}",
+            "body_type": "raw",
+            "body_content_type": "application/json"
+          },
+          "root_selector": "hits",
+          "columns": [
+            {
+              "selector": "zo_sql_key",
+              "text": "time",
+              "type": "timestamp"
+            },
+            {
+              "selector": "service_name",
+              "text": "service_name",
+              "type": "string"
+            },
+            {
+              "selector": "spans",
+              "text": "spans",
+              "type": "number"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Span duration p95 by operation",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "openobserve-sql"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "transformations": [
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": [
+              "operation_name"
+            ],
+            "keepFields": false
+          }
+        }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "openobserve-sql"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "/_search?type=traces",
+          "url_options": {
+            "method": "POST",
+            "data": "{\"query\":{\"sql\":\"SELECT histogram(_timestamp) AS zo_sql_key, operation_name, approx_percentile_cont(duration, 0.95) / 1000.0 AS p95 FROM \\\"tram_traces\\\" GROUP BY zo_sql_key, operation_name ORDER BY zo_sql_key\",\"start_time\":${__from}000,\"end_time\":${__to}000,\"from\":0,\"size\":1000}}",
+            "body_type": "raw",
+            "body_content_type": "application/json"
+          },
+          "root_selector": "hits",
+          "columns": [
+            {
+              "selector": "zo_sql_key",
+              "text": "time",
+              "type": "timestamp"
+            },
+            {
+              "selector": "operation_name",
+              "text": "operation_name",
+              "type": "string"
+            },
+            {
+              "selector": "p95",
+              "text": "p95",
+              "type": "number"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Recent traces",
+      "description": "Root spans of the latest traces. Click a trace ID to show the trace below.",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 12
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "openobserve-sql"
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "time": 0,
+              "trace_id": 1,
+              "service": 2,
+              "operation": 3,
+              "duration_ms": 4
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "trace_id"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 250
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show trace",
+                    "url": "/d/tram-traces?${__url_time_range}&var-trace_id=${__value.raw}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "duration_ms"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "displayName",
+                "value": "duration"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "openobserve-sql"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "/_search?type=traces",
+          "url_options": {
+            "method": "POST",
+            "data": "{\"query\":{\"sql\":\"SELECT _timestamp / 1000 AS time, trace_id, service_name, operation_name, duration / 1000.0 AS duration_ms FROM \\\"tram_traces\\\" WHERE reference_parent_span_id IS NULL ORDER BY _timestamp DESC LIMIT 20\",\"start_time\":${__from}000,\"end_time\":${__to}000,\"from\":0,\"size\":20}}",
+            "body_type": "raw",
+            "body_content_type": "application/json"
+          },
+          "root_selector": "hits",
+          "columns": [
+            {
+              "selector": "time",
+              "text": "time",
+              "type": "timestamp_epoch"
+            },
+            {
+              "selector": "trace_id",
+              "text": "trace_id",
+              "type": "string"
+            },
+            {
+              "selector": "service_name",
+              "text": "service",
+              "type": "string"
+            },
+            {
+              "selector": "operation_name",
+              "text": "operation",
+              "type": "string"
+            },
+            {
+              "selector": "duration_ms",
+              "text": "duration_ms",
+              "type": "number"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "traces",
+      "title": "Trace ${trace_id}",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 12
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "openobserve-sql"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "openobserve-sql"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "/_search?type=traces",
+          "url_options": {
+            "method": "POST",
+            "data": "{\"query\":{\"sql\":\"SELECT trace_id AS \\\"traceID\\\", span_id AS \\\"spanID\\\", reference_parent_span_id AS \\\"parentSpanID\\\", operation_name AS \\\"operationName\\\", service_name AS \\\"serviceName\\\", start_time / 1000000.0 AS \\\"startTime\\\", duration / 1000.0 AS \\\"duration\\\" FROM \\\"tram_traces\\\" WHERE trace_id = '${trace_id}'\",\"start_time\":${__from}000,\"end_time\":${__to}000,\"from\":0,\"size\":1000}}",
+            "body_type": "raw",
+            "body_content_type": "application/json"
+          },
+          "root_selector": "hits",
+          "columns": [
+            {
+              "selector": "traceID",
+              "text": "traceID",
+              "type": "string"
+            },
+            {
+              "selector": "spanID",
+              "text": "spanID",
+              "type": "string"
+            },
+            {
+              "selector": "parentSpanID",
+              "text": "parentSpanID",
+              "type": "string"
+            },
+            {
+              "selector": "operationName",
+              "text": "operationName",
+              "type": "string"
+            },
+            {
+              "selector": "serviceName",
+              "text": "serviceName",
+              "type": "string"
+            },
+            {
+              "selector": "startTime",
+              "text": "startTime",
+              "type": "number"
+            },
+            {
+              "selector": "duration",
+              "text": "duration",
+              "type": "number"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

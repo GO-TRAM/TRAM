@@ -1,6 +1,6 @@
 apiVersion: 1
 
-# Both datasources read from OpenObserve, logged in as the root user from
+# All datasources read from OpenObserve, logged in as the root user from
 # compose.yaml.
 datasources:
   # Logs, queried with SQL through the OpenObserve plugin.
@@ -28,4 +28,21 @@ datasources:
     basicAuthUser: root@example.com
     secureJsonData:
       basicAuthPassword: Complexpass#123
+    editable: false
+
+  # Log lines and traces, queried with SQL through OpenObserve's search API
+  # with the Infinity plugin. The OpenObserve plugin cannot query traces, and
+  # in dashboards it only returns aggregations, not log lines.
+  - name: OpenObserve SQL
+    type: yesoreyeram-infinity-datasource
+    uid: openobserve-sql
+    url: http://openobserve:5080/api/default
+    basicAuth: true
+    basicAuthUser: root@example.com
+    secureJsonData:
+      basicAuthPassword: Complexpass#123
+    jsonData:
+      auth_method: basicAuth
+      allowedHosts:
+        - http://openobserve:5080
     editable: false

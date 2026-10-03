@@ -12,6 +12,11 @@
       "title": "Metrics through Tram",
       "type": "link",
       "url": "/d/tram-metrics"
+    },
+    {
+      "title": "Traces through Tram",
+      "type": "link",
+      "url": "/d/tram-traces"
     }
   ],
   "panels": [
@@ -65,13 +70,42 @@
     },
     {
       "id": 3,
-      "type": "text",
+      "type": "logs",
       "title": "Log lines",
-      "gridPos": { "x": 0, "y": 9, "w": 24, "h": 4 },
+      "description": "The latest 200 log lines, queried with SQL through the Infinity plugin, since the OpenObserve plugin only returns aggregations in dashboards.",
+      "gridPos": { "x": 0, "y": 9, "w": 24, "h": 14 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "openobserve-sql" },
       "options": {
-        "mode": "markdown",
-        "content": "In dashboards the OpenObserve plugin only returns aggregations, not single log lines. To read the logs, open [Explore](/explore) with the OpenObserve datasource and the stream `tram_logs`, or the [OpenObserve UI](http://localhost:5080/web/logs?org_identifier=default&stream_type=logs&stream=tram_logs) (`root@example.com` / `Complexpass#123`)."
-      }
+        "showTime": true,
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "openobserve-sql" },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "/_search?type=logs",
+          "url_options": {
+            "method": "POST",
+            "data": "{\"query\":{\"sql\":\"SELECT _timestamp / 1000 AS time, body, service_name, severity FROM \\\"tram_logs\\\" ORDER BY _timestamp DESC LIMIT 200\",\"start_time\":${__from}000,\"end_time\":${__to}000,\"from\":0,\"size\":200}}",
+            "body_type": "raw",
+            "body_content_type": "application/json"
+          },
+          "root_selector": "hits",
+          "columns": [
+            { "selector": "time", "text": "time", "type": "timestamp_epoch" },
+            { "selector": "body", "text": "body", "type": "string" },
+            { "selector": "service_name", "text": "service_name", "type": "string" },
+            { "selector": "severity", "text": "level", "type": "string" }
+          ]
+        }
+      ]
     }
   ]
 }

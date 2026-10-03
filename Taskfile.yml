@@ -213,7 +213,7 @@ tasks:
       - '{{.CONTAINER_TOOL}} compose -f setup/nats/docker-compose.yaml down'
 
   demo:up:
-    desc: Start the demo with OTLP clients, Tram, OpenObserve and Grafana on localhost:3000 (see setup/demo/README.md)
+    desc: Start the demo that sends logs, metrics and traces through Tram to OpenObserve, with Grafana on localhost:3000 (see setup/demo/README.md)
     cmds:
       - '{{.CONTAINER_TOOL}} compose -f setup/demo/compose.yaml up -d --build'
 

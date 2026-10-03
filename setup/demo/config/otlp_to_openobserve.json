@@ -45,6 +45,25 @@
           "max_records": 10,
           "timeout": "1s"
         }
+      },
+      {
+        "name": "traces",
+        "type": "cel_filter",
+        "from": "otlp",
+        "spec": {
+          "logs": "false",
+          "metrics": "false",
+          "traces": "!resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'debug-noise')"
+        }
+      },
+      {
+        "name": "batch-traces",
+        "type": "batch",
+        "from": "traces",
+        "spec": {
+          "max_records": 10,
+          "timeout": "1s"
+        }
       }
     ],
     "sinks": [
@@ -68,6 +87,18 @@
           "url": "http://openobserve:5080/api/default",
           "headers": {
             "Authorization": "Basic cm9vdEBleGFtcGxlLmNvbTpDb21wbGV4cGFzcyMxMjM="
+          }
+        }
+      },
+      {
+        "name": "openobserve-traces",
+        "type": "otlp",
+        "from": "batch-traces",
+        "spec": {
+          "url": "http://openobserve:5080/api/default",
+          "headers": {
+            "Authorization": "Basic cm9vdEBleGFtcGxlLmNvbTpDb21wbGV4cGFzcyMxMjM=",
+            "stream-name": "tram_traces"
           }
         }
       }
