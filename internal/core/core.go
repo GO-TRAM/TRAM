@@ -124,13 +124,13 @@ func (c *Core) UpsertStream(ctx context.Context, spec domain.StreamSpec) (*domai
 
 	// Otherwise the old stream is stopped before the new one is built, because
 	// its components may hold resources (e.g. listening ports) the new ones
-	// need.
+	// need. It stays registered until the new one replaces it, so a failed
+	// update never makes the stream disappear.
 	if exists {
 		if err = c.stopStream(old); err != nil {
 			c.logger.ErrorContext(ctx, "Could not cleanly stop stream",
 				slog.String("stream", spec.Name), slog.Any("error", err))
 		}
-		delete(c.streams, spec.Name)
 	}
 
 	if err = c.buildStream(tree); err != nil {

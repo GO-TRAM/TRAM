@@ -269,14 +269,17 @@ func (c *Core) restartStream(name string, done chan struct{}, restarts int) {
 }
 
 // restoreStream rebuilds and starts a previously running stream after a
-// failed update replaced it. Must be called with the write lock held.
+// failed update stopped it. If that fails too, the stopped stream stays
+// registered and is restarted like a stream whose source returned on its own:
+// stopping its source scheduled that restart already. Must be called with the
+// write lock held.
 func (c *Core) restoreStream(spec domain.StreamSpec) {
 	tree, err := newTree(spec)
 	if err == nil {
 		err = c.buildStream(tree)
 	}
 	if err != nil {
-		c.logger.ErrorContext(c.ctx, "Could not restore stream after failed update",
+		c.logger.ErrorContext(c.ctx, "Could not restore stream after failed update, retrying later",
 			slog.String("stream", spec.Name), slog.Any("error", err))
 		return
 	}

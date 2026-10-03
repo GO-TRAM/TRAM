@@ -307,6 +307,39 @@ func TestCrashedSourceIsRestarted(t *testing.T) {
 	assert.Equal(t, 2, reg.sourceCount())
 }
 
+func TestFailedUpdateAndRestoreKeepStream(t *testing.T) {
+	t.Parallel()
+
+	c, reg := newCore(t)
+	c.SetRestartDelays(10*time.Millisecond, 50*time.Millisecond)
+
+	old := streamSpec(1, sink("old", "fake"))
+	_, err := c.UpsertStream(t.Context(), old)
+	require.NoError(t, err)
+
+	events := make(chan domain.StreamSpecWatchEvent, 10)
+	require.NoError(t, c.Watch(t.Context(), events))
+
+	// Both the source of the update and the source of the restored stream
+	// fail to be created.
+	reg.mu.Lock()
+	reg.failSources = 2
+	reg.mu.Unlock()
+	_, err = c.UpsertStream(t.Context(), streamSpec(2, sink("new", "fake")))
+	require.Error(t, err)
+
+	// Drivers still see the stream as configured, and nothing told them
+	// otherwise.
+	got, err := c.GetStream(t.Context(), "stream")
+	require.NoError(t, err, "the stream disappeared")
+	assert.True(t, got.Equal(old))
+	assert.Empty(t, events, "watchers are not notified")
+
+	// The stopped stream is restarted like one whose source stopped.
+	require.Eventually(t, func() bool { return reg.sourceCount() == 2 }, 5*time.Second, 5*time.Millisecond)
+	assert.ElementsMatch(t, []string{"source", "old"}, reg.stoppedNames(), "stopped once")
+}
+
 func TestUpsertRestartsCrashedStream(t *testing.T) {
 	t.Parallel()
 
