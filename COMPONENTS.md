@@ -271,6 +271,7 @@ Reject trace deliveries that contain a span without a valid trace ID:
 
 **Behavior Notes:**
 - The decision applies to the whole event. An expression like `log_records.exists(record, record.severity_text == 'ERROR')` passes on a delivery with one ERROR and many INFO records in full, including the INFO records
+- An expression that fails for an event, e.g. by accessing a missing list index, rejects the whole event regardless of `on_mismatch`. The OTLP source answers with HTTP 400, the NATS source terminates the message instead of redelivering it
 - Place validators with `on_mismatch: reject` before a batch stage, so one invalid delivery does not reject the deliveries batched with it
 
 ### Batch Stage

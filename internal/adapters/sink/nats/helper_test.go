@@ -227,6 +227,22 @@ func TestGroupEventsBySubjectsRequiresStringSubject(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// No event variable is provided, so a subject using it must fail when the
+// sink is created instead of dropping every event.
+func TestSubjectRejectsUnknownVariable(t *testing.T) {
+	t.Parallel()
+
+	_, err := natssink.NewWithoutConnection(map[string]any{
+		"url":    "nats://localhost:4222",
+		"stream": "test",
+		"subject": map[string]any{
+			"register": []any{">"},
+			"logs":     "'logs.' + string(event.Logs != null)",
+		},
+	}, validator.New())
+	assert.ErrorIs(t, err, natssink.ErrCELInvalidLogsExpression)
+}
+
 func TestGroupEventsBySubjectsKeepsMissingResourceAndScope(t *testing.T) {
 	t.Parallel()
 

@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/cel-go/cel"
-	"github.com/google/cel-go/ext"
 
 	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
@@ -44,10 +42,6 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELValidator, 
 			metricspb.File_opentelemetry_proto_metrics_v1_metrics_proto,
 			tracespb.File_opentelemetry_proto_trace_v1_trace_proto,
 		),
-
-		ext.NativeTypes(reflect.TypeFor[*domain.Event]()),
-
-		cel.Variable("event", cel.ObjectType("domain.Event")),
 	)
 	if err != nil {
 		return nil, errors.Join(ErrCELEnvironmenInitialization, err)
@@ -120,13 +114,16 @@ func (n *CELValidator) validate(
 		varName: data,
 	})
 
+	// Evaluating the same event again fails the same way, so errors reject
+	// the event instead of asking for a retry.
 	if err != nil {
-		return fmt.Errorf("CEL evaluation error: %w", err)
+		return fmt.Errorf("%w: %w: %w", domain.ErrEventRejected, ErrCELEvaluation, err)
 	}
 
 	isMatch, ok := result.Value().(bool)
 	if !ok {
-		return fmt.Errorf("CEL expression returned %T instead of bool", result.Value())
+		return fmt.Errorf("%w: %w: expression returned %T instead of bool",
+			domain.ErrEventRejected, ErrCELEvaluation, result.Value())
 	}
 
 	if !isMatch {

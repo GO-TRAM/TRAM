@@ -12,7 +12,6 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
-	"github.com/google/cel-go/ext"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
@@ -142,8 +141,6 @@ func compileSubjects(subject SubjectSpec) (subjects, error) {
 			metricspb.File_opentelemetry_proto_metrics_v1_metrics_proto,
 			tracespb.File_opentelemetry_proto_trace_v1_trace_proto,
 		),
-		ext.NativeTypes(reflect.TypeFor[*domain.Event]()),
-		cel.Variable("event", cel.ObjectType("domain.Event")),
 		getAttrFunc,
 	)
 	if err != nil {

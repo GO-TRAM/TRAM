@@ -10,4 +10,5 @@ var (
 	ErrCELRejectingLogs            = errors.New("log rejected by CEL expression")
 	ErrCELRejectingMetrics         = errors.New("metric rejected by CEL expression")
 	ErrCELRejectingTraces          = errors.New("trace rejected by CEL expression")
+	ErrCELEvaluation               = errors.New("failed to evaluate CEL expression")
 )

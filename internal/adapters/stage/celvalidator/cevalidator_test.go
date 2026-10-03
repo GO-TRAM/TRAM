@@ -406,6 +406,52 @@ func TestCELValidator(t *testing.T) {
 	}
 }
 
+// Evaluating an event again fails the same way, so the sources must not ask
+// for a retry: the error is a rejection, whatever on_mismatch says.
+func TestCELValidatorEvaluationErrorRejects(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name       string
+		expression string
+	}{
+		{name: "missing list index", expression: "logs.resource_logs[0].resource.attributes.size() > 0"},
+		{name: "result is not a bool", expression: "logs.resource_logs.size()"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			cel, err := celvalidator.New(domain.StageSpec{
+				Spec: map[string]any{
+					"logs":        c.expression,
+					"on_mismatch": "drop",
+				},
+			}, validator.New())
+			require.NoError(t, err)
+
+			err = cel.Notify(t.Context(), &domain.Event{Logs: &logspb.LogsData{}})
+			require.ErrorIs(t, err, domain.ErrEventRejected)
+			assert.ErrorIs(t, err, celvalidator.ErrCELEvaluation)
+		})
+	}
+}
+
+// No event variable is provided, so an expression using it must fail when
+// the stage is created instead of for every event.
+func TestCELValidatorRejectsUnknownVariable(t *testing.T) {
+	t.Parallel()
+
+	_, err := celvalidator.New(domain.StageSpec{
+		Spec: map[string]any{
+			"logs":        "event.Logs != null",
+			"on_mismatch": "reject",
+		},
+	}, validator.New())
+	assert.ErrorIs(t, err, celvalidator.ErrCELInvalidLogsExpression)
+}
+
 // The event is shared with sibling branches, so dropping must not alter it.
 func TestCELValidatorDropDoesNotMutateEvent(t *testing.T) {
 	t.Parallel()
