@@ -1,0 +1,94 @@
+# Logs from two OTLP clients flow through Tram into Loki and show up in
+# Grafana. See README.md in this directory.
+#
+#   docker compose up -d --build     (or: task demo:up)
+#   open http://localhost:3000
+
+name: tram-loki-demo
+
+services:
+  tram:
+    build:
+      context: ../..
+    image: tram:demo
+    # The stream comes from config/otlp_to_loki.json through the file sync.
+    command:
+      - server
+      - --http-endpoint=0.0.0.0:8080
+      - --grpc-endpoint=0.0.0.0:50051
+      - --enable-file-sync
+      - --config-directory=/config
+    volumes:
+      # Read-only: the file sync only writes files for streams changed
+      # through the API, which this demo does not need.
+      - ./config:/config:ro
+    ports:
+      - "8080:8080" # Tram HTTP API
+      - "4318:4318" # OTLP/HTTP source of the stream, to send your own logs
+    depends_on:
+      - loki
+
+  # Sends INFO logs of a "checkout" service, which reach Loki.
+  checkout:
+    image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.162.0
+    command:
+      - logs
+      - --otlp-http
+      - --otlp-endpoint=tram:4318
+      - --otlp-insecure
+      - --otlp-attributes=service.name="checkout"
+      - --otlp-attributes=deployment.environment="demo"
+      - --telemetry-attributes=order.status="paid"
+      - --severity-text=INFO
+      - --severity-number=9
+      - --body=Order paid
+      - --rate=1
+      - --workers=5
+      - --duration=24h
+      - --batch=false
+    depends_on:
+      - tram
+    restart: on-failure
+
+  # Sends DEBUG logs, which the cel_filter stage in Tram drops.
+  debug-noise:
+    image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.162.0
+    command:
+      - logs
+      - --otlp-http
+      - --otlp-endpoint=tram:4318
+      - --otlp-insecure
+      - --otlp-attributes=service.name="debug-noise"
+      - --severity-text=DEBUG
+      - --severity-number=5
+      - --body=Cache lookup
+      - --rate=5
+      - --workers=50
+      - --duration=24h
+      - --batch=false
+    depends_on:
+      - tram
+    restart: on-failure
+
+  loki:
+    image: docker.io/grafana/loki:3.4.2
+    command: -config.file=/etc/loki/loki.yaml
+    volumes:
+      - ./loki/loki.yaml:/etc/loki/loki.yaml:ro
+    ports:
+      - "3100:3100"
+
+  grafana:
+    image: docker.io/grafana/grafana:11.5.2
+    environment:
+      # Open Grafana without logging in; fine for a local demo only.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/tram-logs.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - loki

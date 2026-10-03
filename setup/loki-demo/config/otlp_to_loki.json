@@ -1,0 +1,40 @@
+{
+  "stream": {
+    "source": {
+      "name": "otlp",
+      "type": "otlp",
+      "spec": {
+        "http_port": 4318
+      }
+    },
+    "stages": [
+      {
+        "name": "drop-debug",
+        "type": "cel_filter",
+        "from": "otlp",
+        "spec": {
+          "logs": "record.severity_number >= 9"
+        }
+      },
+      {
+        "name": "batch",
+        "type": "batch",
+        "from": "drop-debug",
+        "spec": {
+          "max_records": 10,
+          "timeout": "5s"
+        }
+      }
+    ],
+    "sinks": [
+      {
+        "name": "loki",
+        "type": "otlp",
+        "from": "batch",
+        "spec": {
+          "url": "http://loki:3100/otlp"
+        }
+      }
+    ]
+  }
+}
