@@ -5,9 +5,18 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"time"
 
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/ports"
+)
+
+// A stream whose source returned on its own is restarted after a delay that
+// doubles with every restart in a row, between these bounds. A source that
+// ran for at least maxRestartDelay counts as recovered.
+const (
+	minRestartDelay = time.Second
+	maxRestartDelay = time.Minute
 )
 
 type Core struct {
@@ -21,13 +30,30 @@ type Core struct {
 	stageFactory  ports.Factory[domain.StageSpec, domain.Stage]
 	sinkFactory   ports.Factory[domain.SinkSpec, domain.Sink]
 	watchers      map[*watcher]struct{}
+
+	minRestartDelay time.Duration
+	maxRestartDelay time.Duration
 }
 
-// stream is a built tree whose source is running.
+// stream is a built tree whose source was started. The stream stays
+// registered after its source returned on its own, until it is restarted.
 type stream struct {
 	tree *domain.Tree
 	// done is closed once the source's Run has returned.
 	done chan struct{}
+	// stopped is set once stopStream ran, so the components, which may not
+	// support being stopped twice, are stopped only once.
+	stopped bool
+}
+
+// running reports whether the source's Run has not returned yet.
+func (s *stream) running() bool {
+	select {
+	case <-s.done:
+		return false
+	default:
+		return true
+	}
 }
 
 type watcher struct {
@@ -51,6 +77,9 @@ func New(
 		stageFactory:  stageFactory,
 		sinkFactory:   sinkFactory,
 		watchers:      map[*watcher]struct{}{},
+
+		minRestartDelay: minRestartDelay,
+		maxRestartDelay: maxRestartDelay,
 	}
 }
 
@@ -73,15 +102,18 @@ func (c *Core) UpsertStream(ctx context.Context, spec domain.StreamSpec) (*domai
 	}
 
 	old, exists := c.streams[spec.Name]
+	// A stream whose source has returned is rebuilt even if its spec is
+	// unchanged, so applying the spec again restarts it right away.
+	running := exists && old.running()
 
 	// Updating restarts components, so an unchanged spec is left alone.
-	if exists && old.tree.Spec.Equal(spec) {
+	if running && old.tree.Spec.Equal(spec) {
 		return &old.tree.Spec, nil
 	}
 
 	// With an unchanged source, only the stages and sinks are replaced while
 	// the source keeps running.
-	if exists && old.tree.Spec.Source.Equal(spec.Source) {
+	if running && old.tree.Spec.Source.Equal(spec.Source) {
 		if err = c.replaceReceivers(old, tree); err != nil {
 			return nil, errors.Join(domain.ErrStreamBuildFailed, err)
 		}
@@ -108,7 +140,7 @@ func (c *Core) UpsertStream(ctx context.Context, spec domain.StreamSpec) (*domai
 		return nil, errors.Join(domain.ErrStreamBuildFailed, err)
 	}
 
-	c.runStream(tree)
+	c.runStream(tree, 0)
 	c.notify(domain.StreamSpecWatchEventTypeUpsert, tree.Spec)
 
 	return &tree.Spec, nil

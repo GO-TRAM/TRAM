@@ -21,7 +21,7 @@ import (
 const (
 	Type = "otlp"
 
-	// Default timeout for HTTP requests
+	// Default timeout for HTTP requests.
 	defaultTimeout = 10 * time.Second
 
 	// Let the HTTP client follow up to 10 redirects to platform endpoints that use one.
@@ -63,7 +63,7 @@ func New(sink domain.SinkSpec, validator *validator.Validate, logger *slog.Logge
 	client := &http.Client{
 		Transport: transport,
 		Timeout:   timeout,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
 			if len(via) >= maxRedirects {
 				return errors.New("stopped after max redirects")
 			}
@@ -145,7 +145,7 @@ func (o *OTLP) send(ctx context.Context, signal domain.Signal, data []byte) erro
 	return nil
 }
 
-// getEndpointPath returns the OTLP HTTP path for the given signal type
+// getEndpointPath returns the OTLP HTTP path for the given signal type.
 func (o *OTLP) getEndpointPath(signal domain.Signal) string {
 	switch signal {
 	case domain.SignalLogs:

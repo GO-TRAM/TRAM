@@ -23,9 +23,23 @@ type registry struct {
 	// liveSources counts sources that are not stopped yet. Like a listening
 	// port, only one may exist at a time.
 	liveSources int
+	// failSources makes this many of the next sources fail to be created.
+	failSources int
 	created     []string
 	stopped     []string
 	sources     []*fakeSource
+}
+
+func (r *registry) source(i int) *fakeSource {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.sources[i]
+}
+
+func (r *registry) sourceCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.sources)
 }
 
 func (r *registry) create(name string) {
@@ -56,7 +70,9 @@ type fakeSource struct {
 	reg      *registry
 	name     string
 	shutdown chan struct{}
-	subs     []domain.Subscriber
+	// crash makes Run return on its own once closed, like a failing source.
+	crash chan struct{}
+	subs  []domain.Subscriber
 }
 
 func (s *fakeSource) Name() string { return s.name }
@@ -71,6 +87,8 @@ func (s *fakeSource) Run(ctx context.Context) error {
 	select {
 	case <-s.shutdown:
 	case <-ctx.Done():
+	case <-s.crash:
+		return errors.New("source crashed")
 	}
 	return nil
 }
@@ -102,12 +120,16 @@ func (f sourceFactory) New(spec domain.SourceSpec) (domain.Source, error) {
 	if spec.Type == brokenType {
 		return nil, errors.New("broken source")
 	}
+	if f.reg.failSources > 0 {
+		f.reg.failSources--
+		return nil, errors.New("source unavailable")
+	}
 	if f.reg.liveSources > 0 {
 		return nil, domain.ErrPortUnavailable
 	}
 	f.reg.liveSources++
 	f.reg.created = append(f.reg.created, spec.Name)
-	src := &fakeSource{reg: f.reg, name: spec.Name, shutdown: make(chan struct{})}
+	src := &fakeSource{reg: f.reg, name: spec.Name, shutdown: make(chan struct{}), crash: make(chan struct{})}
 	f.reg.sources = append(f.reg.sources, src)
 	return src, nil
 }
@@ -252,6 +274,59 @@ func TestUpsertRejectsInvalidStreamName(t *testing.T) {
 	streams, err := c.GetStreams(t.Context())
 	require.NoError(t, err)
 	assert.Empty(t, streams)
+}
+
+func TestCrashedSourceIsRestarted(t *testing.T) {
+	t.Parallel()
+
+	c, reg := newCore(t)
+	c.SetRestartDelays(10*time.Millisecond, 50*time.Millisecond)
+
+	spec := streamSpec(1, sink("out", "fake"))
+	_, err := c.UpsertStream(t.Context(), spec)
+	require.NoError(t, err)
+
+	// The first restarts fail, like a source whose server is not up yet.
+	reg.mu.Lock()
+	reg.failSources = 2
+	reg.mu.Unlock()
+	close(reg.source(0).crash)
+
+	require.Eventually(t, func() bool { return reg.sourceCount() == 2 }, 5*time.Second, 5*time.Millisecond)
+
+	// The crashed stream is stopped once, although restarting failed twice;
+	// the fake source panics when stopped twice.
+	assert.ElementsMatch(t, []string{"source", "out"}, reg.stoppedNames())
+	got, err := c.GetStream(t.Context(), "stream")
+	require.NoError(t, err)
+	assert.True(t, got.Equal(spec))
+
+	// A deliberately stopped stream is not restarted.
+	require.NoError(t, c.DeleteStream(t.Context(), "stream"))
+	time.Sleep(150 * time.Millisecond)
+	assert.Equal(t, 2, reg.sourceCount())
+}
+
+func TestUpsertRestartsCrashedStream(t *testing.T) {
+	t.Parallel()
+
+	c, reg := newCore(t)
+	// Long enough that only the upsert restarts the stream.
+	c.SetRestartDelays(time.Hour, time.Hour)
+
+	spec := streamSpec(1, sink("out", "fake"))
+	_, err := c.UpsertStream(t.Context(), spec)
+	require.NoError(t, err)
+
+	close(reg.source(0).crash)
+
+	// Applying the unchanged spec again restarts the stream once the source
+	// has returned.
+	require.Eventually(t, func() bool {
+		_, upsertErr := c.UpsertStream(t.Context(), spec)
+		return upsertErr == nil && reg.sourceCount() == 2
+	}, 5*time.Second, 5*time.Millisecond)
+	assert.ElementsMatch(t, []string{"source", "out"}, reg.stoppedNames())
 }
 
 func TestUpsertUnchangedStreamDoesNothing(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
@@ -174,8 +175,9 @@ func (c *Core) replaceReceivers(old *stream, tree *domain.Tree) error {
 }
 
 // runStream starts the source of a built tree and registers the stream.
-// Must be called with the write lock held.
-func (c *Core) runStream(tree *domain.Tree) {
+// restarts counts the restarts in a row that led to this run. Must be called
+// with the write lock held.
+func (c *Core) runStream(tree *domain.Tree, restarts int) {
 	s := &stream{
 		tree: tree,
 		done: make(chan struct{}),
@@ -183,19 +185,87 @@ func (c *Core) runStream(tree *domain.Tree) {
 	c.streams[tree.Spec.Name] = s
 
 	c.wg.Go(func() {
-		defer close(s.done)
-		c.logger.InfoContext(c.ctx, "Running stream", slog.String("stream", tree.Spec.Name))
-		source, err := tree.Root().GetSource()
-		if err != nil {
-			c.logger.ErrorContext(c.ctx, "Could not get source of stream",
-				slog.String("stream", tree.Spec.Name), slog.Any("error", err))
-			return
+		started := time.Now()
+		c.runSource(tree)
+		close(s.done)
+
+		if time.Since(started) >= c.maxRestartDelay {
+			restarts = 0
 		}
-		if err = source.Run(c.ctx); err != nil {
-			c.logger.ErrorContext(c.ctx, "Stream stopped with an error",
-				slog.String("stream", tree.Spec.Name), slog.Any("error", err))
-		}
+		c.scheduleRestart(tree.Spec.Name, s.done, restarts)
 	})
+}
+
+// runSource runs the source of tree until it returns.
+func (c *Core) runSource(tree *domain.Tree) {
+	c.logger.InfoContext(c.ctx, "Running stream", slog.String("stream", tree.Spec.Name))
+	source, err := tree.Root().GetSource()
+	if err != nil {
+		c.logger.ErrorContext(c.ctx, "Could not get source of stream",
+			slog.String("stream", tree.Spec.Name), slog.Any("error", err))
+		return
+	}
+	if err = source.Run(c.ctx); err != nil {
+		c.logger.ErrorContext(c.ctx, "Stream stopped with an error",
+			slog.String("stream", tree.Spec.Name), slog.Any("error", err))
+	}
+}
+
+// scheduleRestart restarts the stream whose source run done belongs to, after
+// a delay that grows with restarts. Sources also return when they are
+// stopped, but their stream is removed or replaced by then, which
+// restartStream detects.
+func (c *Core) scheduleRestart(name string, done chan struct{}, restarts int) {
+	if c.ctx.Err() != nil {
+		return
+	}
+	time.AfterFunc(c.restartDelay(restarts), func() {
+		c.restartStream(name, done, restarts+1)
+	})
+}
+
+func (c *Core) restartDelay(restarts int) time.Duration {
+	delay := c.minRestartDelay
+	for range restarts {
+		delay *= 2
+		if delay >= c.maxRestartDelay {
+			return c.maxRestartDelay
+		}
+	}
+	return delay
+}
+
+// restartStream rebuilds a stream whose source returned on its own, unless
+// the stream was removed or replaced meanwhile. If rebuilding fails, the
+// stream stays registered with its components stopped and is tried again
+// later.
+func (c *Core) restartStream(name string, done chan struct{}, restarts int) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	old, exists := c.streams[name]
+	if c.closed || !exists || old.done != done {
+		return
+	}
+
+	c.logger.WarnContext(c.ctx, "Restarting stream whose source stopped",
+		slog.String("stream", name), slog.Int("restart", restarts))
+	if err := c.stopStream(old); err != nil {
+		c.logger.ErrorContext(c.ctx, "Could not cleanly stop stream",
+			slog.String("stream", name), slog.Any("error", err))
+	}
+
+	tree, err := newTree(old.tree.Spec)
+	if err == nil {
+		err = c.buildStream(tree)
+	}
+	if err != nil {
+		c.logger.ErrorContext(c.ctx, "Could not restart stream",
+			slog.String("stream", name), slog.Any("error", err))
+		c.scheduleRestart(name, done, restarts)
+		return
+	}
+	c.runStream(tree, restarts)
 }
 
 // restoreStream rebuilds and starts a previously running stream after a
@@ -210,12 +280,18 @@ func (c *Core) restoreStream(spec domain.StreamSpec) {
 			slog.String("stream", spec.Name), slog.Any("error", err))
 		return
 	}
-	c.runStream(tree)
+	c.runStream(tree, 0)
 }
 
 // stopStream stops the source, waits for it to return so no event is in
-// flight, and then stops all stages and sinks.
+// flight, and then stops all stages and sinks. A stream is stopped only once;
+// later calls do nothing.
 func (c *Core) stopStream(s *stream) error {
+	if s.stopped {
+		return nil
+	}
+	s.stopped = true
+
 	source, err := s.tree.Root().GetSource()
 	if err != nil {
 		return errors.Join(domain.ErrStreamStopFailed, err)

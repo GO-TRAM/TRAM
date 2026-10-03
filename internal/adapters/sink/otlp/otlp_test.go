@@ -294,7 +294,7 @@ func TestNotify(t *testing.T) {
 	t.Run("server error response", func(t *testing.T) {
 		t.Parallel()
 
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			http.Error(w, "Bad Request", http.StatusBadRequest)
 		}))
 		defer server.Close()
