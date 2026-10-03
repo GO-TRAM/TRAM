@@ -1,0 +1,43 @@
+{
+  "stream": {
+    "name": "benchmark_nats_filter_nats",
+    "source": {
+      "name": "nats_source",
+      "type": "nats",
+      "spec": {
+        "url": "nats://localhost:4222",
+        "stream": "input-stream",
+        "subject": "benchmark.*",
+        "durable": "tram-benchmark-consumer",
+        "workers": 8
+      }
+    },
+    "stages": [
+      {
+        "name": "filter_stage",
+        "type": "cel_filter",
+        "from": "nats_source",
+        "spec": {
+          "logs": "record.attributes.exists(attr, attr.key == 'service.name')"
+        }
+      }
+    ],
+    "sinks": [
+      {
+        "name": "nats_sink",
+        "type": "nats",
+        "from": "filter_stage",
+        "spec": {
+          "url": "nats://localhost:4222",
+          "stream": "filtered-stream",
+          "subject": {
+            "register": ["filtered.*"],
+            "logs": "'filtered.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
+            "metrics": "'filtered.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')",
+            "traces": "'filtered.' + traces.resource_spans[0].resource.attributes.get_attr('service.name')"
+          }
+        }
+      }
+    ]
+  }
+}

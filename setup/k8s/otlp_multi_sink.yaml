@@ -1,0 +1,32 @@
+# otlp_multi_sink.yaml - Multiple OTLP sinks from a single source
+apiVersion: io.tram.core/v1
+kind: Stream
+metadata:
+  name: otlp_multi_sink
+spec:
+  source:
+    type: otlp
+    name: otlp
+    spec:
+      http_port: 4318
+  stages:
+    - type: cel_filter
+      name: split_logs
+      from: otlp
+      spec:
+        logs: "record.attributes.exists(attr, attr.key == 'level' && (attr.value.string_value == 'ERROR' || attr.value.string_value == 'WARN'))"
+  sinks:
+    - type: otlp
+      name: error_logs_sink
+      from: split_logs
+      spec:
+        url: "http://error-log-collector:4318"
+        headers:
+          X-Log-Type: "errors"
+    - type: otlp
+      name: all_sink
+      from: otlp
+      spec:
+        url: "http://all-log-collector:4318"
+        headers:
+          X-Log-Type: "all"

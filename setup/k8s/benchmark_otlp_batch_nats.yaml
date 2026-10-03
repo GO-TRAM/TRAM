@@ -1,0 +1,32 @@
+# benchmark_otlp_batch_nats.yaml - OTLP to batch to NATS benchmark configuration
+# Matches the otlp-batch-nats scenario from BENCHMARK.md: OTLP → batch → NATS
+# Note: batch stage uses max_records: 1000, timeout: "10ms" as specified in benchmarks
+apiVersion: io.tram.core/v1
+kind: Stream
+metadata:
+  name: benchmark_otlp_batch_nats
+spec:
+  source:
+    type: otlp
+    name: otlp_source
+    spec:
+      http_port: 4318
+  stages:
+    - type: batch
+      name: batch_stage
+      from: otlp_source
+      spec:
+        max_records: 1000
+        timeout: "10ms"
+  sinks:
+    - type: nats
+      name: nats_sink
+      from: batch_stage
+      spec:
+        url: "nats://nats-server:4222"
+        stream: "tram-stream"
+        subject:
+          register: ["benchmark.*"]
+          logs: "'benchmark.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')"
+          metrics: "'benchmark.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')"
+          traces: "'benchmark.' + traces.resource_spans[0].resource.attributes.get_attr('service.name')"

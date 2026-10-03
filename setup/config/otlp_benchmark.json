@@ -1,0 +1,34 @@
+{
+  "stream": {
+    "name": "otlp_benchmark",
+    "source": {
+      "name": "generator_source",
+      "type": "generator",
+      "spec": {
+        "interval": "1ms"
+      }
+    },
+    "stages": [
+      {
+        "name": "batch_stage",
+        "type": "batch",
+        "from": "generator_source",
+        "spec": {
+          "max_records": 8192,
+          "timeout": "100ms"
+        }
+      }
+    ],
+    "sinks": [
+      {
+        "name": "otlp_sink",
+        "type": "otlp",
+        "from": "batch_stage",
+        "spec": {
+          "url": "http://localhost:4318",
+          "timeout": "5s"
+        }
+      }
+    ]
+  }
+}

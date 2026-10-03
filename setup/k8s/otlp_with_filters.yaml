@@ -1,0 +1,26 @@
+# otlp_with_filters.yaml - OTLP forwarding with CEL filtering
+apiVersion: io.tram.core/v1
+kind: Stream
+metadata:
+  name: otlp_with_filters
+spec:
+  source:
+    type: otlp
+    name: otlp
+    spec:
+      http_port: 4318
+  stages:
+    - type: cel_filter
+      name: customer_filter
+      from: otlp
+      spec:
+        logs: "record.attributes.exists(attr, attr.key == 'customer' && attr.value.string_value == 'A')"
+  sinks:
+    - type: otlp
+      name: customer_a_sink
+      from: customer_filter
+      spec:
+        url: "http://customer-a-telemetry:4318"
+        headers:
+          Authorization: "Bearer token"
+          X-Custom: "value"

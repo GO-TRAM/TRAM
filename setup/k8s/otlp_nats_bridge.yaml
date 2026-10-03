@@ -1,0 +1,32 @@
+# otlp_nats_bridge.yaml - Bridges NATS JetStream to OTLP HTTP
+apiVersion: io.tram.core/v1
+kind: Stream
+metadata:
+  name: otlp_nats_bridge
+spec:
+  source:
+    type: nats
+    name: nats
+    spec:
+      url: "nats://nats-server:4222"
+      stream: "input-stream"
+      subject: "telemetry.*"
+      durable: "tram-otlp-bridge"
+      workers: 4
+  stages:
+    - type: batch
+      name: batch
+      from: nats
+      spec:
+        max_records: 2000
+        timeout: "1s"
+  sinks:
+    - type: otlp
+      name: otlp_sink
+      from: batch
+      spec:
+        url: "http://central-telemetry:4318"
+        timeout: "30s"
+        headers:
+          X-Bridge: "nats-to-otlp"
+          X-Source-Stream: "input-stream"

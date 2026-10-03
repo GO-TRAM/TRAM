@@ -1,0 +1,38 @@
+{
+  "stream": {
+    "name": "otlp_with_validation",
+    "source": {
+      "name": "otlp_source",
+      "type": "otlp",
+      "spec": {
+        "http_port": 4318
+      }
+    },
+    "stages": [
+      {
+        "name": "validator_stage",
+        "type": "cel_validator",
+        "from": "otlp_source",
+        "spec": {
+          "logs": "logs.resource_logs.all(resLog, resLog.resource.attributes.exists(attr, attr.key == 'service.name'))",
+          "metrics": "metrics.resource_metrics.all(resMetric, resMetric.resource.attributes.exists(attr, attr.key == 'service.name'))",
+          "traces": "traces.resource_spans.all(resSpan, resSpan.resource.attributes.exists(attr, attr.key == 'service.name'))",
+          "on_mismatch": "reject"
+        }
+      }
+    ],
+    "sinks": [
+      {
+        "name": "otlp_sink",
+        "type": "otlp",
+        "from": "validator_stage",
+        "spec": {
+          "url": "http://telemetry-collector:4318",
+          "headers": {
+            "Authorization": "Bearer api-key-here"
+          }
+        }
+      }
+    ]
+  }
+}

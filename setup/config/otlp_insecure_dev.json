@@ -1,0 +1,29 @@
+{
+  "stream": {
+    "name": "otlp_insecure_dev",
+    "source": {
+      "name": "generator_source",
+      "type": "generator",
+      "spec": {
+        "interval": "1s"
+      }
+    },
+    "stages": [],
+    "sinks": [
+      {
+        "name": "dev_otlp_sink",
+        "type": "otlp",
+        "from": "generator_source",
+        "spec": {
+          "url": "https://localhost:4318",
+          "insecure": true,
+          "timeout": "5s",
+          "headers": {
+            "X-Development": "true",
+            "X-Service": "test-service"
+          }
+        }
+      }
+    ]
+  }
+}

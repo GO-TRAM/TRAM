@@ -1,0 +1,28 @@
+# otlp_with_validation.yaml - OTLP forwarding with CEL validation
+apiVersion: io.tram.core/v1
+kind: Stream
+metadata:
+  name: otlp_with_validation
+spec:
+  source:
+    type: otlp
+    name: otlp
+    spec:
+      http_port: 4318
+  stages:
+    - type: cel_validator
+      name: validator
+      from: otlp
+      spec:
+        logs: "logs.resource_logs.all(resLog, resLog.resource.attributes.exists(attr, attr.key == 'service.name'))"
+        metrics: "metrics.resource_metrics.all(resMetric, resMetric.resource.attributes.exists(attr, attr.key == 'service.name'))"
+        traces: "traces.resource_spans.all(resSpan, resSpan.resource.attributes.exists(attr, attr.key == 'service.name'))"
+        on_mismatch: "reject"
+  sinks:
+    - type: otlp
+      name: validated_otlp_sink
+      from: validator
+      spec:
+        url: "http://telemetry-collector:4318"
+        headers:
+          Authorization: "Bearer your-api-key-here"

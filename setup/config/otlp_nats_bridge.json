@@ -1,0 +1,42 @@
+{
+  "stream": {
+    "name": "otlp_nats_bridge",
+    "source": {
+      "name": "nats_source",
+      "type": "nats",
+      "spec": {
+        "url": "nats://localhost:4222",
+        "stream": "input-stream",
+        "subject": "telemetry.*",
+        "durable": "tram-otlp-bridge",
+        "workers": 4
+      }
+    },
+    "stages": [
+      {
+        "name": "batch_stage",
+        "type": "batch",
+        "from": "nats_source",
+        "spec": {
+          "max_records": 2000,
+          "timeout": "1s"
+        }
+      }
+    ],
+    "sinks": [
+      {
+        "name": "otlp_sink",
+        "type": "otlp",
+        "from": "batch_stage",
+        "spec": {
+          "url": "http://central-telemetry:4318",
+          "timeout": "30s",
+          "headers": {
+            "X-Bridge": "nats-to-otlp",
+            "X-Source-Stream": "input-stream"
+          }
+        }
+      }
+    ]
+  }
+}

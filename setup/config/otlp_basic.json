@@ -1,0 +1,23 @@
+{
+  "stream": {
+    "name": "otlp_basic",
+    "source": {
+      "name": "otlp_source",
+      "type": "otlp",
+      "spec": {
+        "http_port": 4318
+      }
+    },
+    "stages": [],
+    "sinks": [
+      {
+        "name": "otlp_sink",
+        "type": "otlp",
+        "from": "otlp_source",
+        "spec": {
+          "url": "http://localhost:4319"
+        }
+      }
+    ]
+  }
+}

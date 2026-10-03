@@ -1,0 +1,27 @@
+# otlp_benchmark.yaml - High-performance OTLP benchmark configuration
+apiVersion: io.tram.core/v1
+kind: Stream
+metadata:
+  name: otlp_benchmark
+spec:
+  source:
+    type: generator
+    name: generator_source
+    spec:
+      interval: "1ms"
+  stages:
+    - type: batch
+      name: batch_stage
+      from: generator_source
+      spec:
+        max_records: 8192
+        timeout: "100ms"
+  sinks:
+    - type: otlp
+      name: otlp_sink
+      from: batch_stage
+      spec:
+        url: "http://benchmark-otel-collector:4318"
+        timeout: "5s"
+        headers:
+          X-Benchmark: "high-volume"

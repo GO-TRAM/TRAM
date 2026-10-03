@@ -1,0 +1,62 @@
+{
+  "stream": {
+    "name": "benchmark_otlp_split_nats",
+    "source": {
+      "name": "otlp_source",
+      "type": "otlp",
+      "spec": {
+        "http_port": 4318
+      }
+    },
+    "stages": [
+      {
+        "name": "team_0_filter",
+        "type": "cel_filter",
+        "from": "otlp_source",
+        "spec": {
+          "logs": "record.attributes.exists(attr, attr.key == 'team' && attr.value.string_value == 'team-0')"
+        }
+      },
+      {
+        "name": "other_teams_filter",
+        "type": "cel_filter",
+        "from": "otlp_source",
+        "spec": {
+          "logs": "!record.attributes.exists(attr, attr.key == 'team' && attr.value.string_value == 'team-0')"
+        }
+      }
+    ],
+    "sinks": [
+      {
+        "name": "team_0_sink",
+        "type": "nats",
+        "from": "team_0_filter",
+        "spec": {
+          "url": "nats://localhost:4222",
+          "stream": "tram-stream",
+          "subject": {
+            "register": ["benchmark.team-0.*"],
+            "logs": "'benchmark.team-0.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
+            "metrics": "'benchmark.team-0.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')",
+            "traces": "'benchmark.team-0.' + traces.resource_spans[0].resource.attributes.get_attr('service.name')"
+          }
+        }
+      },
+      {
+        "name": "other_teams_sink",
+        "type": "nats",
+        "from": "other_teams_filter",
+        "spec": {
+          "url": "nats://localhost:4222",
+          "stream": "tram-stream",
+          "subject": {
+            "register": ["benchmark.other.*"],
+            "logs": "'benchmark.other.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
+            "metrics": "'benchmark.other.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')",
+            "traces": "'benchmark.other.' + traces.resource_spans[0].resource.attributes.get_attr('service.name')"
+          }
+        }
+      }
+    ]
+  }
+}
