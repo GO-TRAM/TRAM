@@ -201,7 +201,13 @@ func (c *ConfigSync) apply(ctx context.Context, name string, file Stream) {
 }
 
 func (c *ConfigSync) onCoreChange(event domain.StreamSpecWatchEvent) error {
-	path := filepath.Join(c.dir, event.StreamSpec.Name+fileExtension)
+	// The core validates stream names; this guards against writing outside
+	// the directory should a name ever slip through.
+	fileName := event.StreamSpec.Name + fileExtension
+	if !filepath.IsLocal(fileName) || filepath.Base(fileName) != fileName {
+		return fmt.Errorf("stream %q has no file name inside %s", event.StreamSpec.Name, c.dir)
+	}
+	path := filepath.Join(c.dir, fileName)
 
 	switch event.EventType {
 	case domain.StreamSpecWatchEventTypeDelete:
@@ -212,7 +218,7 @@ func (c *ConfigSync) onCoreChange(event domain.StreamSpecWatchEvent) error {
 		return err
 
 	case domain.StreamSpecWatchEventTypeUpsert:
-		stored, err := c.StreamFromFile(event.StreamSpec.Name + fileExtension)
+		stored, err := c.StreamFromFile(fileName)
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}

@@ -4,9 +4,42 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
+
+func TestValidateStreamName(t *testing.T) {
+	t.Parallel()
+
+	valid := []string{
+		"stream",
+		"otlp_basic",
+		"Stream-2",
+		// As the Kubernetes operator names streams: namespace.name.
+		"default.my-stream.v1",
+	}
+	for _, name := range valid {
+		require.NoError(t, domain.ValidateStreamName(name), name)
+	}
+
+	invalid := []string{
+		"",
+		".",
+		"..",
+		"../escape",
+		"a/b",
+		`a\b`,
+		"/etc/passwd",
+		".hidden",
+		"-flag",
+		"with space",
+		"nul\x00byte",
+	}
+	for _, name := range invalid {
+		assert.ErrorIs(t, domain.ValidateStreamName(name), domain.ErrInvalidStreamName, name)
+	}
+}
 
 func TestStreamSpecEqual(t *testing.T) {
 	t.Parallel()

@@ -236,6 +236,24 @@ func TestUpsertStream(t *testing.T) {
 	}
 }
 
+func TestUpsertRejectsInvalidStreamName(t *testing.T) {
+	t.Parallel()
+
+	c, reg := newCore(t)
+
+	spec := streamSpec(1, sink("out", "fake"))
+	spec.Name = "../escape"
+	_, err := c.UpsertStream(t.Context(), spec)
+	require.ErrorIs(t, err, domain.ErrInvalidStreamName)
+	// The API maps build failures to InvalidArgument.
+	require.ErrorIs(t, err, domain.ErrStreamBuildFailed)
+
+	assert.Empty(t, reg.createdNames(), "no component is created")
+	streams, err := c.GetStreams(t.Context())
+	require.NoError(t, err)
+	assert.Empty(t, streams)
+}
+
 func TestUpsertUnchangedStreamDoesNothing(t *testing.T) {
 	t.Parallel()
 

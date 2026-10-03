@@ -62,6 +62,10 @@ func (c *Core) UpsertStream(ctx context.Context, spec domain.StreamSpec) (*domai
 		return nil, domain.ErrCoreClosed
 	}
 
+	if err := domain.ValidateStreamName(spec.Name); err != nil {
+		return nil, errors.Join(domain.ErrStreamBuildFailed, err)
+	}
+
 	// Reject structurally invalid specs before touching the running stream.
 	tree, err := newTree(spec)
 	if err != nil {

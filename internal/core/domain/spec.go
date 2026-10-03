@@ -4,8 +4,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"regexp"
 	"slices"
 )
+
+// streamNamePattern allows letters, digits, dots, dashes and underscores, and
+// requires a letter or digit first. Drivers use the name as an identifier
+// outside the core, e.g. the file sync as a file name, so it must not contain
+// path separators or be a relative path like "..". It covers the names the
+// Kubernetes operator builds from namespace and resource name.
+var streamNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// ValidateStreamName reports whether name can be used as a stream name.
+func ValidateStreamName(name string) error {
+	if !streamNamePattern.MatchString(name) {
+		return fmt.Errorf("%w: %q must match %s", ErrInvalidStreamName, name, streamNamePattern)
+	}
+	return nil
+}
 
 func ParseSpec[T any](raw map[string]any, spec T) (T, error) {
 	if raw == nil {

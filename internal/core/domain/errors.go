@@ -19,6 +19,7 @@ var (
 	ErrStreamWireStages     = errors.New("cannot wire stage")
 	ErrStreamWireSinks      = errors.New("cannot wire sink")
 	ErrStreamNotFound       = errors.New("stream not found")
+	ErrInvalidStreamName    = errors.New("stream name is invalid")
 	ErrStreamStopFailed     = errors.New("stream stop failed")
 	ErrStreamWireFailed     = errors.New("stream wire failed")
 	ErrStreamBuildFailed    = errors.New("stream build failed")

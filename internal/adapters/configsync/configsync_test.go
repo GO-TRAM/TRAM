@@ -56,6 +56,31 @@ func run(t *testing.T, cs *configsync.ConfigSync) {
 	})
 }
 
+func TestStreamNameCannotEscapeDirectory(t *testing.T) {
+	t.Parallel()
+
+	// dir is nested, so a file escaping it would land in parent.
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "config")
+	require.NoError(t, os.Mkdir(dir, 0o700))
+
+	c := newCore(t)
+	cs, err := configsync.New(c, dir, slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+	run(t, cs)
+
+	// As a client of the API could send it.
+	_, err = c.UpsertStream(t.Context(), domain.StreamSpec{
+		Name:   "../escape",
+		Source: domain.SourceSpec{Name: "generator", Type: "generator", Spec: map[string]any{"interval": "1h"}},
+		Sinks:  []domain.SinkSpec{{Name: "debug", Type: "debug", From: "generator"}},
+	})
+	require.ErrorIs(t, err, domain.ErrInvalidStreamName)
+
+	_, err = os.Stat(filepath.Join(parent, "escape.json"))
+	assert.ErrorIs(t, err, os.ErrNotExist, "file written outside the config directory")
+}
+
 func TestUnreadableFileKeepsStream(t *testing.T) {
 	t.Parallel()
 
