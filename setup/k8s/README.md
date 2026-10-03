@@ -1,18 +1,18 @@
-# OTLP Sink Kubernetes Examples
+# Tram Example Configurations for Kubernetes
 
-This directory contains Kubernetes YAML configurations for deploying Tram streams with OTLP sinks in Kubernetes environments. Each example has a corresponding JSON configuration in the `../config/` directory with the same base filename.
+This directory contains Kubernetes YAML configurations for deploying Tram streams in Kubernetes environments. Each example has a corresponding JSON configuration in the `../config/` directory with the same base filename.
 
 ## Quick Start
 
 ### Prerequisites
 - Kubernetes cluster
 - Tram operator installed
-- OpenTelemetry Collector deployment (or similar OTLP-compatible endpoint)
+- NATS server or OpenTelemetry Collector deployment (depending on the example)
 
-### Deploy a Basic OTLP Stream
+### Deploy a Stream
 
 ```bash
-# Deploy the basic OTLP forwarding stream
+# Deploy a basic OTLP forwarding stream
 kubectl apply -f otlp_basic.yaml
 
 # Check the stream status
@@ -21,9 +21,81 @@ kubectl get streams
 
 ## Available Examples
 
+### Basic OTLP Examples
+
+These examples demonstrate using the OTLP sink in Tram for various use cases.
+
+#### [`otlp_basic.yaml`](otlp_basic.yaml)
+**Purpose**: Basic OTLP to OTLP forwarding
+- Receives OTLP data on port 4318
+- Forwards to a central OTLP collector
+- No processing stages
+- **JSON version**: [../config/otlp_basic.json](../config/otlp_basic.json)
+
+#### [`otlp_secure.yaml`](otlp_secure.yaml)
+**Purpose**: Secure OTLP forwarding with authentication
+- HTTPS endpoint
+- Bearer token authentication
+- Custom headers for metadata
+- **JSON version**: [../config/otlp_secure.json](../config/otlp_secure.json)
+
+#### [`otlp_insecure_dev.yaml`](otlp_insecure_dev.yaml)
+**Purpose**: Development configuration with insecure TLS
+- HTTPS endpoint with invalid certificate acceptance
+- Useful for local development and testing
+- Generator source for testing
+- **JSON version**: [../config/otlp_insecure_dev.json](../config/otlp_insecure_dev.json)
+
+### Processing Pipeline Examples
+
+#### [`otlp_batch.yaml`](otlp_batch.yaml)
+**Purpose**: High-throughput OTLP forwarding with batching
+- Batches events for better throughput
+- 1000 records max per batch
+- 200ms timeout for batch flush
+- **JSON version**: [../config/otlp_batch.json](../config/otlp_batch.json)
+
+#### [`otlp_with_filters.yaml`](otlp_with_filters.yaml)
+**Purpose**: OTLP forwarding with CEL filtering
+- Filters logs based on customer attribute
+- Sends filtered data to customer-specific endpoint
+- **JSON version**: [../config/otlp_with_filters.json](../config/otlp_with_filters.json)
+
+#### [`otlp_with_validation.yaml`](otlp_with_validation.yaml)
+**Purpose**: Validated OTLP forwarding with CEL validation
+- Validates that all resources have `service.name` attribute
+- Rejects invalid data
+- **JSON version**: [../config/otlp_with_validation.json](../config/otlp_with_validation.json)
+
+### Multi-Sink Examples
+
+#### [`otlp_multi_sink.yaml`](otlp_multi_sink.yaml)
+**Purpose**: Multiple OTLP sinks from a single source (fan-out)
+- Splits data into different streams using filters
+- Sends error/warn logs to one endpoint
+- Sends all data to another endpoint
+- **JSON version**: [../config/otlp_multi_sink.json](../config/otlp_multi_sink.json)
+
+### Integration Examples
+
+#### [`otlp_nats_bridge.yaml`](otlp_nats_bridge.yaml)
+**Purpose**: Bridges NATS JetStream to OTLP HTTP
+- Consumes from NATS JetStream
+- Uses durable consumer with multiple workers
+- Batches messages for efficiency
+- Forwards to central OTLP collector
+- **JSON version**: [../config/otlp_nats_bridge.json](../config/otlp_nats_bridge.json)
+
+#### [`otlp_benchmark.yaml`](otlp_benchmark.yaml)
+**Purpose**: High-performance benchmark configuration
+- Generator source for load testing
+- Large batch sizes (8192 records)
+- Short batch timeout (100ms)
+- **JSON version**: [../config/otlp_benchmark.json](../config/otlp_benchmark.json)
+
 ### Benchmark Configurations
 
-These configurations match the exact scenarios used in the Tram benchmarks (see BENCHMARK.md).
+These configurations match the exact scenarios used in the Tram benchmarks (see [BENCHMARK.md](../../BENCHMARK.md)). They demonstrate pipelines with OTLP sources, various processing stages, and NATS sinks.
 
 #### [`benchmark_otlp_nats.yaml`](benchmark_otlp_nats.yaml)
 **Purpose**: Exact configuration for the `otlp-nats` benchmark scenario: OTLP → NATS
@@ -45,68 +117,6 @@ These configurations match the exact scenarios used in the Tram benchmarks (see 
 - Uses durable consumer with workers as in benchmarks
 - **JSON version**: [../config/benchmark_nats_filter_nats.json](../config/benchmark_nats_filter_nats.json)
 
-### [`otlp_basic.yaml`](otlp_basic.yaml)
-**Purpose**: Basic OTLP to OTLP forwarding
-- Receives OTLP data on port 4318
-- Forwards to a central OTLP collector
-- No processing stages
-- **JSON version**: [../config/otlp_basic.json](../config/otlp_basic.json)
-
-### [`otlp_secure.yaml`](otlp_secure.yaml)
-**Purpose**: Secure OTLP forwarding with authentication
-- HTTPS endpoint
-- Bearer token authentication
-- Custom headers for metadata
-- **JSON version**: [../config/otlp_secure.json](../config/otlp_secure.json)
-
-### [`otl_insecure_dev.yaml`](otlp_insecure_dev.yaml)
-**Purpose**: Development configuration with insecure TLS
-- HTTPS endpoint with invalid certificate acceptance
-- Useful for local development and testing
-- Generator source for testing
-- **JSON version**: [../config/otlp_insecure_dev.json](../config/otlp_insecure_dev.json)
-
-### [`otlp_batch.yaml`](otlp_batch.yaml)
-**Purpose**: High-throughput OTLP forwarding with batching
-- Batches events for better throughput
-- 1000 records max per batch
-- 200ms timeout for batch flush
-- **JSON version**: [../config/otlp_batch.json](../config/otlp_batch.json)
-
-### [`otlp_with_filters.yaml`](otlp_with_filters.yaml)
-**Purpose**: OTLP forwarding with CEL filtering
-- Filters logs based on customer attribute
-- Sends filtered data to customer-specific endpoint
-- **JSON version**: [../config/otlp_with_filters.json](../config/otlp_with_filters.json)
-
-### [`otlp_with_validation.yaml`](otlp_with_validation.yaml)
-**Purpose**: Validated OTLP forwarding with CEL validation
-- Validates that all resources have `service.name` attribute
-- Rejects invalid data
-- **JSON version**: [../config/otlp_with_validation.json](../config/otlp_with_validation.json)
-
-### [`otlp_multi_sink.yaml`](otlp_multi_sink.yaml)
-**Purpose**: Multiple OTLP sinks from a single source (fan-out)
-- Splits data into different streams using filters
-- Sends error/warn logs to one endpoint
-- Sends all data to another endpoint
-- **JSON version**: [../config/otlp_multi_sink.json](../config/otlp_multi_sink.json)
-
-### [`otlp_nats_bridge.yaml`](otlp_nats_bridge.yaml)
-**Purpose**: Bridges NATS JetStream to OTLP HTTP
-- Consumes from NATS JetStream
-- Uses durable consumer with multiple workers
-- Batches messages for efficiency
-- Forwards to central OTLP collector
-- **JSON version**: [../config/otlp_nats_bridge.json](../config/otlp_nats_bridge.json)
-
-### [`otlp_benchmark.yaml`](otlp_benchmark.yaml)
-**Purpose**: High-performance benchmark configuration
-- Generator source for load testing
-- Large batch sizes (8192 records)
-- Short batch timeout (100ms)
-- **JSON version**: [../config/otlp_benchmark.json](../config/otlp_benchmark.json)
-
 ## Configuration Reference
 
 ### Service Discovery
@@ -121,6 +131,21 @@ spec:
       from: my_source
       spec:
         url: "http://otel-collector-service.namespace.svc.cluster.local:4318"
+```
+
+### NATS Configuration
+
+For NATS-based examples, configure the NATS server connection:
+
+```yaml
+sources:
+  - type: nats
+    name: my_source
+    spec:
+      url: "nats://nats-server:4222"
+      stream: "my-stream"
+      durable: "my-durable-consumer"
+      workers: 8
 ```
 
 ### Environment Variables
@@ -149,13 +174,13 @@ kubectl apply -f your-stream.yaml
 
 #### CPU/Memory Requests
 
-For high-throughput OTLP sinks, consider adding resource requests:
+For high-throughput configurations, consider adding resource requests:
 
 ```yaml
 apiVersion: io.tram.core/v1
 kind: Stream
 metadata:
-  name: high-volume-otlp
+  name: high-volume-stream
   annotations:
     tram.io/cpu-request: "500m"
     tram.io/cpu-limit: "1000m"
@@ -173,12 +198,12 @@ For variable workloads, consider HPA:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: tram-otlp-hpa
+  name: tram-stream-hpa
 spec:
   scaleTargetRef:
     apiVersion: io.tram.core/v1
     kind: Stream
-    name: otlp-stream
+    name: my-stream
   minReplicas: 2
   maxReplicas: 10
   metrics:
@@ -206,6 +231,29 @@ spec:
         url: "http://otel-collector:4318"
 ```
 
+### NATS JetStream Integration
+
+For NATS-based pipelines:
+
+```yaml
+sources:
+  - type: nats
+    name: nats_source
+    spec:
+      url: "nats://nats-server:4222"
+      stream: "input-stream"
+      durable: "tram-consumer"
+      workers: 4
+
+sinks:
+  - type: nats
+    name: nats_sink
+    from: nats_source
+    spec:
+      url: "nats://nats-server:4222"
+      subject: "output.subject"
+```
+
 ### Multi-Region Deployment
 
 Deploy different streams for different regions:
@@ -215,7 +263,7 @@ Deploy different streams for different regions:
 apiVersion: io.tram.core/v1
 kind: Stream
 metadata:
-  name: otlp-region-a
+  name: my-stream-region-a
   labels:
     region: a
 # ...
@@ -224,7 +272,7 @@ metadata:
 apiVersion: io.tram.core/v1
 kind: Stream
 metadata:
-  name: otlp-region-b
+  name: my-stream-region-b
   labels:
     region: b
 # ...
@@ -248,15 +296,15 @@ kubectl apply -f otlp_benchmark.yaml
 
 Check stream health:
 ```bash
-kubectl get stream otlp-stream -o yaml
-kubectl describe stream otlp-stream
+kubectl get stream my-stream -o yaml
+kubectl describe stream my-stream
 ```
 
 ### Logs
 
 View stream logs:
 ```bash
-kubectl logs -l app=tram,stream=otlp-stream
+kubectl logs -l app=tram,stream=my-stream
 ```
 
 ### Metrics
@@ -317,7 +365,7 @@ sinks:
 
 ### Connection Issues
 
-Check connectivity to your OTLP endpoint:
+Check connectivity to your endpoints:
 ```bash
 # From within the cluster
 kubectl exec -it tram-pod -- curl -v http://otel-collector:4318/v1/logs
@@ -355,7 +403,7 @@ kubectl exec -it tram-pod -- ls /secrets
 
 ## Security Best Practices
 
-1. **Use HTTPS**: Always use HTTPS in production
+1. **Use HTTPS**: Always use HTTPS in production for external endpoints
 2. **TLS Certificates**: Use proper TLS certificates, not `insecure: true`
 3. **Secrets Management**: Use Kubernetes Secrets for sensitive data
 4. **Network Policies**: Restrict access to your Tram streams
@@ -366,7 +414,7 @@ Example NetworkPolicy:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: tram-allow-otel
+  name: tram-allow-endpoints
 spec:
   podSelector:
     matchLabels:
@@ -381,6 +429,13 @@ spec:
       ports:
         - protocol: TCP
           port: 4318
+    - to:
+        - podSelector:
+            matchLabels:
+              app: nats
+      ports:
+        - protocol: TCP
+          port: 4222
 ```
 
 ## JSON Configuration Equivalents
@@ -396,5 +451,9 @@ All Kubernetes YAML examples in this directory have corresponding JSON configura
 - `k8s/otlp_nats_bridge.yaml` ↔ `config/otlp_nats_bridge.json`
 - `k8s/otlp_benchmark.yaml` ↔ `config/otlp_benchmark.json`
 - `k8s/otlp_insecure_dev.yaml` ↔ `config/otlp_insecure_dev.json`
+- `k8s/benchmark_otlp_nats.yaml` ↔ `config/benchmark_otlp_nats.json`
+- `k8s/benchmark_otlp_batch_nats.yaml` ↔ `config/benchmark_otlp_batch_nats.json`
+- `k8s/benchmark_otlp_split_nats.yaml` ↔ `config/benchmark_otlp_split_nats.json`
+- `k8s/benchmark_nats_filter_nats.yaml` ↔ `config/benchmark_nats_filter_nats.json`
 
 See [JSON Examples](../config/README.md) for detailed JSON configuration documentation.
