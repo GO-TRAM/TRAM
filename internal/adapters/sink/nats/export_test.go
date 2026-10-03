@@ -2,6 +2,7 @@ package nats
 
 import (
 	"github.com/go-playground/validator/v10"
+	"github.com/nats-io/nats.go/jetstream"
 
 	"codeberg.org/eljoth/tram/internal/adapters/sink/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
@@ -25,6 +26,26 @@ func NewWithoutConnection(spec map[string]any, validator *validator.Validate) (*
 		return nil, err
 	}
 	return &NATS{Sink: b, subjects: compiled}, nil
+}
+
+func SubjectCovers(pattern, subject string) bool {
+	return subjectCovers(pattern, subject)
+}
+
+// StreamUpdate describes what MergeStreamConfig changed.
+type StreamUpdate struct {
+	Changed        bool
+	Subjects       []string
+	ReplacedLimits []string
+}
+
+func MergeStreamConfig(existing jetstream.StreamConfig, spec *Spec) (jetstream.StreamConfig, StreamUpdate, error) {
+	merged, update, err := mergeStreamConfig(existing, spec)
+	return merged, StreamUpdate{
+		Changed:        update.changed(),
+		Subjects:       update.subjects,
+		ReplacedLimits: update.replacedLimits,
+	}, err
 }
 
 func GroupEventsBySubjects(n *NATS, event *domain.Event) ([]Message, error) {

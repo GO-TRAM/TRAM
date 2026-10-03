@@ -86,6 +86,49 @@ func TestNATS(t *testing.T) {
 		)
 	})
 
+	// Two sinks share a JetStream stream that was set up beforehand. Each adds
+	// its subjects, and neither removes the other's or resets the stream's
+	// limits.
+	t.Run("sinks share a stream set up beforehand", func(t *testing.T) {
+		t.Parallel()
+
+		shared := n.stream("shared")
+		_, err := n.js.CreateStream(t.Context(), jetstream.StreamConfig{
+			Name:     shared,
+			Subjects: []string{shared + ".other"},
+			MaxAge:   time.Hour,
+		})
+		require.NoError(t, err)
+
+		sink := func(name, branch string) domain.SinkSpec {
+			prefix := shared + "." + branch
+			return domain.SinkSpec{Name: name, Type: "nats", From: "in", Spec: map[string]any{
+				"url":    n.url,
+				"stream": shared,
+				"subject": map[string]any{
+					"register": []any{prefix + ".>"},
+					"logs": fmt.Sprintf(
+						"'%s.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
+						prefix,
+					),
+				},
+			}}
+		}
+		p := newPipeline(t, nil, []domain.SinkSpec{sink("sink-a", "a"), sink("sink-b", "b")})
+
+		require.Equal(t, http.StatusOK, p.post(t, request("shop", rec{"r1", "A"}), 10*time.Second))
+		assert.Equal(t, map[string][]string{
+			shared + ".a.shop": {"shop/e2e/r1"},
+			shared + ".b.shop": {"shop/e2e/r1"},
+		}, bySubject(t, n.read(t, shared)))
+
+		stream, err := n.js.Stream(t.Context(), shared)
+		require.NoError(t, err)
+		config := stream.CachedInfo().Config
+		assert.ElementsMatch(t, []string{shared + ".other", shared + ".a.>", shared + ".b.>"}, config.Subjects)
+		assert.Equal(t, time.Hour, config.MaxAge, "limits set beforehand are kept")
+	})
+
 	// What Tram's NATS sink publishes is consumed by Tram's NATS source in a
 	// second stream, filtered there, and arrives with resource and scope.
 	t.Run("sink to source round trip", func(t *testing.T) {

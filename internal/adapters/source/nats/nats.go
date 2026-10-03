@@ -33,6 +33,13 @@ const (
 	// fetchTimeout bounds how long one fetch waits for messages. Stopping the
 	// source cancels a pending fetch right away.
 	fetchTimeout = 5 * time.Second
+
+	// After a failed fetch, the worker waits before the next one. The wait
+	// grows by fetchRetryGrowth with every failure in a row, between these
+	// bounds.
+	minFetchRetryDelay = 100 * time.Millisecond
+	maxFetchRetryDelay = 5 * time.Second
+	fetchRetryGrowth   = 2
 )
 
 type NATS struct {
@@ -121,31 +128,56 @@ func (n *NATS) Run(ctx context.Context) error {
 	return nil
 }
 
-// worker fetches messages until the source is stopped. Fetches are
-// interrupted by Stop; deliveries use ctx, so a message being processed when
-// the source stops is still delivered and acknowledged.
+// worker fetches messages until the source is stopped. Fetches and the wait
+// after a failed fetch are interrupted by Stop; deliveries use ctx, so a
+// message being processed when the source stops is still delivered and
+// acknowledged.
 func (n *NATS) worker(ctx context.Context, cons jetstream.Consumer) {
+	var delay time.Duration
 	for n.stop.Err() == nil {
-		fetchCtx, cancel := context.WithTimeout(n.stop, fetchTimeout)
-		msgs, err := cons.Fetch(fetchBatch, jetstream.FetchContext(fetchCtx))
-		if err != nil {
-			cancel()
-			if n.stop.Err() == nil {
-				n.logger.ErrorContext(
-					ctx,
-					"Could not fetch messages",
-					slog.String("source", n.Name()),
-					slog.Any("error", err),
-				)
-			}
+		err := n.fetch(ctx, cons)
+		if err == nil || n.stop.Err() != nil {
+			delay = 0
 			continue
 		}
 
-		for msg := range msgs.Messages() {
-			n.handle(ctx, msg)
+		// Failing fetches often fail right away, e.g. while disconnected, so
+		// the worker waits before the next one instead of spinning.
+		delay = min(max(fetchRetryGrowth*delay, minFetchRetryDelay), maxFetchRetryDelay)
+		n.logger.ErrorContext(ctx, "Could not fetch messages, retrying",
+			slog.String("source", n.Name()), slog.Duration("delay", delay), slog.Any("error", err))
+
+		timer := time.NewTimer(delay)
+		select {
+		case <-timer.C:
+		case <-n.stop.Done():
+			timer.Stop()
 		}
-		cancel()
 	}
+}
+
+// fetch fetches one batch of messages and handles them. It returns the error
+// of a failed fetch, which is reported either right away or once the batch
+// has ended.
+func (n *NATS) fetch(ctx context.Context, cons jetstream.Consumer) error {
+	fetchCtx, cancel := context.WithTimeout(n.stop, fetchTimeout)
+	defer cancel()
+
+	msgs, err := cons.Fetch(fetchBatch, jetstream.FetchContext(fetchCtx))
+	if err != nil {
+		return err
+	}
+	for msg := range msgs.Messages() {
+		n.handle(ctx, msg)
+	}
+
+	// A batch that ends because the wait is over or the source stops did not
+	// fail.
+	err = msgs.Error()
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return nil
+	}
+	return err
 }
 
 func (n *NATS) handle(ctx context.Context, msg jetstream.Msg) {

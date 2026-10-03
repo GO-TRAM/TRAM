@@ -454,7 +454,7 @@ Sends OpenTelemetry Protocol data via HTTP to an OTLP-compatible endpoint. Sends
 
 ### NATS Sink
 
-Publishes OTLP-encoded events to NATS JetStream. Uses dynamic subject mapping with CEL expressions to route different telemetry data to appropriate subjects. Automatically creates or updates the specified stream with the configured settings.
+Publishes OTLP-encoded events to NATS JetStream. Uses dynamic subject mapping with CEL expressions to route different telemetry data to appropriate subjects. Creates the specified stream if it does not exist, and otherwise only adds what the sink needs to it.
 
 **Type:** `nats`
 
@@ -531,7 +531,8 @@ Signals without an expression are not published by this sink.
 ```
 
 **Behavior Notes:**
-- The sink creates the JetStream stream or updates it with `register`, `retention` and `size` when the stream is created in Tram. Settings changed elsewhere are overwritten
+- When the stream is created in Tram, the sink creates a missing JetStream stream from `register`, `retention` and `size`. An existing stream is only extended: `register` subjects it does not cover yet are added, and `retention` and `size` are applied if set. Other settings, limits that are not set, and the subjects of other sinks or writers are kept, so several sinks can share a stream and it can be configured outside Tram
+- Subjects are never removed from a stream; removing one from `register` leaves it on the stream. Set `retention` and `size` in one sink only, since sinks with different values replace each other's when they start
 - Records are grouped by their resolved subject and published as one OTLP message per subject and signal type, so different signal types may share a subject. Each message has a `Tram-Signal` header with the signal type, which the [NATS Source](#nats-source) needs to decode it
 - Records keep their resource and scope. If all records of a signal type resolve to the same subject, the payload is published unchanged. Resources that appear in several entries of an event, e.g. after a `batch` stage, stay separate entries in the message, which OTLP allows
 - The `register` subjects configure the stream, while the CEL expressions determine the subject of each record. Records whose subject is not covered by `register` cannot be published

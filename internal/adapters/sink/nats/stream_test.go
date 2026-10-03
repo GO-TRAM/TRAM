@@ -1,0 +1,125 @@
+package nats_test
+
+import (
+	"testing"
+	"time"
+
+	"github.com/nats-io/nats.go/jetstream"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	natssink "codeberg.org/eljoth/tram/internal/adapters/sink/nats"
+)
+
+func TestSubjectCovers(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		pattern, subject string
+		expected         bool
+	}{
+		{pattern: "logs.a", subject: "logs.a", expected: true},
+		{pattern: "logs.a", subject: "logs.b", expected: false},
+		{pattern: "logs.*", subject: "logs.a", expected: true},
+		{pattern: "logs.*", subject: "logs.*", expected: true},
+		{pattern: "logs.*", subject: "logs.a.b", expected: false},
+		{pattern: "logs.*", subject: "logs.>", expected: false},
+		{pattern: "logs.>", subject: "logs.a", expected: true},
+		{pattern: "logs.>", subject: "logs.a.b", expected: true},
+		{pattern: "logs.>", subject: "logs.*", expected: true},
+		{pattern: "logs.>", subject: "logs.>", expected: true},
+		{pattern: "logs.>", subject: "logs", expected: false},
+		{pattern: ">", subject: "anything.at.all", expected: true},
+		{pattern: "logs.a", subject: "logs.*", expected: false},
+		{pattern: "logs.a", subject: "logs.a.b", expected: false},
+		{pattern: "logs.a.b", subject: "logs.a", expected: false},
+		{pattern: "*.a", subject: "logs.a", expected: true},
+	}
+
+	for _, c := range cases {
+		assert.Equal(t, c.expected, natssink.SubjectCovers(c.pattern, c.subject), "%q covers %q", c.pattern, c.subject)
+	}
+}
+
+func TestMergeStreamConfig(t *testing.T) {
+	t.Parallel()
+
+	// existing is a stream set up by an operator, with settings no sink knows.
+	existing := func() jetstream.StreamConfig {
+		return jetstream.StreamConfig{
+			Name:     "telemetry",
+			Subjects: []string{"logs.>"},
+			MaxAge:   time.Hour,
+			MaxBytes: 1000,
+			Replicas: 3,
+			Storage:  jetstream.MemoryStorage,
+			Discard:  jetstream.DiscardNew,
+		}
+	}
+	spec := func(register ...string) *natssink.Spec {
+		return &natssink.Spec{Stream: "telemetry", Subject: natssink.SubjectSpec{Register: register}}
+	}
+
+	t.Run("covered subjects and no limits change nothing", func(t *testing.T) {
+		t.Parallel()
+
+		merged, update, err := natssink.MergeStreamConfig(existing(), spec("logs.>", "logs.a", "logs.*.b"))
+		require.NoError(t, err)
+		assert.False(t, update.Changed)
+		assert.Equal(t, existing(), merged, "unset limits and other settings are kept")
+	})
+
+	t.Run("adds missing subjects and keeps the others", func(t *testing.T) {
+		t.Parallel()
+
+		in := existing()
+		merged, update, err := natssink.MergeStreamConfig(in, spec("metrics.>", "metrics.>", "traces.a"))
+		require.NoError(t, err)
+		assert.True(t, update.Changed)
+		assert.Equal(t, []string{"metrics.>", "traces.a"}, update.Subjects)
+
+		expected := existing()
+		expected.Subjects = []string{"logs.>", "metrics.>", "traces.a"}
+		assert.Equal(t, expected, merged)
+		assert.Equal(t, []string{"logs.>"}, in.Subjects, "the existing config is not modified")
+	})
+
+	t.Run("applies limits set in the spec", func(t *testing.T) {
+		t.Parallel()
+
+		s := spec("logs.>")
+		s.Retention = "2h"
+		s.Size = 2000
+		merged, update, err := natssink.MergeStreamConfig(existing(), s)
+		require.NoError(t, err)
+		assert.True(t, update.Changed)
+		assert.Equal(t, 2*time.Hour, merged.MaxAge)
+		assert.Equal(t, int64(2000), merged.MaxBytes)
+		assert.Equal(t, []string{"retention 1h0m0s -> 2h0m0s", "size 1000 -> 2000"}, update.ReplacedLimits)
+		assert.Equal(t, 3, merged.Replicas, "other settings are kept")
+	})
+
+	t.Run("setting a limit the stream does not have replaces nothing", func(t *testing.T) {
+		t.Parallel()
+
+		in := existing()
+		in.MaxAge = 0
+		in.MaxBytes = -1
+		s := spec("logs.>")
+		s.Retention = "2h"
+		s.Size = 2000
+		_, update, err := natssink.MergeStreamConfig(in, s)
+		require.NoError(t, err)
+		assert.True(t, update.Changed)
+		assert.Empty(t, update.ReplacedLimits)
+	})
+
+	t.Run("invalid retention", func(t *testing.T) {
+		t.Parallel()
+
+		s := spec("logs.>")
+		s.Retention = "soon"
+		_, _, err := natssink.MergeStreamConfig(existing(), s)
+		assert.ErrorContains(t, err, "invalid retention")
+	})
+}

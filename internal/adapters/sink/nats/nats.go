@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
-	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/cel-go/cel"
@@ -76,7 +75,13 @@ func New(sink domain.SinkSpec, validator *validator.Validate, logger *slog.Logge
 		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
 	}
 
-	js, stream, err := setUpStream(nc, base.Spec())
+	js, err := jetstream.New(nc)
+	if err != nil {
+		nc.Close()
+		return nil, fmt.Errorf("failed to initialize JetStream: %w", err)
+	}
+
+	stream, err := setUpStream(context.Background(), js, base.Spec(), logger)
 	if err != nil {
 		nc.Close()
 		return nil, err
@@ -90,35 +95,6 @@ func New(sink domain.SinkSpec, validator *validator.Validate, logger *slog.Logge
 		jetstream: js,
 		stream:    stream,
 	}, nil
-}
-
-// setUpStream creates the JetStream stream or updates it to the spec.
-func setUpStream(nc *nats.Conn, spec *Spec) (jetstream.JetStream, jetstream.Stream, error) {
-	js, err := jetstream.New(nc)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize JetStream: %w", err)
-	}
-
-	config := jetstream.StreamConfig{
-		Name:     spec.Stream,
-		Subjects: spec.Subject.Register,
-	}
-	if spec.Retention != "" {
-		retention, parseErr := time.ParseDuration(spec.Retention)
-		if parseErr != nil {
-			return nil, nil, fmt.Errorf("invalid retention: %w", parseErr)
-		}
-		config.MaxAge = retention
-	}
-	if spec.Size != 0 {
-		config.MaxBytes = spec.Size
-	}
-
-	stream, err := js.CreateOrUpdateStream(context.Background(), config)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create stream: %w", err)
-	}
-	return js, stream, nil
 }
 
 func compileSubjects(subject SubjectSpec) (subjects, error) {
