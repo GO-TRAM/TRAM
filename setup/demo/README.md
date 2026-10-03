@@ -1,6 +1,6 @@
 # Tram Demo: Logs, Metrics and Traces into OpenObserve
 
-This demo runs Tram between OTLP clients and [OpenObserve](https://openobserve.ai), with Grafana on top. Synthetic clients send logs, metrics and traces to Tram; Tram filters each signal, batches them and forwards them to OpenObserve, where Grafana dashboards show what arrived.
+This demo runs Tram between OTLP clients and [OpenObserve](https://openobserve.ai), with Grafana on top. Synthetic clients send logs, metrics and traces to Tram; Tram filters each signal, batches them and forwards them to OpenObserve, where Grafana dashboards show what arrived. Tram's own metrics go to OpenObserve too, so a fourth dashboard shows how Tram handles the data.
 
 ## Quick Start
 
@@ -14,7 +14,7 @@ Then open:
 
 | URL | What |
 |-----|------|
-| http://localhost:3000 | Grafana, without login. Opens the **Logs through Tram** dashboard; **Metrics through Tram** and **Traces through Tram** are linked at the top |
+| http://localhost:3000 | Grafana, without login. Opens the **Logs through Tram** dashboard; **Metrics through Tram**, **Traces through Tram** and **Tram internals** are linked at the top |
 | http://localhost:5080 | OpenObserve UI, login `root@example.com` / `Complexpass#123` |
 | http://localhost:8080 | Tram HTTP API, e.g. `curl localhost:8080/v1/streams` |
 
@@ -38,6 +38,7 @@ Task uses Podman if it is installed and Docker otherwise; set `CONTAINER_TOOL=do
 | `checkout-traces` | telemetrygen | Sends traces of the `checkout` service, 1 trace/s with a 100ms root span `lets-go` and two 50ms child spans |
 | `debug-noise-traces` | telemetrygen | Sends traces of the `debug-noise` service, 5 traces/s |
 | `openobserve` | OpenObserve | Stores logs, metrics and traces. Data is kept in the container only and is lost when it is removed |
+| `prometheus` | Prometheus in agent mode | Scrapes Tram's own metrics from `http://tram:8080/metrics` every 5s and writes them to OpenObserve with remote write, see [`prometheus/prometheus.yml`](prometheus/prometheus.yml). In agent mode, it does not store or query them itself |
 | `grafana` | Grafana with the OpenObserve and Infinity plugins, see [`grafana/Dockerfile`](grafana/Dockerfile) | Dashboards from [`grafana/provisioning`](grafana/provisioning) |
 
 All clients send OTLP/HTTP to Tram's source on port 4318, which is also published on localhost, so you can send your own data.
@@ -70,10 +71,11 @@ The dashboards:
 
 - **Logs through Tram**: log records by service and by severity, and the latest 200 log lines. Only `checkout` and `INFO` show up.
 - **Metrics through Tram**: the rate and value of `checkout.orders`, and a panel for `debug.cache.size` that stays empty because Tram drops it.
+- **Tram internals**: Tram's own metrics, see [Metrics](../../README.md#metrics). Records the sources accepted per signal, the records each node received, the share each stage drops per signal, how many records a sink sends per request, the p95 duration per node, errors and rejections, and Tram's goroutines, heap and CPU. The p95 duration shows the backpressure: the batch stages wait for their flush, 5s for logs and 1s for metrics and traces, while the sinks answer within milliseconds.
 - **Traces through Tram**: spans by service and the p95 span duration by operation, both showing only `checkout`, a table of the latest traces, and Grafana's trace view for the trace selected at the top. It defaults to the latest trace; click a trace ID in the table to show that one.
 
 The OpenObserve plugin is unsigned and not in the Grafana plugin catalog. OpenObserve only publishes its latest build, so its version in the Grafana image is not pinned. Infinity is pinned to 3.7.1, the last version that supports Grafana 11.5.
 
 ## Credentials
 
-The OpenObserve root user is set in `compose.yaml`. Tram's sinks and Grafana's datasources use the same credentials, the sinks as a Base64-encoded `Authorization` header. If you change them, update [`config/otlp_to_openobserve.json`](config/otlp_to_openobserve.json) and [`grafana/provisioning/datasources/openobserve.yaml`](grafana/provisioning/datasources/openobserve.yaml) too. The credentials and Grafana's anonymous admin access are meant for a local demo only.
+The OpenObserve root user is set in `compose.yaml`. Tram's sinks and Grafana's datasources use the same credentials, the sinks as a Base64-encoded `Authorization` header. If you change them, update [`config/otlp_to_openobserve.json`](config/otlp_to_openobserve.json), [`prometheus/prometheus.yml`](prometheus/prometheus.yml) and [`grafana/provisioning/datasources/openobserve.yaml`](grafana/provisioning/datasources/openobserve.yaml) too. The credentials and Grafana's anonymous admin access are meant for a local demo only.

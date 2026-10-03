@@ -17,6 +17,11 @@
       "title": "Traces through Tram",
       "type": "link",
       "url": "/d/tram-traces"
+    },
+    {
+      "title": "Tram internals",
+      "type": "link",
+      "url": "/d/tram-internals"
     }
   ],
   "panels": [

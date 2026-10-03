@@ -41,7 +41,10 @@ func newMetrics(provider metric.MeterProvider) (*metrics, error) {
 		metric.WithUnit("{record}"),
 	)
 	recordsOut, recordsOutErr := meter.Int64Counter("tram.node.records.out",
-		metric.WithDescription("Records a source or stage passed on, counted once however many children it has"),
+		metric.WithDescription(
+			"Records a source or stage passed on: log records, metric data points and spans, "+
+				"each counted once however many children it has",
+		),
 		metric.WithUnit("{record}"),
 	)
 	duration, durationErr := meter.Float64Histogram(
@@ -55,9 +58,15 @@ func newMetrics(provider metric.MeterProvider) (*metrics, error) {
 }
 
 // durationBuckets reach from a sink answering within a millisecond to a batch
-// stage waiting several seconds for its flush.
+// stage waiting several seconds for its flush. They are finer in seconds, as
+// a batch stage waits just over its timeout, which is usually a round number
+// of seconds; with coarse buckets, its quantiles would come out close to the
+// next bucket bound instead.
 func durationBuckets() []float64 {
-	return []float64{0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10}
+	return []float64{
+		0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5,
+		0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 7.5, 10, 15, 30,
+	}
 }
 
 // nodeAttributes builds the measurement options for node of stream with one
@@ -81,7 +90,10 @@ type recordCounter struct {
 	logs, dataPoints, spans []metric.AddOption
 }
 
-func newRecordCounter(counter metric.Int64Counter, with func(key, value string) metric.MeasurementOption) recordCounter {
+func newRecordCounter(
+	counter metric.Int64Counter,
+	with func(key, value string) metric.MeasurementOption,
+) recordCounter {
 	add := func(signal domain.Signal) []metric.AddOption {
 		return []metric.AddOption{with("signal", string(signal))}
 	}

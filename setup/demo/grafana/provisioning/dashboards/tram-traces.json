@@ -19,6 +19,11 @@
       "title": "Metrics through Tram",
       "type": "link",
       "url": "/d/tram-metrics"
+    },
+    {
+      "title": "Tram internals",
+      "type": "link",
+      "url": "/d/tram-internals"
     }
   ],
   "templating": {

@@ -20,6 +20,8 @@ const (
 	// Sinks of these types fail every event, permanently or not.
 	rejectingType = "rejecting"
 	failingType   = "failing"
+	// Stages of this type pass every event on; others swallow it.
+	forwardingType = "forwarding"
 )
 
 // registry tracks the components created by the fake factories.
@@ -144,7 +146,20 @@ func (f sourceFactory) New(spec domain.SourceSpec) (domain.Source, error) {
 type fakeStage struct {
 	fakeSink
 
-	subs []domain.Subscriber
+	forward bool
+	subs    []domain.Subscriber
+}
+
+func (s *fakeStage) Notify(ctx context.Context, event *domain.Event) error {
+	if !s.forward {
+		return s.fakeSink.Notify(ctx, event)
+	}
+	for _, sub := range s.subs {
+		if err := sub.Notify(ctx, event); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *fakeStage) Subscribe(sub domain.Subscriber) error {
@@ -156,7 +171,10 @@ type stageFactory struct{ reg *registry }
 
 func (f stageFactory) New(spec domain.StageSpec) (domain.Stage, error) {
 	f.reg.create(spec.Name)
-	return &fakeStage{fakeSink: fakeSink{reg: f.reg, name: spec.Name, from: spec.From}}, nil
+	return &fakeStage{
+		fakeSink: fakeSink{reg: f.reg, name: spec.Name, from: spec.From},
+		forward:  spec.Type == forwardingType,
+	}, nil
 }
 
 type sinkFactory struct{ reg *registry }
@@ -421,9 +439,9 @@ func TestUpsertWithUnchangedSourceReplacesOnlyStagesAndSinks(t *testing.T) {
 
 	require.Len(t, reg.sources, 1)
 	source := reg.sources[0]
-	children := core.SourceChildren(source.subs)
+	children := core.Children(source.subs)
 	assert.Equal(t, []string{"filter"}, names(children), "the running source delivers to the new stage")
-	assert.Equal(t, []string{"new"}, names(children[0].(*fakeStage).subs))
+	assert.Equal(t, []string{"new"}, names(core.Children(children[0].(*fakeStage).subs)))
 
 	got, err := c.GetStream(t.Context(), "stream")
 	require.NoError(t, err)
@@ -451,7 +469,7 @@ func TestUpsertWithUnchangedSourceLeavesStreamUntouchedOnFailure(t *testing.T) {
 	assert.Equal(
 		t,
 		[]string{"old"},
-		names(core.SourceChildren(reg.sources[0].subs)),
+		names(core.Children(reg.sources[0].subs)),
 		"the source still delivers to the old sink",
 	)
 

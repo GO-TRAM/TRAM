@@ -74,17 +74,23 @@ If the source of a stream stops on its own, e.g. because its NATS stream does no
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
 | `tram_node_records_total` | Counter | `stream`, `node`, `kind`, `signal` | Records the node received: log records, metric data points and spans. `kind` is `source`, `stage` or `sink`, `signal` is `logs`, `metrics` or `traces` |
+| `tram_node_records_out_total` | Counter | `stream`, `node`, `kind`, `signal` | Records a source or stage passed on: log records, metric data points and spans. With several children, each record counts once, not once per child. Sinks pass nothing on |
 | `tram_node_duration_seconds` | Histogram | `stream`, `node`, `kind`, `outcome` | Time the node took to handle an event. `outcome` is `ok`, `rejected` (the event was refused for good, e.g. by a `cel_validator`) or `error` |
 
 The endpoint also serves the Go runtime (`go_*`) and process (`process_*`) metrics.
 
-For a source, the records are what it accepted and passed on, counted once per event however many branches the stream has, and the outcome is the result its client gets: an event a single branch fails fails for the client. Events a source refuses before passing them on, such as an OTLP request that cannot be decoded, are not counted.
+For a source, the records are what it accepted and passed on, each counted once however many branches the stream has, and the outcome is the result its client gets: an event a single branch fails fails for the client. Events a source refuses before passing them on, such as an OTLP request that cannot be decoded, are not counted.
 
-Events pass through a stream synchronously, so the duration of a source or stage includes the stages and sinks below it, and for a `batch` stage the time an event waits for its batch to be flushed. The duration of a source is the time its client waits for Tram. Only the duration of a sink is its own. The records a node passes on are the records its children receive, so the share a filter drops is, for example:
+Events pass through a stream synchronously, so the duration of a source or stage includes the stages and sinks below it, and for a `batch` stage the time an event waits for its batch to be flushed. The duration of a source is the time its client waits for Tram. Only the duration of a sink is its own.
+
+A stage's input minus its output is what it dropped, so the share each stage drops is:
 
 ```promql
-1 - sum(rate(tram_node_records_total{node="batch"}[5m])) / sum(rate(tram_node_records_total{node="filter"}[5m]))
+1 - sum by (stream, node) (rate(tram_node_records_out_total{kind="stage"}[5m]))
+  / sum by (stream, node) (rate(tram_node_records_total{kind="stage"}[5m]))
 ```
+
+A stage that drops every record of a signal, such as a `cel_filter` with `"false"` for it, has no output series for that signal, so drop the `signal` label or use `or vector(0)` when comparing per signal.
 
 ---
 

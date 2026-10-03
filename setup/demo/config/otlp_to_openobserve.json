@@ -23,7 +23,7 @@
         "type": "batch",
         "from": "logs",
         "spec": {
-          "max_records": 10,
+          "max_records": 100,
           "timeout": "5s"
         }
       },

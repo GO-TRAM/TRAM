@@ -194,3 +194,36 @@ func TestMetricsSurviveReplacedReceivers(t *testing.T) {
 		attrs("new", "sink", signal(domain.SignalLogs)):      1,
 	}, collect(t, reader, "tram.node.records"))
 }
+
+// A source or stage counts what it passes on once per event, however many
+// children it has, so that dropped records are its input minus its output.
+func TestMetricsCountRecordsOut(t *testing.T) {
+	t.Parallel()
+
+	c, reg, reader := newMeteredCore(t)
+	spec := streamSpec(1,
+		domain.SinkSpec{Name: "a", Type: "fake", From: "forward"},
+		domain.SinkSpec{Name: "b", Type: "fake", From: "forward"},
+		domain.SinkSpec{Name: "c", Type: "fake", From: "swallow"},
+	)
+	spec.Stages = []domain.StageSpec{
+		{Name: "forward", Type: forwardingType, From: "source"},
+		{Name: "swallow", Type: "fake", From: "source"},
+	}
+	_, err := c.UpsertStream(t.Context(), spec)
+	require.NoError(t, err)
+
+	require.NoError(t, deliver(t, reg, logs(2)))
+
+	assert.Equal(t, map[attribute.Distinct]int64{
+		attrs("source", "source", signal(domain.SignalLogs)): 2,
+		attrs("forward", "stage", signal(domain.SignalLogs)): 2,
+	}, collect(t, reader, "tram.node.records.out"), "a stage that passes nothing on has no output")
+	assert.Equal(t, map[attribute.Distinct]int64{
+		attrs("source", "source", signal(domain.SignalLogs)): 2,
+		attrs("forward", "stage", signal(domain.SignalLogs)): 2,
+		attrs("swallow", "stage", signal(domain.SignalLogs)): 2,
+		attrs("a", "sink", signal(domain.SignalLogs)):        2,
+		attrs("b", "sink", signal(domain.SignalLogs)):        2,
+	}, collect(t, reader, "tram.node.records"))
+}

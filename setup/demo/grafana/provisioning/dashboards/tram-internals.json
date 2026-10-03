@@ -1,0 +1,601 @@
+{
+  "uid": "tram-internals",
+  "title": "Tram internals",
+  "description": "Tram's own metrics from /metrics, which Prometheus in agent mode scrapes and writes to OpenObserve.",
+  "editable": true,
+  "refresh": "10s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "schemaVersion": 39,
+  "links": [
+    {
+      "title": "Logs through Tram",
+      "type": "link",
+      "url": "/d/tram-logs"
+    },
+    {
+      "title": "Metrics through Tram",
+      "type": "link",
+      "url": "/d/tram-metrics"
+    },
+    {
+      "title": "Traces through Tram",
+      "type": "link",
+      "url": "/d/tram-traces"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "stream",
+        "label": "Stream",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "openobserve-metrics"
+        },
+        "query": {
+          "query": "label_values(tram_node_records_total, stream)",
+          "refId": "stream"
+        },
+        "definition": "label_values(tram_node_records_total, stream)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".+",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Records accepted/s",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "openobserve-metrics"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
+          "expr": "sum(rate(tram_node_records_total{kind=\"source\",stream=~\"$stream\"}[1m]))",
+          "legendFormat": ""
+        }
+      ],
+      "description": "Log records, metric data points and spans the sources accepted and passed on.",
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "area"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Events failed/s",
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "openobserve-metrics"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
+          "expr": "sum(rate(tram_node_duration_seconds_count{kind=\"source\",outcome!=\"ok\",stream=~\"$stream\"}[1m]))",
+          "legendFormat": ""
+        }
+      ],
+      "description": "Events whose client got an error, because a branch rejected or failed them.",
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "area"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Goroutines",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "openobserve-metrics"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
+          "expr": "sum(go_goroutines{job=\"tram\"})",
+          "legendFormat": ""
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "area"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "CPU",
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "openobserve-metrics"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
+          "expr": "sum(rate(process_cpu_seconds_total{job=\"tram\"}[1m]))",
+          "legendFormat": ""
+        }
+      ],
+      "description": "CPU time Tram used, as a share of one core.",
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "area"
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Records accepted by signal",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "openobserve-metrics"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
+          "expr": "sum by (signal) (rate(tram_node_records_total{kind=\"source\",stream=~\"$stream\"}[1m]))",
+          "legendFormat": "{{signal}}"
+        }
+      ],
+      "description": "Records per second the sources accepted.",
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Records received per node",
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "openobserve-metrics"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
+          "expr": "sum by (node) (rate(tram_node_records_total{kind!=\"source\",stream=~\"$stream\"}[1m]))",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "description": "Records per second each stage and sink received, all signals together. A filter stage receives every signal of its parent.",
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "bargauge",
+      "title": "Dropped share per stage and signal",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "openobserve-metrics"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
+          "expr": "1 - ((sum by (node, signal) (rate(tram_node_records_out_total{kind=\"stage\",stream=~\"$stream\"}[5m]))) or (sum by (node, signal) (rate(tram_node_records_total{kind=\"stage\",stream=~\"$stream\"}[5m])) * 0)) / sum by (node, signal) (rate(tram_node_records_total{kind=\"stage\",stream=~\"$stream\"}[5m]))",
+          "legendFormat": "{{node}} \u00b7 {{signal}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "1 - output / input of every stage, per signal, over 5 minutes. The filters drop the signals of the other branches completely, and DEBUG logs, debug.* metrics and debug-noise spans in their own. A batch stage passes everything on, but counts its output only when it flushes, so it can show a little below or above 0.",
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "color",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Records per sink request",
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "openobserve-metrics"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
+          "expr": "sum by (node) (rate(tram_node_records_total{kind=\"sink\",stream=~\"$stream\"}[1m])) / sum by (node) (rate(tram_node_duration_seconds_count{kind=\"sink\",stream=~\"$stream\"}[1m]))",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "description": "Average records per event a sink sends, i.e. how much the batch stage above it merges.",
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "p95 duration per node",
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "openobserve-metrics"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "scaleDistribution": {
+              "type": "log",
+              "log": 10
+            }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
+          "expr": "histogram_quantile(0.95, sum by (node, le) (rate(tram_node_duration_seconds_bucket{stream=~\"$stream\"}[1m]))) * on (node) (sum by (node) (rate(tram_node_duration_seconds_count{stream=~\"$stream\"}[1m])) / sum by (node) (rate(tram_node_duration_seconds_count{stream=~\"$stream\"}[1m])))",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "description": "Events pass through a stream synchronously, so the duration of a source or stage includes the nodes below it. A batch stage waits for its flush, which is how backpressure reaches the clients. The duration of a sink is its own. Multiplying by rate / rate keeps OpenObserve from filling in the quantile for times before a node had events.",
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Errors and rejections per node",
+      "gridPos": {
+        "x": 12,
+        "y": 22,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "openobserve-metrics"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "None"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
+          "expr": "sum by (node, outcome) (rate(tram_node_duration_seconds_count{outcome!=\"ok\",stream=~\"$stream\"}[1m]))",
+          "legendFormat": "{{node}} {{outcome}}"
+        }
+      ],
+      "description": "Events a node rejected for good (rejected) or failed to handle (error), per second.",
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Goroutines",
+      "gridPos": {
+        "x": 0,
+        "y": 31,
+        "w": 8,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "openobserve-metrics"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
+          "expr": "sum(go_goroutines{job=\"tram\"})",
+          "legendFormat": "goroutines"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Heap in use",
+      "gridPos": {
+        "x": 8,
+        "y": 31,
+        "w": 8,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "openobserve-metrics"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
+          "expr": "sum(go_memstats_heap_inuse_bytes{job=\"tram\"})",
+          "legendFormat": "heap"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "CPU",
+      "gridPos": {
+        "x": 16,
+        "y": 31,
+        "w": 8,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "openobserve-metrics"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
+          "expr": "sum(rate(process_cpu_seconds_total{job=\"tram\"}[1m]))",
+          "legendFormat": "cpu"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    }
+  ]
+}

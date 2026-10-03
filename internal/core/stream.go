@@ -113,20 +113,21 @@ func (c *Core) createReceivers(tree *domain.Tree) error {
 	return nil
 }
 
-// wire subscribes every node to its parent. The root's children are not
-// subscribed to the source themselves; with includeRoot set, the source gets
-// a fan-out to them, see sourceSubscriber.
+// wire connects every node to its children: each stage gets a single
+// fan-out to them, see fanoutOf. With includeRoot set, the source gets one
+// too, see sourceSubscriber.
 func (c *Core) wire(tree *domain.Tree, includeRoot bool) error {
 	root := tree.Root()
 	for _, node := range tree.Map() {
-		if node.Parent == nil || node.Parent == root {
+		// Sinks have no children; every stage has some.
+		if node == root || len(node.Children) == 0 {
 			continue
 		}
-		observer, err := node.Parent.GetObserver()
+		observer, err := node.GetObserver()
 		if err != nil {
 			return err
 		}
-		subscriber, err := c.subscriber(tree, node)
+		subscriber, err := c.fanoutOf(tree, node)
 		if err != nil {
 			return err
 		}
@@ -159,20 +160,31 @@ func (c *Core) subscriber(tree *domain.Tree, node *domain.Node) (domain.Subscrib
 	return c.metrics.instrument(tree.Spec.Name, node, subscriber), nil
 }
 
-// sourceSubscriber returns the subscriber the source of tree delivers to: a
-// fan-out to the source's children, measured as the source. Every source
-// gets its subscriber from here.
-func (c *Core) sourceSubscriber(tree *domain.Tree) (domain.Subscriber, error) {
-	root := tree.Root()
-	children := make([]domain.Subscriber, 0, len(root.Children))
-	for _, child := range root.Children {
+// fanoutOf returns the subscriber node delivers to: a fan-out to its
+// children, which counts what node passes on.
+func (c *Core) fanoutOf(tree *domain.Tree, node *domain.Node) (*fanout, error) {
+	children := make([]domain.Subscriber, 0, len(node.Children))
+	for _, child := range node.Children {
 		subscriber, err := c.subscriber(tree, child)
 		if err != nil {
 			return nil, err
 		}
 		children = append(children, subscriber)
 	}
-	return c.metrics.instrument(tree.Spec.Name, root, &fanout{name: root.Name, children: children}), nil
+	return &fanout{name: node.Name, children: children, out: c.metrics.output(tree.Spec.Name, node)}, nil
+}
+
+// sourceSubscriber returns the subscriber the source of tree delivers to: its
+// fan-out, measured as the source, so that the source is measured once per
+// event with the result its client gets. Every source gets its subscriber
+// from here.
+func (c *Core) sourceSubscriber(tree *domain.Tree) (domain.Subscriber, error) {
+	root := tree.Root()
+	f, err := c.fanoutOf(tree, root)
+	if err != nil {
+		return nil, err
+	}
+	return c.metrics.instrument(tree.Spec.Name, root, f), nil
 }
 
 // replaceReceivers updates a running stream whose source is unchanged: it

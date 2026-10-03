@@ -45,8 +45,8 @@ services:
       - --severity-text=INFO
       - --severity-number=9
       - --body=Order paid
-      - --rate=1
-      - --workers=5
+      - --rate=10
+      - --workers=200
       - --duration=24h
       - --batch=false
     depends_on:
@@ -65,10 +65,10 @@ services:
       - --severity-text=DEBUG
       - --severity-number=5
       - --body=Cache lookup
-      - --rate=5
-      - --workers=50
+      - --rate=50
+      - --workers=100
       - --duration=24h
-      - --batch=false
+      - --batch=true
     depends_on:
       - tram
     restart: on-failure
@@ -87,8 +87,8 @@ services:
       - --otlp-metric-name=checkout.orders
       - --metric-type=Sum
       - --aggregation-temporality=cumulative
-      - --rate=1
-      - --workers=1
+      - --rate=10
+      - --workers=10
       - --duration=24h
       - --batch=false
     depends_on:
@@ -107,10 +107,10 @@ services:
       - --otlp-attributes=service.name="debug-noise"
       - --otlp-metric-name=debug.cache.size
       - --metric-type=Gauge
-      - --rate=5
-      - --workers=1
+      - --rate=100
+      - --workers=10
       - --duration=24h
-      - --batch=false
+      - --batch=true
     depends_on:
       - tram
     restart: on-failure
@@ -129,8 +129,8 @@ services:
       - --telemetry-attributes=order.status="paid"
       - --child-spans=2
       - --span-duration=50ms
-      - --rate=1
-      - --workers=1
+      - --rate=5
+      - --workers=20
       - --duration=24h
       - --batch=false
     depends_on:
@@ -149,10 +149,10 @@ services:
       - --otlp-attributes=service.name="debug-noise"
       - --child-spans=1
       - --span-duration=5ms
-      - --rate=5
-      - --workers=1
+      - --rate=50
+      - --workers=20
       - --duration=24h
-      - --batch=false
+      - --batch=true
     depends_on:
       - tram
     restart: on-failure
@@ -167,6 +167,20 @@ services:
       ZO_DATA_DIR: /data
     ports:
       - "5080:5080" # OpenObserve UI and API
+
+  # Scrapes Tram's own metrics from /metrics and writes them to OpenObserve,
+  # see prometheus/prometheus.yml.
+  prometheus:
+    image: docker.io/prom/prometheus:v3.15.0
+    command:
+      - --agent
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.agent.path=/prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - tram
+      - openobserve
 
   grafana:
     # Grafana with the OpenObserve plugin, see grafana/Dockerfile.
