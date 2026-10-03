@@ -127,6 +127,61 @@ func TestRecordCount(t *testing.T) {
 	}
 }
 
+func TestMarshalOTLPPayloads(t *testing.T) {
+	t.Parallel()
+
+	shape := otlpgen.Shape{Records: 30, Resources: 3, Teams: 1}
+
+	t.Run("all signals", func(t *testing.T) {
+		t.Parallel()
+
+		event := &domain.Event{
+			Logs:    otlpgen.Logs(shape),
+			Metrics: otlpgen.Metrics(shape),
+			Traces:  otlpgen.Traces(shape),
+		}
+
+		payloads, err := event.MarshalOTLPPayloads()
+		require.NoError(t, err)
+		require.Len(t, payloads, 3)
+
+		records := 0
+		for i, signal := range []domain.Signal{domain.SignalLogs, domain.SignalMetrics, domain.SignalTraces} {
+			assert.Equal(t, signal, payloads[i].Signal)
+			got, unmarshalErr := domain.UnmarshalOTLPData(payloads[i].Signal, payloads[i].Data)
+			require.NoError(t, unmarshalErr)
+			records += got.RecordCount()
+		}
+		assert.Equal(t, event.RecordCount(), records)
+	})
+
+	t.Run("single signal", func(t *testing.T) {
+		t.Parallel()
+
+		payloads, err := (&domain.Event{Traces: otlpgen.Traces(shape)}).MarshalOTLPPayloads()
+		require.NoError(t, err)
+		require.Len(t, payloads, 1)
+		assert.Equal(t, domain.SignalTraces, payloads[0].Signal)
+	})
+
+	t.Run("no signal", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := (&domain.Event{}).MarshalOTLPPayloads()
+		assert.Error(t, err)
+	})
+}
+
+func TestMarshalOTLPDataRejectsSeveralSignals(t *testing.T) {
+	t.Parallel()
+
+	shape := otlpgen.Shape{Records: 1, Resources: 1, Teams: 1}
+	event := &domain.Event{Logs: otlpgen.Logs(shape), Traces: otlpgen.Traces(shape)}
+
+	_, _, err := event.MarshalOTLPData()
+	assert.Error(t, err)
+}
+
 func TestUnmarshalOTLPDataUnknownSignal(t *testing.T) {
 	t.Parallel()
 

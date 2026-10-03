@@ -74,33 +74,61 @@ const (
 	SignalTraces  Signal = "traces"
 )
 
-// MarshalOTLPData serializes the first set payload of the event and returns
-// its signal type.
-func (e *Event) MarshalOTLPData() (Signal, []byte, error) {
+// OTLPPayload is the serialized data of one signal of an event.
+type OTLPPayload struct {
+	Signal Signal
+	Data   []byte
+}
+
+// MarshalOTLPPayloads serializes every set signal of the event, in the order
+// logs, metrics, traces. Stages like batch merge events of different signals
+// into one, so an event can hold more than one.
+func (e *Event) MarshalOTLPPayloads() ([]OTLPPayload, error) {
 	if e == nil {
-		return "", nil, fmt.Errorf("event is nil")
+		return nil, fmt.Errorf("event is nil")
 	}
 
-	var (
+	// set is tracked separately, because a nil message stored in the
+	// proto.Message interface is not nil itself.
+	signals := []struct {
 		signal Signal
 		msg    proto.Message
-	)
-	switch {
-	case e.Logs != nil:
-		signal, msg = SignalLogs, e.Logs
-	case e.Metrics != nil:
-		signal, msg = SignalMetrics, e.Metrics
-	case e.Traces != nil:
-		signal, msg = SignalTraces, e.Traces
-	default:
-		return "", nil, fmt.Errorf("no OTLP data type set in event (logs, metrics, or traces)")
+		set    bool
+	}{
+		{signal: SignalLogs, msg: e.Logs, set: e.Logs != nil},
+		{signal: SignalMetrics, msg: e.Metrics, set: e.Metrics != nil},
+		{signal: SignalTraces, msg: e.Traces, set: e.Traces != nil},
 	}
 
-	data, err := proto.Marshal(msg)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to marshal %s: %w", signal, err)
+	var payloads []OTLPPayload
+	for _, s := range signals {
+		if !s.set {
+			continue
+		}
+		data, err := proto.Marshal(s.msg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal %s: %w", s.signal, err)
+		}
+		payloads = append(payloads, OTLPPayload{Signal: s.signal, Data: data})
 	}
-	return signal, data, nil
+	if len(payloads) == 0 {
+		return nil, fmt.Errorf("no OTLP data type set in event (logs, metrics, or traces)")
+	}
+	return payloads, nil
+}
+
+// MarshalOTLPData serializes an event that holds a single signal and returns
+// its signal type. Events holding several signals fail instead of losing
+// some; use MarshalOTLPPayloads for those.
+func (e *Event) MarshalOTLPData() (Signal, []byte, error) {
+	payloads, err := e.MarshalOTLPPayloads()
+	if err != nil {
+		return "", nil, err
+	}
+	if len(payloads) > 1 {
+		return "", nil, fmt.Errorf("event holds %d OTLP signals, expected one", len(payloads))
+	}
+	return payloads[0].Signal, payloads[0].Data, nil
 }
 
 func UnmarshalOTLPData(signal Signal, data []byte) (*Event, error) {

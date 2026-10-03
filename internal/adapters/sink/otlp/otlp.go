@@ -78,17 +78,29 @@ func New(sink domain.SinkSpec, validator *validator.Validate, logger *slog.Logge
 	}, nil
 }
 
+// Notify sends one request per signal of the event. Delivery is
+// at-least-once: if a later request fails, the source retries the whole
+// event, so signals sent before are sent again.
 func (o *OTLP) Notify(ctx context.Context, event *domain.Event) error {
 	if event == nil {
 		return nil
 	}
 
-	// Extract signal and data from event
-	signal, data, err := event.MarshalOTLPData()
+	payloads, err := event.MarshalOTLPPayloads()
 	if err != nil {
 		return fmt.Errorf("failed to marshal event: %w", err)
 	}
 
+	for _, p := range payloads {
+		if err = o.send(ctx, p.Signal, p.Data); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// send posts the serialized data of one signal to its OTLP endpoint.
+func (o *OTLP) send(ctx context.Context, signal domain.Signal, data []byte) error {
 	// Set up HTTP request
 	endpoint := strings.TrimRight(o.Spec().URL, "/") + o.getEndpointPath(signal)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))

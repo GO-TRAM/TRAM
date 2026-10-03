@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
+	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/proto"
 
 	"codeberg.org/eljoth/tram/internal/adapters/sink/otlp"
@@ -236,6 +237,58 @@ func TestNotify(t *testing.T) {
 		err = proto.Unmarshal(receivedBody, unmarshaled)
 		require.NoError(t, err)
 		assert.Len(t, unmarshaled.ResourceMetrics, 1)
+	})
+
+	t.Run("event with several signals", func(t *testing.T) {
+		t.Parallel()
+
+		// A batch stage merges concurrent events, so one event can hold
+		// several signals; each has to reach its own endpoint.
+		received := map[string]int{}
+		var mu sync.Mutex
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			defer mu.Unlock()
+			body, _ := io.ReadAll(r.Body)
+			var event *domain.Event
+			switch r.URL.Path {
+			case "/v1/logs":
+				event, _ = domain.UnmarshalOTLPData(domain.SignalLogs, body)
+			case "/v1/traces":
+				event, _ = domain.UnmarshalOTLPData(domain.SignalTraces, body)
+			}
+			received[r.URL.Path] += event.RecordCount()
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		sink, err := otlp.New(domain.SinkSpec{
+			Name: "test-otlp-several-signals",
+			From: "test-source",
+			Type: otlp.Type,
+			Spec: map[string]any{
+				"url": server.URL,
+			},
+		}, validator.New(), slog.New(slog.DiscardHandler))
+		require.NoError(t, err)
+		defer sink.Stop()
+
+		event := &domain.Event{
+			Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{
+				ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{}, {}}}},
+			}}},
+			Traces: &tracepb.TracesData{ResourceSpans: []*tracepb.ResourceSpans{{
+				ScopeSpans: []*tracepb.ScopeSpans{{Spans: []*tracepb.Span{{}, {}, {}}}},
+			}}},
+		}
+
+		err = sink.Notify(context.Background(), event)
+		require.NoError(t, err)
+
+		mu.Lock()
+		defer mu.Unlock()
+		assert.Equal(t, map[string]int{"/v1/logs": 2, "/v1/traces": 3}, received)
 	})
 
 	t.Run("server error response", func(t *testing.T) {
