@@ -10,3 +10,6 @@ kubeconfig
 
 # Raw benchmark output of tools/benchreport
 bench.txt
+
+# Knowledge graph built locally by graphify
+graphify-out/
