@@ -1,0 +1,76 @@
+{
+  "stream": {
+    "source": {
+      "name": "otlp",
+      "type": "otlp",
+      "spec": {
+        "http_port": 4318
+      }
+    },
+    "stages": [
+      {
+        "name": "logs",
+        "type": "cel_filter",
+        "from": "otlp",
+        "spec": {
+          "logs": "record.severity_number >= 9",
+          "metrics": "false",
+          "traces": "false"
+        }
+      },
+      {
+        "name": "batch-logs",
+        "type": "batch",
+        "from": "logs",
+        "spec": {
+          "max_records": 10,
+          "timeout": "5s"
+        }
+      },
+      {
+        "name": "metrics",
+        "type": "cel_filter",
+        "from": "otlp",
+        "spec": {
+          "logs": "false",
+          "metrics": "!metric.name.startsWith('debug.')",
+          "traces": "false"
+        }
+      },
+      {
+        "name": "batch-metrics",
+        "type": "batch",
+        "from": "metrics",
+        "spec": {
+          "max_records": 10,
+          "timeout": "1s"
+        }
+      }
+    ],
+    "sinks": [
+      {
+        "name": "openobserve-logs",
+        "type": "otlp",
+        "from": "batch-logs",
+        "spec": {
+          "url": "http://openobserve:5080/api/default",
+          "headers": {
+            "Authorization": "Basic cm9vdEBleGFtcGxlLmNvbTpDb21wbGV4cGFzcyMxMjM=",
+            "stream-name": "tram_logs"
+          }
+        }
+      },
+      {
+        "name": "openobserve-metrics",
+        "type": "otlp",
+        "from": "batch-metrics",
+        "spec": {
+          "url": "http://openobserve:5080/api/default",
+          "headers": {
+            "Authorization": "Basic cm9vdEBleGFtcGxlLmNvbTpDb21wbGV4cGFzcyMxMjM="
+          }
+        }
+      }
+    ]
+  }
+}

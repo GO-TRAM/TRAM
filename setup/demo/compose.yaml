@@ -1,17 +1,20 @@
-# Logs from two OTLP clients flow through Tram into Loki and show up in
-# Grafana. See README.md in this directory.
+# Logs and metrics from OTLP clients flow through Tram into OpenObserve and
+# show up in Grafana. See README.md in this directory.
 #
 #   docker compose up -d --build     (or: task demo:up)
-#   open http://localhost:3000
+#   open http://localhost:3000       (Grafana)
+#   open http://localhost:5080       (OpenObserve, root@example.com / Complexpass#123)
 
-name: tram-loki-demo
+name: tram-demo
 
 services:
   tram:
     build:
       context: ../..
     image: tram:demo
-    # The stream comes from config/otlp_to_loki.json through the file sync.
+    # The stream comes from config/otlp_to_openobserve.json through the file
+    # sync. It sends logs and metrics down separate branches, each with its
+    # own filter, to OpenObserve.
     command:
       - server
       - --http-endpoint=0.0.0.0:8080
@@ -24,11 +27,11 @@ services:
       - ./config:/config:ro
     ports:
       - "8080:8080" # Tram HTTP API
-      - "4318:4318" # OTLP/HTTP source of the stream, to send your own logs
+      - "4318:4318" # OTLP/HTTP source of the stream, to send your own data
     depends_on:
-      - loki
+      - openobserve
 
-  # Sends INFO logs of a "checkout" service, which reach Loki.
+  # Sends INFO logs of a "checkout" service, which reach OpenObserve.
   checkout:
     image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.162.0
     command:
@@ -50,7 +53,7 @@ services:
       - tram
     restart: on-failure
 
-  # Sends DEBUG logs, which the cel_filter stage in Tram drops.
+  # Sends DEBUG logs, which the "logs" cel_filter stage in Tram drops.
   debug-noise:
     image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.162.0
     command:
@@ -70,25 +73,75 @@ services:
       - tram
     restart: on-failure
 
-  loki:
-    image: docker.io/grafana/loki:3.4.2
-    command: -config.file=/etc/loki/loki.yaml
-    volumes:
-      - ./loki/loki.yaml:/etc/loki/loki.yaml:ro
+  # Sends the counter checkout.orders, which reaches OpenObserve.
+  checkout-metrics:
+    image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.162.0
+    command:
+      - metrics
+      - --otlp-http
+      - --otlp-endpoint=tram:4318
+      - --otlp-insecure
+      - --otlp-attributes=service.name="checkout"
+      - --otlp-attributes=deployment.environment="demo"
+      - --telemetry-attributes=order.status="paid"
+      - --otlp-metric-name=checkout.orders
+      - --metric-type=Sum
+      - --aggregation-temporality=cumulative
+      - --rate=1
+      - --workers=1
+      - --duration=24h
+      - --batch=false
+    depends_on:
+      - tram
+    restart: on-failure
+
+  # Sends the gauge debug.cache.size, which the "metrics" cel_filter stage in
+  # Tram drops like every metric whose name starts with "debug.".
+  debug-noise-metrics:
+    image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.162.0
+    command:
+      - metrics
+      - --otlp-http
+      - --otlp-endpoint=tram:4318
+      - --otlp-insecure
+      - --otlp-attributes=service.name="debug-noise"
+      - --otlp-metric-name=debug.cache.size
+      - --metric-type=Gauge
+      - --rate=5
+      - --workers=1
+      - --duration=24h
+      - --batch=false
+    depends_on:
+      - tram
+    restart: on-failure
+
+  openobserve:
+    image: public.ecr.aws/zinclabs/openobserve:v1.0.4
+    environment:
+      # Fixed credentials for a local demo only. Tram's sinks in
+      # config/otlp_to_openobserve.json and Grafana's datasources use them.
+      ZO_ROOT_USER_EMAIL: root@example.com
+      ZO_ROOT_USER_PASSWORD: Complexpass#123
+      ZO_DATA_DIR: /data
     ports:
-      - "3100:3100"
+      - "5080:5080" # OpenObserve UI and API
 
   grafana:
-    image: docker.io/grafana/grafana:11.5.2
+    # Grafana with the OpenObserve plugin, see grafana/Dockerfile.
+    build:
+      context: ./grafana
+    image: grafana:tram-demo
     environment:
       # Open Grafana without logging in; fine for a local demo only.
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      # The OpenObserve plugin is not signed.
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: openobserve
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/tram-logs.json
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
     ports:
       - "3000:3000"
     depends_on:
-      - loki
+      - openobserve

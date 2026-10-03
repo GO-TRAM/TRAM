@@ -212,6 +212,16 @@ tasks:
     cmds:
       - '{{.CONTAINER_TOOL}} compose -f setup/nats/docker-compose.yaml down'
 
+  demo:up:
+    desc: Start the demo with OTLP clients, Tram, OpenObserve and Grafana on localhost:3000 (see setup/demo/README.md)
+    cmds:
+      - '{{.CONTAINER_TOOL}} compose -f setup/demo/compose.yaml up -d --build'
+
+  demo:down:
+    desc: Stop the demo and remove its containers
+    cmds:
+      - '{{.CONTAINER_TOOL}} compose -f setup/demo/compose.yaml down'
+
   k8s:crd:
     desc: Install the Stream CRD into the current Kubernetes context
     cmds:
