@@ -71,7 +71,9 @@ func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (er
 	}
 
 	// drivers
-	eg := errgroup.Group{}
+	// A driver that fails cancels driversCtx, which stops the others, so Tram
+	// exits instead of running without it.
+	eg, driversCtx := errgroup.WithContext(ctx)
 
 	if opts.enableFileSync {
 		eg.Go(func() error {
@@ -79,7 +81,7 @@ func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (er
 			if syncErr != nil {
 				return syncErr
 			}
-			return errors.Join(cs.Run(ctx), cs.Close())
+			return errors.Join(cs.Run(driversCtx), cs.Close())
 		})
 	}
 
@@ -89,12 +91,12 @@ func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (er
 			if opErr != nil {
 				return opErr
 			}
-			return op.Run(ctx)
+			return op.Run(driversCtx)
 		})
 	}
 
 	eg.Go(func() error {
-		return a.Run(ctx)
+		return a.Run(driversCtx)
 	})
 
 	err = eg.Wait()
