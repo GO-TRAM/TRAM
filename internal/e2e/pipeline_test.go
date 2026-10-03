@@ -158,7 +158,7 @@ func TestBatchThenSplit(t *testing.T) {
 }
 
 // Clients learn whether their data was delivered: rejections and permanent
-// sink errors are 400, temporary sink errors 500.
+// sink errors are 400, temporary sink errors 503.
 func TestDeliveryResultReachesClient(t *testing.T) {
 	t.Parallel()
 
@@ -206,8 +206,9 @@ func TestDeliveryResultReachesClient(t *testing.T) {
 				From: "in",
 				Spec: map[string]any{"fail": "temporary"},
 			},
-			payload:  request("shop", rec{"r1", "A"}),
-			expected: http.StatusInternalServerError,
+			payload: request("shop", rec{"r1", "A"}),
+			// Retryable for OTLP clients, unlike 500.
+			expected: http.StatusServiceUnavailable,
 		},
 	}
 

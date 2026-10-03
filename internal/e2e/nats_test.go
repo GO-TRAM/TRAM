@@ -204,7 +204,7 @@ func TestNATS(t *testing.T) {
 			},
 		}})
 
-		assert.Equal(t, http.StatusInternalServerError, p.post(t, request("shop", rec{"r1", "A"}), 10*time.Second))
+		assert.Equal(t, http.StatusServiceUnavailable, p.post(t, request("shop", rec{"r1", "A"}), 10*time.Second))
 		assert.Empty(t, n.read(t, out))
 	})
 }

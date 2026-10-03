@@ -178,7 +178,7 @@ func TestNotify(t *testing.T) {
 
 		mu.Lock()
 		defer mu.Unlock()
-		assert.Equal(t, "application/protobuf", receivedHeaders.Get("Content-Type"))
+		assert.Equal(t, "application/x-protobuf", receivedHeaders.Get("Content-Type"))
 		assert.NotEmpty(t, receivedBody)
 
 		// Verify we can unmarshal the data back

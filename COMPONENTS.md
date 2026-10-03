@@ -65,9 +65,10 @@ Receives OpenTelemetry Protocol data over HTTP (OTLP/HTTP). OTLP over gRPC is no
 ```
 
 **Behavior Notes:**
-- Accepts `POST` requests on `/v1/logs`, `/v1/metrics` and `/v1/traces` with a protobuf-encoded body. JSON-encoded OTLP is not supported
+- Accepts `POST` requests on `/v1/logs`, `/v1/metrics` and `/v1/traces` with a protobuf (`application/x-protobuf`) or JSON (`application/json`) body. Requests without a content type are read as protobuf
+- Bodies may be compressed with `Content-Encoding: gzip`
 - Each request becomes one event and is passed on as a whole
-- Responses: `200` with an empty body once all sinks have accepted the data, `400` for a malformed body or data rejected by a stage (e.g. `cel_validator` with `on_mismatch: reject`), `413` for bodies larger than 20 MiB, `500` if passing the data on failed
+- Responses: `200` with an empty response message in the request's encoding once all sinks have accepted the data, `400` for a malformed body or data rejected by a stage (e.g. `cel_validator` with `on_mismatch: reject`), `413` for bodies larger than 20 MiB (also after decompression), `415` for other content types or encodings, `503` if passing the data on failed, which OTLP clients retry
 - The port is opened when the stream is created, so a port that is already in use fails the stream creation
 
 ### NATS Source
@@ -444,8 +445,8 @@ Sends OpenTelemetry Protocol data via HTTP to an OTLP-compatible endpoint. Sends
 ```
 
 **Behavior Notes:**
-- Each event is sent as a separate HTTP request to the appropriate endpoint based on its signal type
-- Uses protobuf encoding (`application/protobuf` content type) as required by OTLP/HTTP
+- Each signal type of an event is sent as a separate HTTP request to its endpoint. An event can hold several signal types, e.g. after a batch stage; if one request fails, the source retries the whole event, so the others may be sent twice
+- Uses protobuf encoding (`application/x-protobuf` content type) as required by OTLP/HTTP
 - The sink handles URL construction properly, so both `"http://host:4318"` and `"http://host:4318/"` work correctly
 - HTTP errors (non-2xx status codes) are returned to the caller, which may cause retries depending on the source
 - Connection pooling is used for better performance with multiple requests

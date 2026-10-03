@@ -109,7 +109,7 @@ func (o *OTLP) send(ctx context.Context, signal domain.Signal, data []byte) erro
 	}
 
 	// Set headers
-	req.Header.Set("Content-Type", "application/protobuf")
+	req.Header.Set("Content-Type", "application/x-protobuf")
 	for key, value := range o.Spec().Headers {
 		req.Header.Set(key, value)
 	}

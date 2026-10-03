@@ -1,13 +1,16 @@
 package otlp
 
 import (
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -32,6 +35,19 @@ const (
 	readTimeout  = 5 * time.Second
 	writeTimeout = 10 * time.Second
 	idleTimeout  = 15 * time.Second
+)
+
+const (
+	contentTypeProtobuf = "application/x-protobuf"
+	// contentTypeProtobufAlias is not part of OTLP, but some clients send it,
+	// among them Tram's OTLP sink before it followed the specification.
+	contentTypeProtobufAlias = "application/protobuf"
+	contentTypeJSON          = "application/json"
+)
+
+var (
+	errBodyTooLarge        = errors.New("request body too large")
+	errUnsupportedEncoding = errors.New("unsupported content encoding")
 )
 
 type OTLP struct {
@@ -106,17 +122,32 @@ func (o *OTLP) handleTraces(w http.ResponseWriter, r *http.Request) {
 func (o *OTLP) handle(w http.ResponseWriter, r *http.Request, msg proto.Message, event *domain.Event) {
 	defer r.Body.Close()
 
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodyBytes))
-	if err != nil {
-		if _, tooLarge := errors.AsType[*http.MaxBytesError](err); tooLarge {
-			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
-			return
-		}
-		http.Error(w, "Error reading request body", http.StatusBadRequest)
+	contentType, ok := requestContentType(r)
+	if !ok {
+		http.Error(w, "Unsupported content type", http.StatusUnsupportedMediaType)
 		return
 	}
 
-	if err = proto.Unmarshal(body, msg); err != nil {
+	body, err := readBody(w, r)
+	if err != nil {
+		_, maxBytesExceeded := errors.AsType[*http.MaxBytesError](err)
+		switch {
+		case maxBytesExceeded || errors.Is(err, errBodyTooLarge):
+			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+		case errors.Is(err, errUnsupportedEncoding):
+			http.Error(w, "Unsupported content encoding", http.StatusUnsupportedMediaType)
+		default:
+			http.Error(w, "Error reading request body", http.StatusBadRequest)
+		}
+		return
+	}
+
+	if contentType == contentTypeJSON {
+		err = unmarshalJSON(body, msg)
+	} else {
+		err = proto.Unmarshal(body, msg)
+	}
+	if err != nil {
 		http.Error(w, "Error parsing request body", http.StatusBadRequest)
 		return
 	}
@@ -126,8 +157,69 @@ func (o *OTLP) handle(w http.ResponseWriter, r *http.Request, msg proto.Message,
 			http.Error(w, "Event rejected", http.StatusBadRequest)
 			return
 		}
-		http.Error(w, "Error notifying subscribers", http.StatusInternalServerError)
+		// OTLP clients retry on 503, but drop the data on 500.
+		http.Error(w, "Error notifying subscribers", http.StatusServiceUnavailable)
+		return
 	}
+
+	// An empty Export*ServiceResponse encodes to no bytes in protobuf and to
+	// {} in JSON.
+	w.Header().Set("Content-Type", contentType)
+	w.WriteHeader(http.StatusOK)
+	if contentType == contentTypeJSON {
+		_, _ = w.Write([]byte("{}"))
+	}
+}
+
+// requestContentType returns the content type of an OTLP request, normalized
+// to contentTypeProtobuf or contentTypeJSON. A missing content type counts as
+// protobuf.
+func requestContentType(r *http.Request) (string, bool) {
+	header := r.Header.Get("Content-Type")
+	if header == "" {
+		return contentTypeProtobuf, true
+	}
+	mediaType, _, err := mime.ParseMediaType(header)
+	if err != nil {
+		return "", false
+	}
+	switch mediaType {
+	case contentTypeProtobuf, contentTypeProtobufAlias:
+		return contentTypeProtobuf, true
+	case contentTypeJSON:
+		return contentTypeJSON, true
+	default:
+		return "", false
+	}
+}
+
+// readBody reads the request body and decompresses it if needed.
+// maxBodyBytes limits the decompressed body too, so a small compressed
+// request cannot expand without bound.
+func readBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
+	var body io.Reader = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+
+	switch strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Encoding"))) {
+	case "", "identity":
+	case "gzip":
+		gz, err := gzip.NewReader(body)
+		if err != nil {
+			return nil, err
+		}
+		defer gz.Close()
+		body = gz
+	default:
+		return nil, errUnsupportedEncoding
+	}
+
+	data, err := io.ReadAll(io.LimitReader(body, maxBodyBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxBodyBytes {
+		return nil, errBodyTooLarge
+	}
+	return data, nil
 }
 
 // Stop waits for in-flight requests so no event reaches subscribers after it
