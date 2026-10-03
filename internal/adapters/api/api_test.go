@@ -2,14 +2,22 @@ package api_test
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net"
+	"net/http"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"codeberg.org/eljoth/tram/internal/adapters/api"
+	"codeberg.org/eljoth/tram/internal/adapters/sink"
+	"codeberg.org/eljoth/tram/internal/adapters/source"
+	"codeberg.org/eljoth/tram/internal/adapters/stage"
+	"codeberg.org/eljoth/tram/internal/core"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 // run starts a.Run and returns a channel that receives its result.
@@ -60,4 +68,63 @@ func TestRunStopsWithContext(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("Run did not stop after its context was cancelled")
 	}
+}
+
+func TestListStreams(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	c := core.New(t.Context(), logger, source.NewFactory(logger), stage.NewFactory(), sink.NewFactory(logger))
+	t.Cleanup(func() { assert.NoError(t, c.Close()) })
+	for _, name := range []string{"b", "a"} {
+		_, err := c.UpsertStream(t.Context(), domain.StreamSpec{
+			Name:   name,
+			Source: domain.SourceSpec{Name: "in", Type: "generator", Spec: map[string]any{"interval": "1h"}},
+			Sinks:  []domain.SinkSpec{{Name: "out", Type: "debug", From: "in"}},
+		})
+		require.NoError(t, err)
+	}
+
+	// The gateway dials the gRPC endpoint by its address, so it needs a port
+	// known in advance.
+	httpAddr, grpcAddr := freeAddr(t), freeAddr(t)
+	a, err := api.New(c, grpcAddr, httpAddr, logger)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := run(ctx, a)
+	t.Cleanup(func() {
+		cancel()
+		require.NoError(t, <-done)
+	})
+
+	var body struct {
+		Streams []struct {
+			Name string `json:"name"`
+		} `json:"streams"`
+	}
+	require.Eventually(t, func() bool {
+		req, reqErr := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+httpAddr+"/v1/streams", nil)
+		require.NoError(t, reqErr)
+		resp, getErr := http.DefaultClient.Do(req)
+		if getErr != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusOK && json.NewDecoder(resp.Body).Decode(&body) == nil
+	}, 5*time.Second, 20*time.Millisecond)
+
+	require.Len(t, body.Streams, 2)
+	assert.Equal(t, "a", body.Streams[0].Name, "ordered by name")
+	assert.Equal(t, "b", body.Streams[1].Name)
+}
+
+// freeAddr returns a local address nothing listens on right now.
+func freeAddr(t *testing.T) string {
+	t.Helper()
+	var lc net.ListenConfig
+	l, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := l.Addr().String()
+	require.NoError(t, l.Close())
+	return addr
 }

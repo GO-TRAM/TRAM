@@ -5,7 +5,7 @@ import "buf/validate/validate.proto";
 import "google/api/annotations.proto";
 import "google/protobuf/struct.proto";
 
-option go_package = "codeberg.org/eljoth/tram/pkg/gen/go/stream/service/v1";
+option go_package = "codeberg.org/eljoth/tram/pkg/gen/go/api/proto/stream/v1";
 
 //------------------------------------------------------------------------------
 // Domain definitions
@@ -64,6 +64,13 @@ message DeleteStreamRequest {
 
 message DeleteStreamResponse {}
 
+message ListStreamsRequest {}
+
+message ListStreamsResponse {
+  // All streams, ordered by name.
+  repeated Stream streams = 1;
+}
+
 service StreamService {
   rpc PutStream(PutStreamRequest) returns (PutStreamResponse) {
     option (google.api.http) = {
@@ -76,5 +83,8 @@ service StreamService {
   }
   rpc DeleteStream(DeleteStreamRequest) returns (DeleteStreamResponse) {
     option (google.api.http) = {delete: "/v1/streams/{name}"};
+  }
+  rpc ListStreams(ListStreamsRequest) returns (ListStreamsResponse) {
+    option (google.api.http) = {get: "/v1/streams"};
   }
 }

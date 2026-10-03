@@ -2,7 +2,7 @@
 apiVersion: io.tram.core/v1
 kind: Stream
 metadata:
-  name: otlp_with_validation
+  name: otlp-with-validation
 spec:
   source:
     type: otlp

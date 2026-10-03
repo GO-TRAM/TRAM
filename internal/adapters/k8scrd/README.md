@@ -58,9 +58,10 @@ spec:
 
 - **Names:** a resource runs as the Tram stream `<namespace>.<name>`, e.g. `default.test-stream`, so resources with the same name in different namespaces do not collide. The stream can be read through the API under that name
 - **Changes:** the stream is created or updated when the resource's `spec` changes. Status updates and periodic resyncs do not restart it
-- **Status:** `status.active` is `true` once the stream runs, and `false` if building it failed, e.g. because of an invalid component spec. Failed builds are retried with increasing delays
+- **Status:** `status.active` is `true` once the stream runs, and `false` if building it failed, e.g. because of an invalid component spec. Failed builds are retried with increasing delays. If the stream's source stops later, Tram restarts the stream on its own; `status.active` stays `true` meanwhile
 - **Deletion:** deleting the resource deletes the stream
 - **Scope:** the operator watches `Stream` resources in all namespaces. There is no leader election, so every Tram instance with the operator enabled runs every `Stream` resource
+- **Access:** creating a `Stream` lets its author open ports on the Tram pod and send data anywhere Tram can reach, from any namespace. Grant `create` on `streams.io.tram.core` only to users you would also trust with the Tram deployment; see [Security](../../../README.md#-security)
 - **File sync:** with `--enable-file-sync`, streams created by the operator are also written to the configuration directory
 
 ## Development

@@ -16,6 +16,28 @@
     "application/json"
   ],
   "paths": {
+    "/v1/streams": {
+      "get": {
+        "operationId": "StreamService_ListStreams",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListStreamsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "StreamService"
+        ]
+      }
+    },
     "/v1/streams/{name}": {
       "get": {
         "operationId": "StreamService_GetStream",
@@ -185,6 +207,19 @@
       "properties": {
         "stream": {
           "$ref": "#/definitions/v1Stream"
+        }
+      }
+    },
+    "v1ListStreamsResponse": {
+      "type": "object",
+      "properties": {
+        "streams": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Stream"
+          },
+          "description": "All streams, ordered by name."
         }
       }
     },

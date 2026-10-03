@@ -31,4 +31,19 @@ func TestRunReturnsAfterStop(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Run did not return after Stop")
 	}
+
+	require.NoError(t, g.Stop(), "stopping again is harmless")
+}
+
+// A zero or negative interval would generate events in a busy loop.
+func TestNewRejectsNonPositiveInterval(t *testing.T) {
+	t.Parallel()
+
+	for _, interval := range []string{"0s", "-1s"} {
+		_, err := generator.New(domain.SourceSpec{
+			Name: "generator",
+			Spec: map[string]any{"interval": interval},
+		}, validator.New())
+		require.ErrorContains(t, err, "not positive", interval)
+	}
 }

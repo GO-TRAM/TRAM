@@ -33,7 +33,7 @@ go build -o tram ./cmd/tram
 ./tram server
 ```
 
-By default the HTTP API listens on `localhost:8080` and the gRPC API on `localhost:50051`. See `./tram server --help` for all flags.
+By default the HTTP API listens on `localhost:8080` and the gRPC API on `localhost:50051`. `--log-level` sets the log level (`debug`, `info`, `warn` or `error`; default `info`). See `./tram server --help` for all flags.
 
 ### API Endpoints
 
@@ -41,6 +41,7 @@ The Tram service provides the following HTTP endpoints:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/v1/streams` | List all streams, ordered by name |
 | PUT | `/v1/streams/{name}` | Create or update a stream |
 | GET | `/v1/streams/{name}` | Get a stream configuration |
 | DELETE | `/v1/streams/{name}` | Delete a stream |
@@ -58,6 +59,8 @@ A `PUT` to an existing stream changes as little as possible:
 | Source | The stream is stopped and created again. An OTLP source closes its port in between, so clients briefly cannot connect |
 
 If an update fails, e.g. because of an invalid component spec, the request returns an error and the previous version of the stream keeps running. Delete and create a stream to restart it completely.
+
+If the source of a stream stops on its own, e.g. because its NATS stream does not exist yet, Tram restarts the stream after a delay that grows from 1 second to 1 minute while it keeps failing. A `PUT` of the unchanged stream restarts it right away.
 
 ---
 
@@ -292,6 +295,17 @@ kubectl apply -f internal/adapters/k8scrd/config/crd/bases/io.tram.core_streams.
 ```
 
 The operator watches `Stream` resources (`io.tram.core/v1`) and runs each as a stream named `<namespace>.<name>`. It uses the in-cluster configuration or the current kubeconfig context; `--kubeconfig` selects another file. See `setup/k8s/` for an example and [the operator documentation](internal/adapters/k8scrd/README.md) for details.
+
+---
+
+## 🔒 Security
+
+Tram has no authentication or authorization of its own. Whoever can create a stream decides which ports Tram opens and where it sends data, so treat access to every configuration source like access to the Tram process:
+
+- **API**: the gRPC and HTTP APIs accept every request. They listen on `localhost` by default; if you bind them to other interfaces with `--grpc-endpoint` and `--http-endpoint`, restrict access, e.g. with a network policy or an authenticating proxy in front
+- **OTLP source**: listens on the configured port on all network interfaces, without TLS or authentication. Anyone who can reach the port can send data into the stream. Restrict it on the network level, or terminate TLS and authenticate in a proxy in front of it
+- **Sinks**: an OTLP sink sends data to any URL in its spec, and `insecure: true` turns off certificate checks. Keep credentials in sink specs, e.g. in `headers` or NATS URLs, out of version control; the file sync writes new files readable only by their owner
+- **Kubernetes operator**: watches `Stream` resources in all namespaces, so everyone allowed to create a `Stream` in any namespace can open ports on the Tram pod and send data anywhere Tram can reach. Grant `create` on `streams.io.tram.core` only to users you would also trust with the Tram deployment
 
 ---
 

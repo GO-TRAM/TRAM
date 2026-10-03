@@ -81,6 +81,28 @@ func TestStreamNameCannotEscapeDirectory(t *testing.T) {
 	assert.ErrorIs(t, err, os.ErrNotExist, "file written outside the config directory")
 }
 
+// Editors write swap and backup files next to the file they save. Those must
+// not cancel the sync of the stream file.
+func TestOtherFilesDoNotCancelSync(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeFile(t, dir, "edited.json", streamFile)
+
+	c := newCore(t)
+	cs, err := configsync.New(c, dir, slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+	run(t, cs)
+
+	writeFile(t, dir, "edited.json", strings.Replace(streamFile, "1h", "2h", 1))
+	writeFile(t, dir, ".edited.json.swp", "swap")
+
+	require.Eventually(t, func() bool {
+		stream, getErr := c.GetStream(t.Context(), "edited")
+		return getErr == nil && stream.Source.Spec["interval"] == "2h"
+	}, 5*time.Second, 10*time.Millisecond, "the change to the stream file was not applied")
+}
+
 func TestUnreadableFileKeepsStream(t *testing.T) {
 	t.Parallel()
 

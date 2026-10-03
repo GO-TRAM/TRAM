@@ -111,7 +111,20 @@ func (a *API) Run(ctx context.Context) error {
 		a.logger.ErrorContext(ctx, "Could not shut down HTTP gateway cleanly", slog.Any("error", err))
 	}
 
-	a.grpcServer.Stop()
+	// Calls in progress, e.g. a PutStream building a stream, may finish, but
+	// not for longer than the shutdown timeout.
+	grpcStopped := make(chan struct{})
+	go func() {
+		a.grpcServer.GracefulStop()
+		close(grpcStopped)
+	}()
+	select {
+	case <-grpcStopped:
+	case <-shutdownCtx.Done():
+		a.logger.WarnContext(ctx, "gRPC calls did not finish in time, stopping the server")
+		a.grpcServer.Stop()
+		<-grpcStopped
+	}
 
 	wg.Wait()
 	a.logger.InfoContext(ctx, "API servers stopped")

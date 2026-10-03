@@ -22,6 +22,7 @@ const (
 	StreamService_PutStream_FullMethodName    = "/api.proto.stream.v1.StreamService/PutStream"
 	StreamService_GetStream_FullMethodName    = "/api.proto.stream.v1.StreamService/GetStream"
 	StreamService_DeleteStream_FullMethodName = "/api.proto.stream.v1.StreamService/DeleteStream"
+	StreamService_ListStreams_FullMethodName  = "/api.proto.stream.v1.StreamService/ListStreams"
 )
 
 // StreamServiceClient is the client API for StreamService service.
@@ -31,6 +32,7 @@ type StreamServiceClient interface {
 	PutStream(ctx context.Context, in *PutStreamRequest, opts ...grpc.CallOption) (*PutStreamResponse, error)
 	GetStream(ctx context.Context, in *GetStreamRequest, opts ...grpc.CallOption) (*GetStreamResponse, error)
 	DeleteStream(ctx context.Context, in *DeleteStreamRequest, opts ...grpc.CallOption) (*DeleteStreamResponse, error)
+	ListStreams(ctx context.Context, in *ListStreamsRequest, opts ...grpc.CallOption) (*ListStreamsResponse, error)
 }
 
 type streamServiceClient struct {
@@ -71,6 +73,16 @@ func (c *streamServiceClient) DeleteStream(ctx context.Context, in *DeleteStream
 	return out, nil
 }
 
+func (c *streamServiceClient) ListStreams(ctx context.Context, in *ListStreamsRequest, opts ...grpc.CallOption) (*ListStreamsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListStreamsResponse)
+	err := c.cc.Invoke(ctx, StreamService_ListStreams_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StreamServiceServer is the server API for StreamService service.
 // All implementations must embed UnimplementedStreamServiceServer
 // for forward compatibility.
@@ -78,6 +90,7 @@ type StreamServiceServer interface {
 	PutStream(context.Context, *PutStreamRequest) (*PutStreamResponse, error)
 	GetStream(context.Context, *GetStreamRequest) (*GetStreamResponse, error)
 	DeleteStream(context.Context, *DeleteStreamRequest) (*DeleteStreamResponse, error)
+	ListStreams(context.Context, *ListStreamsRequest) (*ListStreamsResponse, error)
 	mustEmbedUnimplementedStreamServiceServer()
 }
 
@@ -96,6 +109,9 @@ func (UnimplementedStreamServiceServer) GetStream(context.Context, *GetStreamReq
 }
 func (UnimplementedStreamServiceServer) DeleteStream(context.Context, *DeleteStreamRequest) (*DeleteStreamResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteStream not implemented")
+}
+func (UnimplementedStreamServiceServer) ListStreams(context.Context, *ListStreamsRequest) (*ListStreamsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListStreams not implemented")
 }
 func (UnimplementedStreamServiceServer) mustEmbedUnimplementedStreamServiceServer() {}
 func (UnimplementedStreamServiceServer) testEmbeddedByValue()                       {}
@@ -172,6 +188,24 @@ func _StreamService_DeleteStream_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StreamService_ListStreams_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListStreamsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StreamServiceServer).ListStreams(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StreamService_ListStreams_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StreamServiceServer).ListStreams(ctx, req.(*ListStreamsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // StreamService_ServiceDesc is the grpc.ServiceDesc for StreamService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +224,10 @@ var StreamService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteStream",
 			Handler:    _StreamService_DeleteStream_Handler,
+		},
+		{
+			MethodName: "ListStreams",
+			Handler:    _StreamService_ListStreams_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

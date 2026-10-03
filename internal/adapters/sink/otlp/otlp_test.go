@@ -2,6 +2,7 @@ package otlp_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -470,4 +471,61 @@ func TestStop(t *testing.T) {
 	// Stop should be safe to call multiple times
 	assert.NoError(t, sink.Stop())
 	assert.NoError(t, sink.Stop())
+}
+
+// Answers that refuse the data itself are rejections, so sources do not
+// retry them forever; answers that may change on a retry are plain errors.
+func TestNotifyClassifiesStatus(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		status   int
+		rejected bool
+	}{
+		{status: http.StatusBadRequest, rejected: true},
+		{status: http.StatusUnauthorized, rejected: true},
+		{status: http.StatusRequestEntityTooLarge, rejected: true},
+		{status: http.StatusRequestTimeout, rejected: false},
+		{status: http.StatusTooManyRequests, rejected: false},
+		{status: http.StatusInternalServerError, rejected: false},
+		{status: http.StatusServiceUnavailable, rejected: false},
+	}
+
+	for _, c := range cases {
+		t.Run(http.StatusText(c.status), func(t *testing.T) {
+			t.Parallel()
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(c.status)
+			}))
+			defer server.Close()
+
+			sink, err := otlp.New(domain.SinkSpec{
+				Name: "test-otlp-status",
+				From: "test-source",
+				Type: otlp.Type,
+				Spec: map[string]any{"url": server.URL},
+			}, validator.New(), slog.New(slog.DiscardHandler))
+			require.NoError(t, err)
+			defer sink.Stop()
+
+			err = sink.Notify(t.Context(), &domain.Event{Logs: &logspb.LogsData{}})
+			require.Error(t, err)
+			assert.Equal(t, c.rejected, errors.Is(err, domain.ErrEventRejected))
+		})
+	}
+}
+
+func TestNewRejectsNonPositiveTimeout(t *testing.T) {
+	t.Parallel()
+
+	for _, timeout := range []string{"0s", "-1s"} {
+		_, err := otlp.New(domain.SinkSpec{
+			Name: "test-otlp-timeout",
+			From: "test-source",
+			Type: otlp.Type,
+			Spec: map[string]any{"url": "http://localhost:4318", "timeout": timeout},
+		}, validator.New(), slog.New(slog.DiscardHandler))
+		require.ErrorContains(t, err, "not positive", timeout)
+	}
 }

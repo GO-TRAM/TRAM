@@ -454,7 +454,8 @@ Sends OpenTelemetry Protocol data via HTTP to an OTLP-compatible endpoint. Sends
 - Each signal type of an event is sent as a separate HTTP request to its endpoint. An event can hold several signal types, e.g. after a batch stage; if one request fails, the source retries the whole event, so the others may be sent twice
 - Uses protobuf encoding (`application/x-protobuf` content type) as required by OTLP/HTTP
 - The sink handles URL construction properly, so both `"http://host:4318"` and `"http://host:4318/"` work correctly
-- HTTP errors (non-2xx status codes) are returned to the caller, which may cause retries depending on the source
+- Non-2xx answers fail the delivery. Client errors that refuse the data itself (4xx except 408 and 429) reject the event, so the OTLP source answers with 400 and the NATS source terminates the message. Other errors, including 408, 429 and 5xx, can be retried by the source: the OTLP source answers with 503, the NATS source redelivers the message
+- Proxy settings are taken from the `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` environment variables
 - Connection pooling is used for better performance with multiple requests
 - Timeout applies to the entire request lifecycle, including connection establishment and reading the response
 

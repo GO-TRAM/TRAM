@@ -2,7 +2,7 @@
 apiVersion: io.tram.core/v1
 kind: Stream
 metadata:
-  name: otlp_secure
+  name: otlp-secure
 spec:
   source:
     type: otlp

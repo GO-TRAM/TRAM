@@ -19,7 +19,7 @@ type Factory struct {
 
 func NewFactory() *Factory {
 	return &Factory{
-		validator: validator.New(),
+		validator: validator.New(validator.WithRequiredStructEnabled()),
 	}
 }
 

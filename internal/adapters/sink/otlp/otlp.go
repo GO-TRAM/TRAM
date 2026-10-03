@@ -26,6 +26,10 @@ const (
 
 	// Let the HTTP client follow up to 10 redirects to platform endpoints that use one.
 	maxRedirects = 10
+
+	// maxErrorBodyBytes limits how much of an error response is kept for the
+	// error message.
+	maxErrorBodyBytes = 1024
 )
 
 type OTLP struct {
@@ -43,21 +47,28 @@ func New(sink domain.SinkSpec, validator *validator.Validate, logger *slog.Logge
 
 	// Parse timeout
 	timeout := defaultTimeout
-	if baseSink.Spec().Timeout != "" {
-		timeout, err = time.ParseDuration(baseSink.Spec().Timeout)
+	if raw := baseSink.Spec().Timeout; raw != "" {
+		timeout, err = time.ParseDuration(raw)
 		if err != nil {
 			return nil, fmt.Errorf("invalid timeout: %w", err)
 		}
+		if timeout <= 0 {
+			return nil, fmt.Errorf("invalid timeout: %s is not positive", raw)
+		}
 	}
 
-	// Configure HTTP transport
-	transport := &http.Transport{
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 100,
-		IdleConnTimeout:     90 * time.Second,
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: baseSink.Spec().Insecure,
-		},
+	// The default transport brings proxy settings from the environment,
+	// connection and TLS handshake timeouts, and HTTP/2. All requests go to
+	// one host, so it may keep as many idle connections as in total.
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return nil, errors.New("default HTTP transport is not an *http.Transport")
+	}
+	transport = transport.Clone()
+	transport.MaxIdleConnsPerHost = transport.MaxIdleConns
+	transport.TLSClientConfig = &tls.Config{
+		//nolint:gosec // Opt-in through the insecure option, for endpoints with self-signed certificates.
+		InsecureSkipVerify: baseSink.Spec().Insecure,
 	}
 
 	client := &http.Client{
@@ -123,8 +134,14 @@ func (o *OTLP) send(ctx context.Context, signal domain.Signal, data []byte) erro
 
 	// Check response status
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024)) // Read limited error body
-		return fmt.Errorf("OTLP server returned status %d: %s", resp.StatusCode, string(body))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+		err = fmt.Errorf("OTLP server returned status %d: %s", resp.StatusCode, string(body))
+		if permanent(resp.StatusCode) {
+			// The same data gets the same answer again, so it is rejected
+			// instead of retried, e.g. by a NATS source redelivering it.
+			return fmt.Errorf("%w: %w", domain.ErrEventRejected, err)
+		}
+		return err
 	}
 
 	// Read and discard response body to allow connection reuse
@@ -143,6 +160,14 @@ func (o *OTLP) send(ctx context.Context, signal domain.Signal, data []byte) erro
 		slog.Int("status", resp.StatusCode))
 
 	return nil
+}
+
+// permanent reports whether a status refuses the data itself: a client error
+// other than 408 Request Timeout and 429 Too Many Requests, which OTLP
+// clients retry. Server errors may go away and are retried as well.
+func permanent(status int) bool {
+	return status >= 400 && status < 500 &&
+		status != http.StatusRequestTimeout && status != http.StatusTooManyRequests
 }
 
 // getEndpointPath returns the OTLP HTTP path for the given signal type.

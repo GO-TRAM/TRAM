@@ -4,7 +4,7 @@
 apiVersion: io.tram.core/v1
 kind: Stream
 metadata:
-  name: benchmark_nats_filter_nats
+  name: benchmark-nats-filter-nats
 spec:
   source:
     type: nats

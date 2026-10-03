@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -37,6 +38,7 @@ type ConfigSync struct {
 	fsEvents         chan fsnotify.Event
 	debouncer        *time.Timer
 	debounceDuration time.Duration
+	syncMu           sync.Mutex
 }
 
 func New(c ports.Core, dir string, logger *slog.Logger) (*ConfigSync, error) {
@@ -74,18 +76,19 @@ func (c *ConfigSync) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	go func() {
-		for event := range c.watcher.Events {
-			c.logger.DebugContext(ctx, "Received file system event",
-				slog.String("path", event.Name), slog.String("op", event.Op.String()))
-			c.fsEvents <- event
-		}
-	}()
+	go c.forwardFSEvents(ctx)
 
 	ch := make(chan domain.StreamSpecWatchEvent)
 	if err := c.core.Watch(ctx, ch); err != nil {
 		return fmt.Errorf("failed to watch core: %w", err)
 	}
+
+	// A sync scheduled before Run returns must not change streams afterwards.
+	defer func() {
+		if c.debouncer != nil {
+			c.debouncer.Stop()
+		}
+	}()
 
 	for {
 		select {
@@ -101,25 +104,58 @@ func (c *ConfigSync) Run(ctx context.Context) error {
 			}
 
 		case event := <-c.fsEvents:
-			if c.debouncer != nil {
-				c.debouncer.Stop()
-			}
-			if filepath.Ext(event.Name) == fileExtension {
-				c.debouncer = time.AfterFunc(c.debounceDuration, func() {
-					if err := c.sync(ctx); err != nil {
-						c.logger.ErrorContext(ctx, "Could not sync stream files", slog.Any("error", err))
-					}
-				})
-			}
+			c.scheduleSync(ctx, event)
 		}
 	}
+}
+
+// forwardFSEvents passes the watcher's events on to fsEvents until ctx is
+// done.
+func (c *ConfigSync) forwardFSEvents(ctx context.Context) {
+	for event := range c.watcher.Events {
+		c.logger.DebugContext(ctx, "Received file system event",
+			slog.String("path", event.Name), slog.String("op", event.Op.String()))
+		select {
+		case c.fsEvents <- event:
+		case <-ctx.Done():
+			// Nobody reads fsEvents anymore.
+			return
+		}
+	}
+}
+
+// scheduleSync syncs once a burst of changes to stream files has settled.
+// Other files, like the swap files of editors, must not delay or cancel the
+// sync. Must only be called from Run.
+func (c *ConfigSync) scheduleSync(ctx context.Context, event fsnotify.Event) {
+	if filepath.Ext(event.Name) != fileExtension {
+		return
+	}
+	if c.debouncer != nil {
+		c.debouncer.Stop()
+	}
+	c.debouncer = time.AfterFunc(c.debounceDuration, func() {
+		if err := c.sync(ctx); err != nil {
+			c.logger.ErrorContext(ctx, "Could not sync stream files", slog.Any("error", err))
+		}
+	})
 }
 
 // sync makes the core's streams match the stream files: it creates or
 // updates a stream for every file and deletes streams without a file. A
 // stream whose file cannot be read is left as it is, because deleting it
 // would also remove the file, e.g. while an editor is still saving it.
+//
+// Syncs run one at a time: a sync that is slow, e.g. because building a
+// stream takes long, could otherwise overlap the next one and apply an older
+// state of the files after it.
 func (c *ConfigSync) sync(ctx context.Context) error {
+	c.syncMu.Lock()
+	defer c.syncMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	files, unreadable, err := c.readStreamFiles(ctx)
 	if err != nil {
 		return err

@@ -2,6 +2,8 @@ package generator
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -19,6 +21,7 @@ type Generator struct {
 
 	interval time.Duration
 	shutdown chan struct{}
+	stopOnce sync.Once
 }
 
 func New(source domain.SourceSpec, validator *validator.Validate) (*Generator, error) {
@@ -30,6 +33,10 @@ func New(source domain.SourceSpec, validator *validator.Validate) (*Generator, e
 	interval, err := time.ParseDuration(base.Spec().Interval)
 	if err != nil {
 		return nil, err
+	}
+	// A zero or negative interval would generate events in a busy loop.
+	if interval <= 0 {
+		return nil, fmt.Errorf("interval %s is not positive", base.Spec().Interval)
 	}
 
 	return &Generator{
@@ -53,7 +60,8 @@ func (g *Generator) Run(ctx context.Context) error {
 	}
 }
 
+// Stop ends Run. It can be called more than once.
 func (g *Generator) Stop() error {
-	close(g.shutdown)
+	g.stopOnce.Do(func() { close(g.shutdown) })
 	return nil
 }

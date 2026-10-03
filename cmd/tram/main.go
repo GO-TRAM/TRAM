@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -8,15 +9,24 @@ import (
 )
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	if err := newRootCmd(logger).Execute(); err != nil {
+	// The level is set from the --log-level flag once it is parsed.
+	level := &slog.LevelVar{}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+	if err := newRootCmd(logger, level).Execute(); err != nil {
 		logger.Error("Tram stopped with an error", slog.Any("error", err))
 		os.Exit(1)
 	}
 }
 
-func newRootCmd(logger *slog.Logger) *cobra.Command {
+func newRootCmd(logger *slog.Logger, level *slog.LevelVar) *cobra.Command {
+	var logLevel string
 	root := &cobra.Command{
+		PersistentPreRunE: func(*cobra.Command, []string) error {
+			if err := level.UnmarshalText([]byte(logLevel)); err != nil {
+				return fmt.Errorf("invalid --log-level %q: use debug, info, warn or error", logLevel)
+			}
+			return nil
+		},
 		Use:   "tram",
 		Short: "Tram is a simple observability pipeline tool",
 		Long: `Tram is a simple observability pipeline tool that allows you to
@@ -26,6 +36,7 @@ backends.`,
 			return cmd.Help()
 		},
 	}
+	root.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level: debug, info, warn or error")
 	root.AddCommand(newServerCmd(logger))
 	return root
 }

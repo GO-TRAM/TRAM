@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
+	"strings"
 
 	"buf.build/go/protovalidate"
 	"google.golang.org/grpc/codes"
@@ -51,6 +53,15 @@ func (s streamServer) DeleteStream(ctx context.Context, req *v1.DeleteStreamRequ
 		return nil, s.statusOf(ctx, err)
 	}
 	return &v1.DeleteStreamResponse{}, nil
+}
+
+func (s streamServer) ListStreams(ctx context.Context, _ *v1.ListStreamsRequest) (*v1.ListStreamsResponse, error) {
+	streams, err := s.core.GetStreams(ctx)
+	if err != nil {
+		return nil, s.statusOf(ctx, err)
+	}
+	slices.SortFunc(streams, func(a, b domain.StreamSpec) int { return strings.Compare(a.Name, b.Name) })
+	return &v1.ListStreamsResponse{Streams: mmap(streams, streamSpecToPBStream)}, nil
 }
 
 // toStatus maps core errors to gRPC status codes, which the gateway turns

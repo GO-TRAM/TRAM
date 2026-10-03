@@ -2,7 +2,7 @@
 apiVersion: io.tram.core/v1
 kind: Stream
 metadata:
-  name: otlp_insecure_dev
+  name: otlp-insecure-dev
 spec:
   source:
     type: generator

@@ -4,7 +4,7 @@
 apiVersion: io.tram.core/v1
 kind: Stream
 metadata:
-  name: benchmark_otlp_batch_nats
+  name: benchmark-otlp-batch-nats
 spec:
   source:
     type: otlp

@@ -2,7 +2,7 @@
 apiVersion: io.tram.core/v1
 kind: Stream
 metadata:
-  name: otlp_benchmark
+  name: otlp-benchmark
 spec:
   source:
     type: generator
