@@ -28,23 +28,48 @@ type MetricFilter func(resource *resourcepb.Resource, scope *commonpb.Instrument
 
 type SpanFilter func(resource *resourcepb.Resource, scope *commonpb.InstrumentationScope, span *tracepb.Span) (bool, error)
 
-//nolint:dupl // Same shape for another OTLP type; the shared logic is in filterTree.
+// The Filter functions spell out the loops per signal instead of sharing a
+// generic walk over the tree: every level of indirection is paid per record,
+// and a generic version was 10-25% slower in BenchmarkFilter. For the same
+// reason, resource and scope are read once per container, not per record.
+
+//nolint:dupl // Same shape for another OTLP type; kept apart for speed, see above.
 func FilterLogs(data *logspb.LogsData, keep LogFilter) (*logspb.LogsData, error) {
 	if data == nil {
 		return data, nil
 	}
-	resources, unchanged, err := filterTree(
+	resources, unchanged, err := prune(
 		data.GetResourceLogs(),
-		(*logspb.ResourceLogs).GetScopeLogs,
-		(*logspb.ScopeLogs).GetLogRecords,
-		func(rl *logspb.ResourceLogs, sl *logspb.ScopeLogs, record *logspb.LogRecord) (*logspb.LogRecord, error) {
-			return keepIf(record)(keep(rl.GetResource(), sl.GetScope(), record))
-		},
-		func(sl *logspb.ScopeLogs, records []*logspb.LogRecord) *logspb.ScopeLogs {
-			return &logspb.ScopeLogs{Scope: sl.GetScope(), SchemaUrl: sl.GetSchemaUrl(), LogRecords: records}
-		},
-		func(rl *logspb.ResourceLogs, scopes []*logspb.ScopeLogs) *logspb.ResourceLogs {
-			return &logspb.ResourceLogs{Resource: rl.GetResource(), SchemaUrl: rl.GetSchemaUrl(), ScopeLogs: scopes}
+		func(rl *logspb.ResourceLogs) (*logspb.ResourceLogs, error) {
+			resource := rl.GetResource()
+			scopes, scopesUnchanged, err := prune(
+				rl.GetScopeLogs(),
+				func(sl *logspb.ScopeLogs) (*logspb.ScopeLogs, error) {
+					scope := sl.GetScope()
+					records, recordsUnchanged, err := prune(
+						sl.GetLogRecords(),
+						func(record *logspb.LogRecord) (*logspb.LogRecord, error) {
+							return keepIf(record)(keep(resource, scope, record))
+						},
+					)
+					if err != nil || recordsUnchanged || len(records) == 0 {
+						return keepIf(sl)(recordsUnchanged, err)
+					}
+					return &logspb.ScopeLogs{
+						Scope:      scope,
+						SchemaUrl:  sl.GetSchemaUrl(),
+						LogRecords: records,
+					}, nil
+				},
+			)
+			if err != nil || scopesUnchanged || len(scopes) == 0 {
+				return keepIf(rl)(scopesUnchanged, err)
+			}
+			return &logspb.ResourceLogs{
+				Resource:  resource,
+				SchemaUrl: rl.GetSchemaUrl(),
+				ScopeLogs: scopes,
+			}, nil
 		},
 	)
 	if err != nil || unchanged || len(resources) == 0 {
@@ -53,23 +78,36 @@ func FilterLogs(data *logspb.LogsData, keep LogFilter) (*logspb.LogsData, error)
 	return &logspb.LogsData{ResourceLogs: resources}, nil
 }
 
-//nolint:dupl // Same shape for another OTLP type; the shared logic is in filterTree.
+//nolint:dupl // Same shape for another OTLP type; kept apart for speed, see above.
 func FilterSpans(data *tracepb.TracesData, keep SpanFilter) (*tracepb.TracesData, error) {
 	if data == nil {
 		return data, nil
 	}
-	resources, unchanged, err := filterTree(
+	resources, unchanged, err := prune(
 		data.GetResourceSpans(),
-		(*tracepb.ResourceSpans).GetScopeSpans,
-		(*tracepb.ScopeSpans).GetSpans,
-		func(rs *tracepb.ResourceSpans, ss *tracepb.ScopeSpans, span *tracepb.Span) (*tracepb.Span, error) {
-			return keepIf(span)(keep(rs.GetResource(), ss.GetScope(), span))
-		},
-		func(ss *tracepb.ScopeSpans, spans []*tracepb.Span) *tracepb.ScopeSpans {
-			return &tracepb.ScopeSpans{Scope: ss.GetScope(), SchemaUrl: ss.GetSchemaUrl(), Spans: spans}
-		},
-		func(rs *tracepb.ResourceSpans, scopes []*tracepb.ScopeSpans) *tracepb.ResourceSpans {
-			return &tracepb.ResourceSpans{Resource: rs.GetResource(), SchemaUrl: rs.GetSchemaUrl(), ScopeSpans: scopes}
+		func(rs *tracepb.ResourceSpans) (*tracepb.ResourceSpans, error) {
+			resource := rs.GetResource()
+			scopes, scopesUnchanged, err := prune(
+				rs.GetScopeSpans(),
+				func(ss *tracepb.ScopeSpans) (*tracepb.ScopeSpans, error) {
+					scope := ss.GetScope()
+					spans, spansUnchanged, err := prune(ss.GetSpans(), func(span *tracepb.Span) (*tracepb.Span, error) {
+						return keepIf(span)(keep(resource, scope, span))
+					})
+					if err != nil || spansUnchanged || len(spans) == 0 {
+						return keepIf(ss)(spansUnchanged, err)
+					}
+					return &tracepb.ScopeSpans{Scope: scope, SchemaUrl: ss.GetSchemaUrl(), Spans: spans}, nil
+				},
+			)
+			if err != nil || scopesUnchanged || len(scopes) == 0 {
+				return keepIf(rs)(scopesUnchanged, err)
+			}
+			return &tracepb.ResourceSpans{
+				Resource:   resource,
+				SchemaUrl:  rs.GetSchemaUrl(),
+				ScopeSpans: scopes,
+			}, nil
 		},
 	)
 	if err != nil || unchanged || len(resources) == 0 {
@@ -82,59 +120,46 @@ func FilterMetrics(data *metricspb.MetricsData, keep MetricFilter) (*metricspb.M
 	if data == nil {
 		return data, nil
 	}
-	resources, unchanged, err := filterTree(
+	resources, unchanged, err := prune(
 		data.GetResourceMetrics(),
-		(*metricspb.ResourceMetrics).GetScopeMetrics,
-		(*metricspb.ScopeMetrics).GetMetrics,
-		func(rm *metricspb.ResourceMetrics, sm *metricspb.ScopeMetrics, m *metricspb.Metric) (*metricspb.Metric, error) {
-			return filterDataPoints(m, func(dp proto.Message) (bool, error) {
-				return keep(rm.GetResource(), sm.GetScope(), m, dp)
-			})
-		},
-		func(sm *metricspb.ScopeMetrics, metrics []*metricspb.Metric) *metricspb.ScopeMetrics {
-			return &metricspb.ScopeMetrics{Scope: sm.GetScope(), SchemaUrl: sm.GetSchemaUrl(), Metrics: metrics}
-		},
-		func(rm *metricspb.ResourceMetrics, scopes []*metricspb.ScopeMetrics) *metricspb.ResourceMetrics {
+		func(rm *metricspb.ResourceMetrics) (*metricspb.ResourceMetrics, error) {
+			resource := rm.GetResource()
+			scopes, scopesUnchanged, err := prune(
+				rm.GetScopeMetrics(),
+				func(sm *metricspb.ScopeMetrics) (*metricspb.ScopeMetrics, error) {
+					scope := sm.GetScope()
+					metrics, metricsUnchanged, err := prune(
+						sm.GetMetrics(),
+						func(m *metricspb.Metric) (*metricspb.Metric, error) {
+							return filterDataPoints(m, func(dp proto.Message) (bool, error) {
+								return keep(resource, scope, m, dp)
+							})
+						},
+					)
+					if err != nil || metricsUnchanged || len(metrics) == 0 {
+						return keepIf(sm)(metricsUnchanged, err)
+					}
+					return &metricspb.ScopeMetrics{
+						Scope:     scope,
+						SchemaUrl: sm.GetSchemaUrl(),
+						Metrics:   metrics,
+					}, nil
+				},
+			)
+			if err != nil || scopesUnchanged || len(scopes) == 0 {
+				return keepIf(rm)(scopesUnchanged, err)
+			}
 			return &metricspb.ResourceMetrics{
-				Resource:     rm.GetResource(),
+				Resource:     resource,
 				SchemaUrl:    rm.GetSchemaUrl(),
 				ScopeMetrics: scopes,
-			}
+			}, nil
 		},
 	)
 	if err != nil || unchanged || len(resources) == 0 {
 		return keepIf(data)(unchanged, err)
 	}
 	return &metricspb.MetricsData{ResourceMetrics: resources}, nil
-}
-
-// filterTree filters the resource -> scope -> entry structure all signals
-// share. entry returns the entry to keep (the original or a reduced copy), or
-// the zero value to drop it. newScope and newResource rebuild a container
-// with only the kept children; unchanged containers are reused.
-func filterTree[R, S, E comparable](
-	resources []R,
-	scopesOf func(R) []S,
-	entriesOf func(S) []E,
-	entry func(R, S, E) (E, error),
-	newScope func(S, []E) S,
-	newResource func(R, []S) R,
-) ([]R, bool, error) {
-	return prune(resources, func(resource R) (R, error) {
-		scopes, scopesUnchanged, err := prune(scopesOf(resource), func(scope S) (S, error) {
-			entries, entriesUnchanged, err := prune(entriesOf(scope), func(e E) (E, error) {
-				return entry(resource, scope, e)
-			})
-			if err != nil || entriesUnchanged || len(entries) == 0 {
-				return keepIf(scope)(entriesUnchanged, err)
-			}
-			return newScope(scope, entries), nil
-		})
-		if err != nil || scopesUnchanged || len(scopes) == 0 {
-			return keepIf(resource)(scopesUnchanged, err)
-		}
-		return newResource(resource, scopes), nil
-	})
 }
 
 // filterDataPoints returns the metric with only the data points keep accepts,

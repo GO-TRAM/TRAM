@@ -1,5 +1,6 @@
 # Build output
 /tram
+/benchreport
 
 # Local cluster credentials
 kubeconfig
