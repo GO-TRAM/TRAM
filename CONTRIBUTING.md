@@ -60,6 +60,7 @@ task nats:up
 |------|--------------|
 | `task build` / `task run` | Build the binary, or run the server (`task run -- --enable-file-sync`) |
 | `task check` | Lint, unit and end-to-end tests: what a change should pass |
+| `task test:all` | `task check` plus the container and operator (envtest) tests; fails instead of skipping if Podman/Docker or setup-envtest is missing |
 | `task test` | All tests; tests that need containers are skipped without Docker or Podman |
 | `task test:unit` / `task test:e2e` | Unit tests only, or the end-to-end tests that need no containers |
 | `task test:containers` | End-to-end tests against NATS in a container; fails if no container runtime runs |
@@ -507,6 +508,8 @@ var _ domain.Sink = (*Webhook)(nil)
    ```bash
    task test:envtest
    ```
+
+   `task test:all` runs steps 3 to 5 in one go.
 
 ### Pull Request Requirements
 

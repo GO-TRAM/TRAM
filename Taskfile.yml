@@ -96,6 +96,23 @@ tasks:
       - task: test:unit
       - task: test:e2e
 
+  test:all:
+    desc: Run every check - lint, unit, end-to-end, container and operator (envtest) tests; fails instead of skipping
+    summary: |
+      Runs `task check`, then the tests that `task test` would skip without a
+      container runtime or KUBEBUILDER_ASSETS. Fails up front if Podman or
+      Docker is not running or setup-envtest is missing, instead of after the
+      lint and unit tests.
+    preconditions:
+      - sh: '{{.CONTAINER_TOOL}} info >/dev/null 2>&1'
+        msg: '{{.CONTAINER_TOOL}} is not running; start it first (e.g. `podman machine start`)'
+      - sh: command -v setup-envtest
+        msg: setup-envtest is missing; run `task tools`
+    cmds:
+      - task: check
+      - task: test:containers
+      - task: test:envtest
+
   # --- Tests ---------------------------------------------------------------
 
   test:
