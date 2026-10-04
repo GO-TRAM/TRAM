@@ -42,7 +42,7 @@
         "type": "batch",
         "from": "metrics",
         "spec": {
-          "max_records": 10,
+          "max_records": 100,
           "timeout": "5s"
         }
       },
@@ -61,7 +61,7 @@
         "type": "batch",
         "from": "traces",
         "spec": {
-          "max_records": 5,
+          "max_records": 100,
           "timeout": "5s"
         }
       }
