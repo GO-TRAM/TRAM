@@ -324,7 +324,7 @@ kubectl apply -f internal/adapters/k8scrd/config/crd/bases/io.tram.core_streams.
 ./tram server --enable-k8s-operator
 ```
 
-The operator watches `Stream` resources (`io.tram.core/v1`) and runs each as a stream named `<namespace>.<name>`. It uses the in-cluster configuration or the current kubeconfig context; `--kubeconfig` selects another file. See `setup/k8s/` for an example and [the operator documentation](internal/adapters/k8scrd/README.md) for details.
+The operator watches `Stream` resources (`io.tram.core/v1`) and runs each as a stream named `<namespace>.<name>`. It uses the in-cluster configuration or the current kubeconfig context; `--kubeconfig` selects another file. By default every Tram instance runs every `Stream` resource in the cluster; `--watch-namespace` and `--stream-selector` limit an instance to some of them, e.g. to run different streams in several Tram deployments. See `setup/k8s/` for an example and [the operator documentation](internal/adapters/k8scrd/README.md) for details.
 
 ---
 
@@ -335,7 +335,7 @@ Tram has no authentication or authorization of its own. Whoever can create a str
 - **API**: the gRPC and HTTP APIs accept every request. They listen on `localhost` by default; if you bind them to other interfaces with `--grpc-endpoint` and `--http-endpoint`, restrict access, e.g. with a network policy or an authenticating proxy in front
 - **OTLP source**: listens on the configured port on all network interfaces, without TLS or authentication. Anyone who can reach the port can send data into the stream. Restrict it on the network level, or terminate TLS and authenticate in a proxy in front of it
 - **Sinks**: an OTLP sink sends data to any URL in its spec, and `insecure: true` turns off certificate checks. Keep credentials in sink specs, e.g. in `headers` or NATS URLs, out of version control; the file sync writes new files readable only by their owner
-- **Kubernetes operator**: watches `Stream` resources in all namespaces, so everyone allowed to create a `Stream` in any namespace can open ports on the Tram pod and send data anywhere Tram can reach. Grant `create` on `streams.io.tram.core` only to users you would also trust with the Tram deployment
+- **Kubernetes operator**: watches `Stream` resources in all namespaces unless `--watch-namespace` is set, so everyone allowed to create a `Stream` in a watched namespace can open ports on the Tram pod and send data anywhere Tram can reach. Grant `create` on `streams.io.tram.core` only to users you would also trust with the Tram deployment. `--stream-selector` is no access control: anyone who can create a `Stream` can set the matching labels
 
 ---
 

@@ -11,10 +11,12 @@ import (
 	"log/slog"
 
 	"github.com/go-logr/logr"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	tramv1 "codeberg.org/eljoth/tram/internal/adapters/k8scrd/api/v1"
@@ -28,13 +30,31 @@ type Operator struct {
 	logger *slog.Logger
 }
 
-func New(core ports.Core, kubeconfig string, logger *slog.Logger) (*Operator, error) {
+// Options selects the cluster and the Stream resources the operator runs.
+type Options struct {
+	// Kubeconfig is the path of a kubeconfig file. Empty uses the in-cluster
+	// configuration or the default kubeconfig.
+	Kubeconfig string
+	// Namespaces limits the operator to Stream resources in these namespaces.
+	// Empty watches all namespaces.
+	Namespaces []string
+	// StreamSelector is a label selector, e.g. "tram.io/validation=true".
+	// Empty runs Stream resources regardless of their labels.
+	StreamSelector string
+}
+
+func New(core ports.Core, opts Options, logger *slog.Logger) (*Operator, error) {
 	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
+
+	cacheOpts, err := cacheOptions(opts)
+	if err != nil {
+		return nil, err
+	}
 
 	cfg, err := ctrl.GetConfig()
 
-	if kubeconfig != "" {
-		cfg, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+	if opts.Kubeconfig != "" {
+		cfg, err = clientcmd.BuildConfigFromFlags("", opts.Kubeconfig)
 	}
 
 	if err != nil {
@@ -49,10 +69,12 @@ func New(core ports.Core, kubeconfig string, logger *slog.Logger) (*Operator, er
 		return nil, err
 	}
 
-	logger.Info("Connecting to Kubernetes", slog.String("host", cfg.Host))
+	logger.Info("Connecting to Kubernetes", slog.String("host", cfg.Host),
+		slog.Any("namespaces", opts.Namespaces), slog.String("stream_selector", opts.StreamSelector))
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:         scheme,
+		Cache:          cacheOpts,
 		LeaderElection: false,
 		Metrics: server.Options{
 			BindAddress: "0",
@@ -71,6 +93,36 @@ func New(core ports.Core, kubeconfig string, logger *slog.Logger) (*Operator, er
 	}
 
 	return &Operator{mgr: mgr, core: core, logger: logger}, nil
+}
+
+// cacheOptions limits the cache to the selected Stream resources. The
+// reconciler reads through the cache, so a resource that leaves the selection,
+// e.g. because its label was removed, is reconciled as deleted and its stream
+// stops.
+func cacheOptions(opts Options) (cache.Options, error) {
+	var cacheOpts cache.Options
+
+	if len(opts.Namespaces) > 0 {
+		cacheOpts.DefaultNamespaces = make(map[string]cache.Config, len(opts.Namespaces))
+		for _, ns := range opts.Namespaces {
+			// An empty name would stand for all namespaces and silently undo the
+			// limit, e.g. after a trailing comma.
+			if ns == "" {
+				return cache.Options{}, ErrEmptyNamespace
+			}
+			cacheOpts.DefaultNamespaces[ns] = cache.Config{}
+		}
+	}
+
+	if opts.StreamSelector != "" {
+		selector, err := labels.Parse(opts.StreamSelector)
+		if err != nil {
+			return cache.Options{}, fmt.Errorf("%w: %w", ErrInvalidStreamSelector, err)
+		}
+		cacheOpts.DefaultLabelSelector = selector
+	}
+
+	return cacheOpts, nil
 }
 
 func (o *Operator) Run(ctx context.Context) error {

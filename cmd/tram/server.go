@@ -26,6 +26,8 @@ type serverOptions struct {
 	configDir         string
 	enableK8sOperator bool
 	kubeconfig        string
+	watchNamespaces   []string
+	streamSelector    string
 	enableFileSync    bool
 }
 
@@ -47,6 +49,10 @@ func newServerCmd(logger *slog.Logger) *cobra.Command {
 	flags.BoolVar(&opts.enableK8sOperator, "enable-k8s-operator", false, "Enable the Kubernetes operator")
 	flags.BoolVar(&opts.enableFileSync, "enable-file-sync", false, "Enable the file sync")
 	flags.StringVar(&opts.kubeconfig, "kubeconfig", "", "Kubernetes config file")
+	flags.StringSliceVar(&opts.watchNamespaces, "watch-namespace", nil,
+		"Namespaces whose Stream resources the operator runs, comma-separated (default all)")
+	flags.StringVar(&opts.streamSelector, "stream-selector", "",
+		"Label selector for the Stream resources the operator runs, e.g. tram.io/validation=true")
 	return cmd
 }
 
@@ -96,7 +102,11 @@ func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (er
 
 	if opts.enableK8sOperator {
 		eg.Go(func() error {
-			op, opErr := k8scrd.New(c, opts.kubeconfig, logger)
+			op, opErr := k8scrd.New(c, k8scrd.Options{
+				Kubeconfig:     opts.kubeconfig,
+				Namespaces:     opts.watchNamespaces,
+				StreamSelector: opts.streamSelector,
+			}, logger)
 			if opErr != nil {
 				return opErr
 			}

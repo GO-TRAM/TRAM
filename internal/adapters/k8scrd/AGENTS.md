@@ -5,7 +5,7 @@ This adapter embeds a controller-runtime operator into Tram. It was scaffolded w
 ## Project Structure
 
 ```
-operator.go                                Creates and runs the controller manager inside Tram
+operator.go                                Creates and runs the controller manager inside Tram; limits its cache to the selected namespaces and labels
 api/v1/groupversion_info.go                API group io.tram.core/v1
 api/v1/stream_types.go                     Stream schema (+kubebuilder markers)
 api/v1/zz_generated.deepcopy.go            Generated (DO NOT EDIT)
@@ -41,6 +41,7 @@ Do not use `make manifests`, `make generate` or the `kubebuilder` CLI; they are 
 - **Trigger on spec changes only:** the controller uses `GenerationChangedPredicate`, so status writes and resyncs do not reconcile. Keep it that way
 - **Status:** only write it when it changes (`setActive`)
 - **Deletion:** when the resource is gone, delete the stream and treat `domain.ErrStreamNotFound` as success
+- **Selection:** `--watch-namespace` and `--stream-selector` only limit the manager's cache (`cacheOptions`). Read `Stream` resources through the manager's client, never an uncached reader, so a resource that leaves the selection is reconciled as deleted
 - **Permanent errors:** wrap errors that retrying cannot fix with `reconcile.TerminalError`; other errors are retried with backoff
 - **RBAC:** declare permissions with `+kubebuilder:rbac` markers on the reconciler and regenerate
 
