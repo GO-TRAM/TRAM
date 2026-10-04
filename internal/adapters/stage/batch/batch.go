@@ -93,8 +93,7 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*Batch, error) 
 	}, nil
 }
 
-// MaxHold returns the timeout, for which an event waits at most for its batch
-// to be flushed, unless the batch fills up before.
+// MaxHold returns the timeout.
 func (b *Batch) MaxHold() time.Duration { return b.timeout }
 
 // Notify adds the event to the current batch and waits for its delivery. If

@@ -9,11 +9,9 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
-// checkHoldTimes rejects a stream in which the stages on the way to a sink
-// can hold an event back for as long as the source waits for its delivery.
-// The source would then cancel every event that, e.g., does not fill its
-// batch, so the stream would fail as soon as traffic gets low. The
-// components of tree have to be created already.
+// checkHoldTimes rejects streams whose stages can hold an event for as long as
+// the source waits for its delivery: such a stream fails as soon as traffic
+// is too low to fill its batches. Needs the components to be created.
 func checkHoldTimes(tree *domain.Tree) error {
 	root := tree.Root()
 	source, err := root.GetSource()
@@ -40,7 +38,7 @@ func checkHoldTimes(tree *domain.Tree) error {
 			}
 		}
 		if held >= limit {
-			// Walked from the sink up, so name them in the order events take.
+			// Collected from the sink up.
 			slices.Reverse(holders)
 			return fmt.Errorf(
 				"%w: on the way to sink %s, %s can hold an event for %s, but source %s cancels deliveries after %s",

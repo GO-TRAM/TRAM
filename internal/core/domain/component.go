@@ -7,16 +7,14 @@ import (
 	"time"
 )
 
-// DeliveryLimited is implemented by sources that cancel the delivery of an
-// event after a time, like the OTLP source with its delivery_timeout.
+// DeliveryLimited is implemented by sources that give up on a delivery after
+// a time, like the OTLP source.
 type DeliveryLimited interface {
 	DeliveryTimeout() time.Duration
 }
 
-// Holding is implemented by stages that can hold an event back before passing
-// it on: batch up to its timeout, delay for its delay. A stream in which the
-// stages on the way to a sink can hold an event for as long as its source
-// waits for the delivery is rejected.
+// Holding is implemented by stages that can hold an event back, like batch
+// and delay. Their hold times must stay below the source's delivery timeout.
 type Holding interface {
 	MaxHold() time.Duration
 }

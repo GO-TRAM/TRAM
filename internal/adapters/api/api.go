@@ -35,8 +35,7 @@ type API struct {
 	logger             *slog.Logger
 }
 
-// New creates the API. If metricsHandler is set, the HTTP gateway serves it
-// on GET /metrics.
+// New creates the API; metricsHandler, if set, is served on GET /metrics.
 func New(
 	core ports.Core,
 	grpcServerEndpoint, httpServerEndpoint string,

@@ -16,12 +16,10 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 )
 
-// setupMetrics installs a global meter provider whose metrics, together with
-// Go runtime and process metrics, are served in the Prometheus format by the
-// returned handler. The returned function shuts the provider down.
+// setupMetrics installs the global meter provider and returns a Prometheus
+// handler for its metrics plus Go runtime and process metrics.
 func setupMetrics() (http.Handler, func(context.Context) error, error) {
-	// A registry of its own instead of the global one, so the server can be
-	// set up more than once in a process, as in tests.
+	// Not the global registry, so tests can set up several servers.
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(
 		collectors.NewGoCollector(),
@@ -35,8 +33,7 @@ func setupMetrics() (http.Handler, func(context.Context) error, error) {
 
 	provider := sdkmetric.NewMeterProvider(
 		sdkmetric.WithReader(exporter),
-		// Exemplars link measurements to traces, which Tram does not record
-		// yet; collecting them would only cost time on every measurement.
+		// Without traces, exemplars only cost time.
 		sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter),
 		sdkmetric.WithResource(resource.NewSchemaless(attribute.String("service.name", "tram"))),
 	)

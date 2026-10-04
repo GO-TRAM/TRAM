@@ -9,9 +9,8 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
-// holdSpec builds a stream whose source cancels deliveries after limit, if
-// set, with a chain of stages per branch holding events for the given
-// durations; each branch ends in a sink.
+// holdSpec builds one branch per holds slice, each a chain of stages ending in
+// a sink. An empty limit means a source without delivery timeout.
 func holdSpec(limit string, branches ...[]string) domain.StreamSpec {
 	spec := domain.StreamSpec{
 		Name:   "stream",
@@ -82,8 +81,6 @@ func TestUpsertChecksHoldTimes(t *testing.T) {
 	}
 }
 
-// An update that keeps the source but holds events too long is rejected, and
-// the running stream stays as it is.
 func TestUpsertWithUnchangedSourceChecksHoldTimes(t *testing.T) {
 	t.Parallel()
 

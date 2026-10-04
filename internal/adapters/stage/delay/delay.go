@@ -37,7 +37,7 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*Delay, error) 
 	}, nil
 }
 
-// MaxHold returns the delay, for which every event is held back.
+// MaxHold returns the delay.
 func (d *Delay) MaxHold() time.Duration { return d.delay }
 
 // Notify holds the event back for the configured delay before passing it on.

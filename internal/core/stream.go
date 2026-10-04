@@ -86,8 +86,6 @@ func (c *Core) buildReceivers(tree *domain.Tree) error {
 	return err
 }
 
-// stopUnbuilt stops the components created for a stream that could not be
-// built.
 func (c *Core) stopUnbuilt(tree *domain.Tree, includeSource bool) {
 	if err := stopNodes(tree, includeSource); err != nil {
 		c.logger.ErrorContext(c.ctx, "Could not stop components of unbuilt stream",
@@ -95,7 +93,6 @@ func (c *Core) stopUnbuilt(tree *domain.Tree, includeSource bool) {
 	}
 }
 
-// createReceivers creates the stages and sinks of tree.
 func (c *Core) createReceivers(tree *domain.Tree) error {
 	for _, stageSpec := range tree.Spec.Stages {
 		stage, err := c.stageFactory.New(stageSpec)
@@ -119,13 +116,11 @@ func (c *Core) createReceivers(tree *domain.Tree) error {
 	return nil
 }
 
-// wire connects every node to its children: each stage gets a single
-// fan-out to them, see fanoutOf. With includeRoot set, the source gets one
-// too, see sourceSubscriber.
+// wire subscribes a fan-out to every stage, and with includeRoot to the
+// source as well.
 func (c *Core) wire(tree *domain.Tree, includeRoot bool) error {
 	root := tree.Root()
 	for _, node := range tree.Map() {
-		// Sinks have no children; every stage has some.
 		if node == root || len(node.Children) == 0 {
 			continue
 		}
@@ -156,8 +151,8 @@ func (c *Core) wire(tree *domain.Tree, includeRoot bool) error {
 	return source.Subscribe(subscriber)
 }
 
-// subscriber returns the subscriber of node, wrapped so that it is measured.
-// Every subscriber the core connects has to come from here.
+// Every subscriber the core connects has to come from here, so it is
+// measured.
 func (c *Core) subscriber(tree *domain.Tree, node *domain.Node) (domain.Subscriber, error) {
 	subscriber, err := node.GetSubscriber()
 	if err != nil {
@@ -166,8 +161,6 @@ func (c *Core) subscriber(tree *domain.Tree, node *domain.Node) (domain.Subscrib
 	return c.metrics.instrument(tree.Spec.Name, node, subscriber), nil
 }
 
-// fanoutOf returns the subscriber node delivers to: a fan-out to its
-// children, which counts what node passes on.
 func (c *Core) fanoutOf(tree *domain.Tree, node *domain.Node) (*fanout, error) {
 	children := make([]domain.Subscriber, 0, len(node.Children))
 	for _, child := range node.Children {
@@ -180,10 +173,8 @@ func (c *Core) fanoutOf(tree *domain.Tree, node *domain.Node) (*fanout, error) {
 	return &fanout{name: node.Name, children: children, out: c.metrics.output(tree.Spec.Name, node)}, nil
 }
 
-// sourceSubscriber returns the subscriber the source of tree delivers to: its
-// fan-out, measured as the source, so that the source is measured once per
-// event with the result its client gets. Every source gets its subscriber
-// from here.
+// sourceSubscriber measures the source's fan-out as the source itself: once
+// per event, with the result its client gets.
 func (c *Core) sourceSubscriber(tree *domain.Tree) (domain.Subscriber, error) {
 	root := tree.Root()
 	f, err := c.fanoutOf(tree, root)
@@ -249,7 +240,6 @@ func (c *Core) runStream(tree *domain.Tree, restarts int) {
 	})
 }
 
-// runSource runs the source of tree until it returns.
 func (c *Core) runSource(tree *domain.Tree) {
 	c.logger.InfoContext(c.ctx, "Running stream", slog.String("stream", tree.Spec.Name))
 	source, err := tree.Root().GetSource()

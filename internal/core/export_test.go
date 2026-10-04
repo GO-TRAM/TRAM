@@ -15,15 +15,13 @@ func (c *Core) SetRestartDelays(minDelay, maxDelay time.Duration) {
 	c.maxRestartDelay = maxDelay
 }
 
-// SetMeterProvider replaces the global meter provider for the metrics of
-// this core. It must be called before the first stream is upserted.
+// SetMeterProvider must be called before the first stream is upserted.
 func (c *Core) SetMeterProvider(provider metric.MeterProvider) error {
 	m, err := newMetrics(provider)
 	c.metrics = m
 	return err
 }
 
-// Unwrap returns the subscriber that the core wrapped to measure it.
 func Unwrap(subscriber domain.Subscriber) domain.Subscriber {
 	if s, ok := subscriber.(*instrumentedSubscriber); ok {
 		return s.Subscriber
@@ -31,9 +29,7 @@ func Unwrap(subscriber domain.Subscriber) domain.Subscriber {
 	return subscriber
 }
 
-// Children returns the subscribers a source or stage delivers to through the
-// fan-out the core gave it, unwrapped. subscribers are the subscribers of the
-// source or stage, which hold just that fan-out.
+// Children unwraps the fan-out among a source's or stage's subscribers.
 func Children(subscribers []domain.Subscriber) []domain.Subscriber {
 	var children []domain.Subscriber
 	for _, subscriber := range subscribers {

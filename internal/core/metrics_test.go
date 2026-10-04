@@ -14,8 +14,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
-// newMeteredCore returns a core whose metrics can be read from the returned
-// reader.
 func newMeteredCore(t *testing.T) (*core.Core, *registry, *sdkmetric.ManualReader) {
 	t.Helper()
 	c, reg := newCore(t)
@@ -24,9 +22,7 @@ func newMeteredCore(t *testing.T) (*core.Core, *registry, *sdkmetric.ManualReade
 	return c, reg, reader
 }
 
-// collect returns the data points of the counter or histogram name, keyed by
-// their attribute set: the record sum of a counter, the call count of a
-// histogram.
+// collect returns counter sums and histogram counts by attribute set.
 func collect(t *testing.T, reader *sdkmetric.ManualReader, name string) map[attribute.Distinct]int64 {
 	t.Helper()
 	var rm metricdata.ResourceMetrics
@@ -65,8 +61,6 @@ func attrs(node, kind string, kv ...attribute.KeyValue) attribute.Distinct {
 func signal(s domain.Signal) attribute.KeyValue { return attribute.String("signal", string(s)) }
 func outcome(o string) attribute.KeyValue       { return attribute.String("outcome", o) }
 
-// deliver hands event to the source of the stream like a source would: to its
-// only subscriber, the fan-out the core gave it.
 func deliver(t *testing.T, reg *registry, event *domain.Event) error {
 	t.Helper()
 	subs := reg.sources[len(reg.sources)-1].subs
@@ -104,8 +98,6 @@ func TestMetricsCountRecordsPerSignal(t *testing.T) {
 	}, collect(t, reader, "tram.node.duration"))
 }
 
-// The source is measured once per event, however many branches it has, so
-// its records are what the source accepted.
 func TestMetricsCountSourceOncePerEvent(t *testing.T) {
 	t.Parallel()
 
@@ -123,8 +115,7 @@ func TestMetricsCountSourceOncePerEvent(t *testing.T) {
 	}, collect(t, reader, "tram.node.records"))
 }
 
-// The outcome of the source is the result its client gets, which a single
-// failing branch decides.
+// One failing branch fails the event for the client.
 func TestMetricsRecordOutcome(t *testing.T) {
 	t.Parallel()
 
@@ -166,8 +157,7 @@ func TestMetricsCoverStages(t *testing.T) {
 
 	require.NoError(t, deliver(t, reg, logs(1)))
 
-	// The fake stage does not pass events on, so the sink below it saw
-	// nothing.
+	// The fake stage swallows events.
 	assert.Equal(t, map[attribute.Distinct]int64{
 		attrs("source", "source", signal(domain.SignalLogs)): 1,
 		attrs("stage", "stage", signal(domain.SignalLogs)):   1,
@@ -181,8 +171,7 @@ func TestMetricsSurviveReplacedReceivers(t *testing.T) {
 	_, err := c.UpsertStream(t.Context(), streamSpec(1, sink("old", "fake")))
 	require.NoError(t, err)
 
-	// Same source, other sink: only the receivers are replaced, and the
-	// running source gets a new fan-out through SetSubscribers.
+	// Same source, so only the receivers are replaced.
 	_, err = c.UpsertStream(t.Context(), streamSpec(1, sink("new", "fake")))
 	require.NoError(t, err)
 	require.Equal(t, 1, reg.sourceCount(), "source must keep running")
@@ -195,8 +184,6 @@ func TestMetricsSurviveReplacedReceivers(t *testing.T) {
 	}, collect(t, reader, "tram.node.records"))
 }
 
-// A source or stage counts what it passes on once per event, however many
-// children it has, so that dropped records are its input minus its output.
 func TestMetricsCountRecordsOut(t *testing.T) {
 	t.Parallel()
 

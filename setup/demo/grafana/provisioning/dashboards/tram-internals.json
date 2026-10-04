@@ -60,7 +60,7 @@
       "gridPos": {
         "x": 0,
         "y": 0,
-        "w": 6,
+        "w": 4,
         "h": 4
       },
       "datasource": {
@@ -98,13 +98,57 @@
       }
     },
     {
+      "id": 14,
+      "type": "stat",
+      "title": "Events accepted/s",
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "openobserve-metrics"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
+          "expr": "sum(rate(tram_node_duration_seconds_count{kind=\"source\",stream=~\"$stream\"}[1m]))",
+          "legendFormat": ""
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "area"
+      },
+      "description": "Requests the sources accepted and passed on. Tram's CPU cost depends mostly on events, not on the records in them."
+    },
+    {
       "id": 2,
       "type": "stat",
       "title": "Events failed/s",
       "gridPos": {
-        "x": 6,
+        "x": 8,
         "y": 0,
-        "w": 6,
+        "w": 4,
         "h": 4
       },
       "datasource": {
@@ -147,9 +191,9 @@
       "type": "stat",
       "title": "Goroutines",
       "gridPos": {
-        "x": 12,
+        "x": 20,
         "y": 0,
-        "w": 6,
+        "w": 4,
         "h": 4
       },
       "datasource": {
@@ -186,13 +230,57 @@
       }
     },
     {
+      "id": 15,
+      "type": "stat",
+      "title": "Memory (RSS)",
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "openobserve-metrics"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
+          "expr": "sum(process_resident_memory_bytes{job=\"tram\"})",
+          "legendFormat": ""
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "area"
+      },
+      "description": "Memory of the Tram process held in RAM, which counts for container limits. The Go heap is only part of it."
+    },
+    {
       "id": 4,
       "type": "stat",
       "title": "CPU",
       "gridPos": {
-        "x": 18,
+        "x": 12,
         "y": 0,
-        "w": 6,
+        "w": 4,
         "h": 4
       },
       "datasource": {
@@ -524,7 +612,7 @@
     {
       "id": 12,
       "type": "timeseries",
-      "title": "Heap in use",
+      "title": "Memory",
       "gridPos": {
         "x": 8,
         "y": 31,
@@ -537,7 +625,8 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "bytes"
+          "unit": "bytes",
+          "min": 0
         },
         "overrides": []
       },
@@ -548,8 +637,17 @@
             "type": "prometheus",
             "uid": "openobserve-metrics"
           },
+          "expr": "sum(process_resident_memory_bytes{job=\"tram\"})",
+          "legendFormat": "RSS"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
           "expr": "sum(go_memstats_heap_inuse_bytes{job=\"tram\"})",
-          "legendFormat": "heap"
+          "legendFormat": "heap in use"
         }
       ],
       "options": {
@@ -557,7 +655,8 @@
           "displayMode": "list",
           "placement": "bottom"
         }
-      }
+      },
+      "description": "RSS is the memory of the Tram process held in RAM; the heap in use is the part the Go runtime allocated for objects."
     },
     {
       "id": 13,
