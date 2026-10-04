@@ -121,10 +121,11 @@ func TestNewDeliveryTimeout(t *testing.T) {
 	cases := []struct {
 		name      string
 		timeout   string
+		expected  time.Duration
 		expectErr bool
 	}{
-		{name: "default", timeout: ""},
-		{name: "valid", timeout: "30s"},
+		{name: "default", timeout: "", expected: 8 * time.Second},
+		{name: "valid", timeout: "30s", expected: 30 * time.Second},
 		{name: "invalid", timeout: "soon", expectErr: true},
 		{name: "zero", timeout: "0s", expectErr: true},
 		{name: "negative", timeout: "-1s", expectErr: true},
@@ -144,6 +145,7 @@ func TestNewDeliveryTimeout(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+			assert.Equal(t, c.expected, o.DeliveryTimeout())
 			assert.NoError(t, o.Stop())
 		})
 	}

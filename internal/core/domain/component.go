@@ -2,7 +2,24 @@
 // the events flowing through them.
 package domain
 
-import "context"
+import (
+	"context"
+	"time"
+)
+
+// DeliveryLimited is implemented by sources that cancel the delivery of an
+// event after a time, like the OTLP source with its delivery_timeout.
+type DeliveryLimited interface {
+	DeliveryTimeout() time.Duration
+}
+
+// Holding is implemented by stages that can hold an event back before passing
+// it on: batch up to its timeout, delay for its delay. A stream in which the
+// stages on the way to a sink can hold an event for as long as its source
+// waits for the delivery is rejected.
+type Holding interface {
+	MaxHold() time.Duration
+}
 
 type Namable interface {
 	Name() string

@@ -27,8 +27,10 @@ func batchStage(maxRecords int, timeout string) domain.StageSpec {
 func TestBatchMergesConcurrentRequests(t *testing.T) {
 	t.Parallel()
 
-	// The timeout is long, so only reaching max_records can flush the batch.
-	p := newPipeline(t, []domain.StageSpec{batchStage(6, "1h")}, []domain.SinkSpec{captureSinkSpec("out", "batch")})
+	// The timeout is long enough that only reaching max_records flushes the
+	// batch, and below the OTLP source's delivery_timeout, which a stream may
+	// not reach.
+	p := newPipeline(t, []domain.StageSpec{batchStage(6, "5s")}, []domain.SinkSpec{captureSinkSpec("out", "batch")})
 
 	codes := p.postConcurrently(t,
 		request("checkout", rec{"c1", "A"}, rec{"c2", "B"}),
@@ -134,7 +136,7 @@ func TestBatchThenSplit(t *testing.T) {
 
 	p := newPipeline(t,
 		[]domain.StageSpec{
-			batchStage(4, "1h"),
+			batchStage(4, "5s"),
 			customerFilter("customer-a", "batch", isCustomerA),
 			customerFilter("other-customers", "batch", "!"+isCustomerA),
 		},

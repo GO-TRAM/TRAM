@@ -45,6 +45,9 @@ func newTree(spec domain.StreamSpec) (*domain.Tree, error) {
 func (c *Core) buildStream(tree *domain.Tree) error {
 	err := c.createAll(tree)
 	if err == nil {
+		err = checkHoldTimes(tree)
+	}
+	if err == nil {
 		err = c.wire(tree, true)
 	}
 	if err != nil {
@@ -71,6 +74,9 @@ func (c *Core) createAll(tree *domain.Tree) error {
 // far are stopped again, the source is left untouched.
 func (c *Core) buildReceivers(tree *domain.Tree) error {
 	err := c.createReceivers(tree)
+	if err == nil {
+		err = checkHoldTimes(tree)
+	}
 	if err == nil {
 		err = c.wire(tree, false)
 	}

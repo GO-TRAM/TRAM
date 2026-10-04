@@ -123,6 +123,10 @@ func New(source domain.SourceSpec, validator *validator.Validate, logger *slog.L
 	return o, nil
 }
 
+// DeliveryTimeout returns the time after which passing a request on is
+// cancelled and answered with 503.
+func (o *OTLP) DeliveryTimeout() time.Duration { return o.deliveryTimeout }
+
 func (o *OTLP) Run(ctx context.Context) error {
 	o.logger.InfoContext(ctx, "Starting OTLP HTTP server",
 		slog.String("source", o.Name()), slog.Int("port", o.Spec().HTTPPort))

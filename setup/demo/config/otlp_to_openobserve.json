@@ -43,7 +43,7 @@
         "from": "metrics",
         "spec": {
           "max_records": 10,
-          "timeout": "1s"
+          "timeout": "5s"
         }
       },
       {
@@ -62,7 +62,7 @@
         "from": "traces",
         "spec": {
           "max_records": 5,
-          "timeout": "10s"
+          "timeout": "5s"
         }
       }
     ],

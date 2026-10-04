@@ -136,6 +136,7 @@ func TestNew(t *testing.T) {
 			maxRecords, timeout := batch.Limits(b)
 			assert.Equal(t, c.expectMax, maxRecords)
 			assert.Equal(t, c.expectTimeout, timeout)
+			assert.Equal(t, c.expectTimeout, b.MaxHold(), "an event waits at most the timeout")
 		})
 	}
 }

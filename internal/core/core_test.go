@@ -140,14 +140,32 @@ func (f sourceFactory) New(spec domain.SourceSpec) (domain.Source, error) {
 	f.reg.created = append(f.reg.created, spec.Name)
 	src := &fakeSource{reg: f.reg, name: spec.Name, shutdown: make(chan struct{}), crash: make(chan struct{})}
 	f.reg.sources = append(f.reg.sources, src)
+	if limit, ok := spec.Spec["delivery_timeout"].(string); ok {
+		timeout, err := time.ParseDuration(limit)
+		if err != nil {
+			return nil, err
+		}
+		return &limitedSource{fakeSource: src, timeout: timeout}, nil
+	}
 	return src, nil
 }
+
+// limitedSource is a fake source that cancels deliveries after timeout.
+type limitedSource struct {
+	*fakeSource
+
+	timeout time.Duration
+}
+
+func (s *limitedSource) DeliveryTimeout() time.Duration { return s.timeout }
 
 type fakeStage struct {
 	fakeSink
 
 	forward bool
-	subs    []domain.Subscriber
+	// hold is how long the stage claims to hold events back at most.
+	hold time.Duration
+	subs []domain.Subscriber
 }
 
 func (s *fakeStage) Notify(ctx context.Context, event *domain.Event) error {
@@ -170,12 +188,22 @@ func (s *fakeStage) Subscribe(sub domain.Subscriber) error {
 type stageFactory struct{ reg *registry }
 
 func (f stageFactory) New(spec domain.StageSpec) (domain.Stage, error) {
+	var hold time.Duration
+	if raw, ok := spec.Spec["hold"].(string); ok {
+		var err error
+		if hold, err = time.ParseDuration(raw); err != nil {
+			return nil, err
+		}
+	}
 	f.reg.create(spec.Name)
 	return &fakeStage{
 		fakeSink: fakeSink{reg: f.reg, name: spec.Name, from: spec.From},
 		forward:  spec.Type == forwardingType,
+		hold:     hold,
 	}, nil
 }
+
+func (s *fakeStage) MaxHold() time.Duration { return s.hold }
 
 type sinkFactory struct{ reg *registry }
 

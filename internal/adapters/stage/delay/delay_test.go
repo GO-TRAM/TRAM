@@ -66,3 +66,11 @@ func TestStopIsIdempotent(t *testing.T) {
 	assert.NoError(t, d.Stop())
 	assert.NoError(t, d.Stop())
 }
+
+func TestMaxHold(t *testing.T) {
+	t.Parallel()
+
+	d, err := delay.New(domain.StageSpec{Name: "delay", Spec: map[string]any{"delay": "3s"}}, validator.New())
+	require.NoError(t, err)
+	assert.Equal(t, 3*time.Second, d.MaxHold(), "every event is held for the delay")
+}
