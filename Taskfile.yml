@@ -29,6 +29,8 @@ vars:
   GRPC_GATEWAY_VERSION: v2.26.1
   CONTROLLER_GEN_VERSION: v0.22.0
   GOLANGCI_LINT_VERSION: v2.14.0
+  SETUP_ENVTEST_VERSION: v0.25.2
+  ENVTEST_K8S_VERSION: 1.37.0
 
 tasks:
   default:
@@ -124,6 +126,20 @@ tasks:
         msg: '{{.CONTAINER_TOOL}} is not running; start it first (e.g. `podman machine start`)'
     cmds:
       - "{{.TESTCONTAINERS_ENV}} go test -race -count=1 -run '^TestNATS$' {{.CLI_ARGS}} ./internal/e2e/"
+
+  test:envtest:
+    desc: Run the Kubernetes operator tests against a real API server and etcd (envtest)
+    summary: |
+      Downloads kube-apiserver and etcd for ENVTEST_K8S_VERSION with
+      setup-envtest on first use and runs the operator tests against them.
+      Without KUBEBUILDER_ASSETS, e.g. in `task test`, these tests are skipped.
+    preconditions:
+      - sh: command -v setup-envtest
+        msg: setup-envtest is missing; run `task tools`
+    cmds:
+      - >-
+        KUBEBUILDER_ASSETS="$(setup-envtest use {{.ENVTEST_K8S_VERSION}} -p path)"
+        go test -race -count=1 -run '^TestOperator' {{.CLI_ARGS}} ./internal/adapters/k8scrd/
 
   test:cover:
     desc: Run all tests with coverage and show the total; the full report is in coverage.out
@@ -240,3 +256,4 @@ tasks:
       - go install sigs.k8s.io/controller-tools/cmd/controller-gen@{{.CONTROLLER_GEN_VERSION}}
       - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}}
       - go install golang.org/x/perf/cmd/benchstat@latest
+      - go install sigs.k8s.io/controller-runtime/tools/setup-envtest@{{.SETUP_ENVTEST_VERSION}}

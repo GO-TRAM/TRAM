@@ -34,8 +34,10 @@ func TestNATS(t *testing.T) {
 		t.Parallel()
 
 		out := n.stream("out")
+		// Only reaching max_records flushes the batch; the timeout just has to
+		// stay below the source's delivery timeout.
 		p := newPipeline(t,
-			[]domain.StageSpec{batchStage(6, "1h")},
+			[]domain.StageSpec{batchStage(6, "5s")},
 			[]domain.SinkSpec{n.sinkByService("out", "batch", out)})
 
 		codes := p.postConcurrently(t,

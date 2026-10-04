@@ -101,6 +101,7 @@ func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (er
 	}
 
 	if opts.enableK8sOperator {
+		k8scrd.SetLogger(logger)
 		eg.Go(func() error {
 			op, opErr := k8scrd.New(c, k8scrd.Options{
 				Kubeconfig:     opts.kubeconfig,

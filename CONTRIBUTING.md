@@ -63,6 +63,7 @@ task nats:up
 | `task test` | All tests; tests that need containers are skipped without Docker or Podman |
 | `task test:unit` / `task test:e2e` | Unit tests only, or the end-to-end tests that need no containers |
 | `task test:containers` | End-to-end tests against NATS in a container; fails if no container runtime runs |
+| `task test:envtest` | Kubernetes operator tests against a real API server and etcd; downloads them on first use |
 | `task test:cover` | All tests with coverage, written to `coverage.out` |
 | `task lint` / `task fmt` | golangci-lint (including go vet), or format with its configured formatters |
 | `task generate` | Regenerate protobuf, gateway and swagger code and the Kubernetes CRD |
@@ -72,7 +73,7 @@ task nats:up
 | `task image:build` / `task image:run` | Build the container image `tram:dev`, or run it with the APIs on localhost |
 | `task nats:up` / `task nats:down` | Start or stop a local NATS server with JetStream |
 | `task k8s:crd` | Install the Stream CRD into the current Kubernetes context |
-| `task tools` | Install the code generators, golangci-lint and benchstat |
+| `task tools` | Install the code generators, golangci-lint, benchstat and setup-envtest |
 
 Container tasks use Podman if it is installed and Docker otherwise; set `CONTAINER_TOOL=docker` to choose. With Podman, the test and benchmark tasks also set up Testcontainers for the Podman machine (see [Benchmarks](#benchmarks)).
 
@@ -502,6 +503,11 @@ var _ domain.Sink = (*Webhook)(nil)
    task test:containers
    ```
 
+5. **Test the operator**: If you changed the Kubernetes operator, also run the envtest tests
+   ```bash
+   task test:envtest
+   ```
+
 ### Pull Request Requirements
 
 1. **Descriptive title**: Clearly describe what the PR does
@@ -617,6 +623,10 @@ func TestMyFunction(t *testing.T) {
 `TestNATS` in the same package runs pipelines against a NATS server in a container (see `internal/testutil/natstest`) and checks what actually ends up in JetStream: subjects, the `Tram-Signal` header, and records with their resource and scope. It also sends data from Tram's NATS sink through Tram's NATS source. It is skipped without Docker or Podman; with Podman on macOS, set the variables described under [Benchmarks](#benchmarks).
 
 When adding a stage or changing how events flow, add a case there that checks which records arrive in which sink.
+
+### Kubernetes Operator Tests
+
+The `TestOperator*` tests in `internal/adapters/k8scrd` run the operator against a real kube-apiserver and etcd from [envtest](https://book.kubebuilder.io/reference/envtest), one per test. They check which `Stream` resources an instance runs with `--watch-namespace` and `--stream-selector`, and that the generated RBAC role works with a namespaced `RoleBinding`. They are skipped unless `KUBEBUILDER_ASSETS` is set; `task test:envtest` downloads the binaries with `setup-envtest` and sets it.
 
 ### Integration Tests
 

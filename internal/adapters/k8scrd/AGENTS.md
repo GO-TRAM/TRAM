@@ -77,4 +77,6 @@ Follow the [Kubernetes logging message style](https://github.com/kubernetes/comm
 
 ## Testing
 
-Unit tests use the fake client from `sigs.k8s.io/controller-runtime/pkg/client/fake` with `WithStatusSubresource`, and a fake `ports.Core`; see `internal/controller/stream_controller_test.go`. There are no envtest or e2e suites.
+Unit tests use the fake client from `sigs.k8s.io/controller-runtime/pkg/client/fake` with `WithStatusSubresource`, and a fake `ports.Core`; see `internal/controller/stream_controller_test.go`.
+
+`operator_envtest_test.go` runs the whole operator against a real API server from envtest, connected through a kubeconfig file like `--kubeconfig`. Use it for behavior the fake client does not have: cache selection, watch events and RBAC. Each test starts its own API server, so tests stay parallel and do not need globals. Run them with `task test:envtest`; without `KUBEBUILDER_ASSETS` they are skipped. Several operators in one test binary need `WithoutNameValidation`, since controller-runtime requires unique controller names per process.

@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	tramv1 "codeberg.org/eljoth/tram/internal/adapters/k8scrd/api/v1"
@@ -41,11 +42,15 @@ type Options struct {
 	// StreamSelector is a label selector, e.g. "tram.io/validation=true".
 	// Empty runs Stream resources regardless of their labels.
 	StreamSelector string
+
+	skipNameValidation bool
+}
+
+func SetLogger(logger *slog.Logger) {
+	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
 }
 
 func New(core ports.Core, opts Options, logger *slog.Logger) (*Operator, error) {
-	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
-
 	cacheOpts, err := cacheOptions(opts)
 	if err != nil {
 		return nil, err
@@ -74,8 +79,10 @@ func New(core ports.Core, opts Options, logger *slog.Logger) (*Operator, error) 
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:         scheme,
+		Logger:         logr.FromSlogHandler(logger.Handler()),
 		Cache:          cacheOpts,
 		LeaderElection: false,
+		Controller:     config.Controller{SkipNameValidation: &opts.skipNameValidation},
 		Metrics: server.Options{
 			BindAddress: "0",
 		},
