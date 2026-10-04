@@ -61,8 +61,8 @@
         "type": "batch",
         "from": "traces",
         "spec": {
-          "max_records": 10,
-          "timeout": "1s"
+          "max_records": 5,
+          "timeout": "10s"
         }
       }
     ],

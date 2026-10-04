@@ -24,7 +24,7 @@ services:
     volumes:
       # Read-only: the file sync only writes files for streams changed
       # through the API, which this demo does not need.
-      - ./config:/config:ro
+      - ./config:/config:delegated,Z
     ports:
       - "8080:8080" # Tram HTTP API
       - "4318:4318" # OTLP/HTTP source of the stream, to send your own data
