@@ -1,7 +1,9 @@
 package core_test
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -213,4 +215,51 @@ func TestMetricsCountRecordsOut(t *testing.T) {
 		attrs("a", "sink", signal(domain.SignalLogs)):        2,
 		attrs("b", "sink", signal(domain.SignalLogs)):        2,
 	}, collect(t, reader, "tram.node.records"))
+}
+
+// A caller that gives up is told apart from a delivery that took too long.
+func TestMetricsRecordCancellation(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		ctx     func(t *testing.T) context.Context
+		outcome string
+	}{
+		{
+			name: "caller cancels",
+			ctx: func(t *testing.T) context.Context {
+				ctx, cancel := context.WithCancel(t.Context())
+				time.AfterFunc(10*time.Millisecond, cancel)
+				return ctx
+			},
+			outcome: "cancelled",
+		},
+		{
+			name: "deadline expires",
+			ctx: func(t *testing.T) context.Context {
+				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+				t.Cleanup(cancel)
+				return ctx
+			},
+			outcome: "error",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			c, reg, reader := newMeteredCore(t)
+			_, err := c.UpsertStream(t.Context(), streamSpec(1, sink("waiting", blockingType)))
+			require.NoError(t, err)
+
+			require.Error(t, reg.sources[0].subs[0].Notify(tc.ctx(t), logs(1)))
+
+			assert.Equal(t, map[attribute.Distinct]int64{
+				attrs("source", "source", outcome(tc.outcome)): 1,
+				attrs("waiting", "sink", outcome(tc.outcome)):  1,
+			}, collect(t, reader, "tram.node.duration"))
+		})
+	}
 }

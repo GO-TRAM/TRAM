@@ -45,7 +45,7 @@ services:
       - --severity-number=9
       - --body=Order paid
       - --rate=70
-      - --workers=100
+      - --workers=90
       - --duration=24h
       - --batch=false
     depends_on:
@@ -65,9 +65,9 @@ services:
       - --severity-number=5
       - --body=Cache lookup
       - --rate=70
-      - --workers=200
+      - --workers=90
       - --duration=24h
-      - --batch=true
+      - --batch=false
     depends_on:
       - tram
     restart: on-failure
@@ -87,12 +87,19 @@ services:
       - --metric-type=Sum
       - --aggregation-temporality=cumulative
       - --rate=70
-      - --workers=200
+      - --workers=90
       - --duration=24h
       - --batch=false
     depends_on:
       - tram
     restart: on-failure
+    # Without batching, telemetrygen opens a new connection per request.
+    # Closed connections keep their port for a minute, so at this rate the
+    # ports run out, the generator crashes and its requests in flight are
+    # cancelled.
+    sysctls:
+      net.ipv4.tcp_tw_reuse: "1"
+      net.ipv4.ip_local_port_range: "1024 65535"
 
   # Sends the gauge debug.cache.size, which the "metrics" cel_filter stage in
   # Tram drops like every metric whose name starts with "debug.".
@@ -107,9 +114,9 @@ services:
       - --otlp-metric-name=debug.cache.size
       - --metric-type=Gauge
       - --rate=70
-      - --workers=200
+      - --workers=90
       - --duration=24h
-      - --batch=true
+      - --batch=false
     depends_on:
       - tram
     restart: on-failure
@@ -129,7 +136,7 @@ services:
       - --child-spans=2
       - --span-duration=50ms
       - --rate=70
-      - --workers=200
+      - --workers=90
       - --duration=24h
       - --batch=false
     depends_on:
@@ -149,9 +156,9 @@ services:
       - --child-spans=1
       - --span-duration=5ms
       - --rate=70
-      - --workers=200
+      - --workers=90
       - --duration=24h
-      - --batch=true
+      - --batch=false
     depends_on:
       - tram
     restart: on-failure

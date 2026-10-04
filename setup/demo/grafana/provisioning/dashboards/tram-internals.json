@@ -169,11 +169,11 @@
             "type": "prometheus",
             "uid": "openobserve-metrics"
           },
-          "expr": "sum(rate(tram_node_duration_seconds_count{kind=\"source\",outcome!=\"ok\",stream=~\"$stream\"}[1m]))",
+          "expr": "sum(rate(tram_node_duration_seconds_count{kind=\"source\",outcome=~\"error|rejected\",stream=~\"$stream\"}[1m]))",
           "legendFormat": ""
         }
       ],
-      "description": "Events whose client got an error, because a branch rejected or failed them.",
+      "description": "Events whose client got an error, because a branch rejected or failed them. Events whose client gave up are not counted; they show as cancelled in Errors per node.",
       "options": {
         "reduceOptions": {
           "calcs": [
@@ -534,7 +534,7 @@
     {
       "id": 10,
       "type": "timeseries",
-      "title": "Errors and rejections per node",
+      "title": "Errors per node",
       "gridPos": {
         "x": 12,
         "y": 22,
@@ -563,7 +563,7 @@
           "legendFormat": "{{node}} {{outcome}}"
         }
       ],
-      "description": "Events a node rejected for good (rejected) or failed to handle (error), per second.",
+      "description": "Events a node rejected for good (rejected), failed to handle (error), or whose caller gave up (cancelled), per second. The cause is the lowest node in the tree with errors: a failing sink fails the stages and the source above it.",
       "options": {
         "legend": {
           "displayMode": "list",

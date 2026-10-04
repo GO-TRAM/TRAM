@@ -20,6 +20,8 @@ const (
 	// Sinks of these types fail every event, permanently or not.
 	rejectingType = "rejecting"
 	failingType   = "failing"
+	// Sinks of this type wait until the event's context is done.
+	blockingType = "blocking"
 	// Stages of this type pass every event on; others swallow it.
 	forwardingType = "forwarding"
 )
@@ -113,13 +115,20 @@ type fakeSink struct {
 	name string
 	from string
 	// err is returned for every event.
-	err error
+	err   error
+	block bool
 }
 
-func (s *fakeSink) Name() string                                { return s.name }
-func (s *fakeSink) From() string                                { return s.from }
-func (s *fakeSink) Notify(context.Context, *domain.Event) error { return s.err }
-func (s *fakeSink) Stop() error                                 { s.reg.stop(s.name); return nil }
+func (s *fakeSink) Name() string { return s.name }
+func (s *fakeSink) From() string { return s.from }
+func (s *fakeSink) Notify(ctx context.Context, _ *domain.Event) error {
+	if s.block {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	return s.err
+}
+func (s *fakeSink) Stop() error { s.reg.stop(s.name); return nil }
 
 type sourceFactory struct{ reg *registry }
 
@@ -218,6 +227,8 @@ func (f sinkFactory) New(spec domain.SinkSpec) (domain.Sink, error) {
 		sink.err = domain.ErrEventRejected
 	case failingType:
 		sink.err = errors.New("sink unavailable")
+	case blockingType:
+		sink.block = true
 	}
 	return sink, nil
 }

@@ -16,7 +16,10 @@ const meterName = "codeberg.org/eljoth/tram/internal/core"
 const (
 	outcomeOK       = "ok"
 	outcomeRejected = "rejected"
-	outcomeError    = "error"
+	// The caller gave up, e.g. an OTLP client that closed its connection. An
+	// expired delivery_timeout is an error instead: then Tram was too slow.
+	outcomeCancelled = "cancelled"
+	outcomeError     = "error"
 )
 
 // metrics are recorded by the core around the components, so components need
@@ -125,6 +128,7 @@ func (m *metrics) instrument(stream string, node *domain.Node, subscriber domain
 		duration:   m.duration,
 		ok:         record(outcomeOK),
 		rejected:   record(outcomeRejected),
+		cancelled:  record(outcomeCancelled),
 		failed:     record(outcomeError),
 	}
 }
@@ -132,9 +136,9 @@ func (m *metrics) instrument(stream string, node *domain.Node, subscriber domain
 type instrumentedSubscriber struct {
 	domain.Subscriber
 
-	records              recordCounter
-	duration             metric.Float64Histogram
-	ok, rejected, failed []metric.RecordOption
+	records                         recordCounter
+	duration                        metric.Float64Histogram
+	ok, rejected, cancelled, failed []metric.RecordOption
 }
 
 func (s *instrumentedSubscriber) Notify(ctx context.Context, event *domain.Event) error {
@@ -147,6 +151,8 @@ func (s *instrumentedSubscriber) Notify(ctx context.Context, event *domain.Event
 	switch {
 	case errors.Is(err, domain.ErrEventRejected):
 		outcome = s.rejected
+	case errors.Is(err, context.Canceled) && errors.Is(ctx.Err(), context.Canceled):
+		outcome = s.cancelled
 	case err != nil:
 		outcome = s.failed
 	}
