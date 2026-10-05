@@ -39,7 +39,11 @@ const (
 	// Names of the shortcut variables for direct access to current context.
 	resourceVariable = "resource"
 	scopeVariable    = "scope"
-	entryVariable    = "record"
+	recordVariable   = "record"
+
+	// Signal-specific entry variable names for consistency with CEL_FILTER
+	metricVariable = "metric"
+	spanVariable   = "span"
 
 	// getAttrArguments are the receiver and the key of get_attr.
 	getAttrArguments = 2
@@ -133,9 +137,9 @@ func compileSubjects(subject SubjectSpec) (subjects, error) {
 		baseEnv,
 		subject.Logs,
 		cel.Variable(logsVariable, cel.ObjectType("opentelemetry.proto.logs.v1.LogsData")),
-		cel.Variable(resourceVariable, cel.ObjectType("opentelemetry.proto.logs.v1.ResourceLogs")),
-		cel.Variable(scopeVariable, cel.ObjectType("opentelemetry.proto.logs.v1.ScopeLogs")),
-		cel.Variable(entryVariable, cel.ObjectType("opentelemetry.proto.logs.v1.LogRecord")),
+		cel.Variable(resourceVariable, cel.ObjectType("opentelemetry.proto.resource.v1.Resource")),
+		cel.Variable(scopeVariable, cel.ObjectType("opentelemetry.proto.common.v1.InstrumentationScope")),
+		cel.Variable(recordVariable, cel.ObjectType("opentelemetry.proto.logs.v1.LogRecord")),
 	)
 	if err != nil {
 		return subjects{}, errors.Join(ErrCELInvalidLogsExpression, err)
@@ -145,9 +149,9 @@ func compileSubjects(subject SubjectSpec) (subjects, error) {
 		baseEnv,
 		subject.Metrics,
 		cel.Variable(metricsVariable, cel.ObjectType("opentelemetry.proto.metrics.v1.MetricsData")),
-		cel.Variable(resourceVariable, cel.ObjectType("opentelemetry.proto.metrics.v1.ResourceMetrics")),
-		cel.Variable(scopeVariable, cel.ObjectType("opentelemetry.proto.metrics.v1.ScopeMetrics")),
-		cel.Variable(entryVariable, cel.ObjectType("opentelemetry.proto.metrics.v1.Metric")),
+		cel.Variable(resourceVariable, cel.ObjectType("opentelemetry.proto.resource.v1.Resource")),
+		cel.Variable(scopeVariable, cel.ObjectType("opentelemetry.proto.common.v1.InstrumentationScope")),
+		cel.Variable(metricVariable, cel.ObjectType("opentelemetry.proto.metrics.v1.Metric")),
 	)
 	if err != nil {
 		return subjects{}, errors.Join(ErrCELInvalidMetricsExpression, err)
@@ -157,9 +161,9 @@ func compileSubjects(subject SubjectSpec) (subjects, error) {
 		baseEnv,
 		subject.Traces,
 		cel.Variable(tracesVariable, cel.ObjectType("opentelemetry.proto.trace.v1.TracesData")),
-		cel.Variable(resourceVariable, cel.ObjectType("opentelemetry.proto.trace.v1.ResourceSpans")),
-		cel.Variable(scopeVariable, cel.ObjectType("opentelemetry.proto.trace.v1.ScopeSpans")),
-		cel.Variable(entryVariable, cel.ObjectType("opentelemetry.proto.trace.v1.Span")),
+		cel.Variable(resourceVariable, cel.ObjectType("opentelemetry.proto.resource.v1.Resource")),
+		cel.Variable(scopeVariable, cel.ObjectType("opentelemetry.proto.common.v1.InstrumentationScope")),
+		cel.Variable(spanVariable, cel.ObjectType("opentelemetry.proto.trace.v1.Span")),
 	)
 	if err != nil {
 		return subjects{}, errors.Join(ErrCELInvalidTracesExpression, err)

@@ -10,7 +10,9 @@ import (
 
 	"codeberg.org/eljoth/tram/internal/core/domain"
 
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
+	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracespb "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
@@ -90,6 +92,10 @@ type structure[D any, R, S, E comparable] struct {
 	resources func(D) []R
 	scopes    func(R) []S
 	entries   func(S) []E
+	// resource and scope return the OTLP resource and scope of a container,
+	// which the resource and scope variables refer to.
+	resource func(R) *resourcepb.Resource
+	scope    func(S) *commonpb.InstrumentationScope
 	// payload returns a payload holding entries under a copy of r and s.
 	payload        func(r R, s S, entries []E) D
 	newPayload     func() D
@@ -108,6 +114,8 @@ func logsStructure() structure[*logspb.LogsData, *logspb.ResourceLogs, *logspb.S
 		resources: (*logspb.LogsData).GetResourceLogs,
 		scopes:    (*logspb.ResourceLogs).GetScopeLogs,
 		entries:   (*logspb.ScopeLogs).GetLogRecords,
+		resource:  (*logspb.ResourceLogs).GetResource,
+		scope:     (*logspb.ScopeLogs).GetScope,
 		payload: func(r *logspb.ResourceLogs, s *logspb.ScopeLogs, records []*logspb.LogRecord) *logspb.LogsData {
 			scope := &logspb.ScopeLogs{Scope: s.GetScope(), SchemaUrl: s.GetSchemaUrl(), LogRecords: records}
 			resource := &logspb.ResourceLogs{Resource: r.GetResource(), SchemaUrl: r.GetSchemaUrl()}
@@ -135,6 +143,8 @@ func metricsStructure() structure[*metricspb.MetricsData, *metricspb.ResourceMet
 		resources: (*metricspb.MetricsData).GetResourceMetrics,
 		scopes:    (*metricspb.ResourceMetrics).GetScopeMetrics,
 		entries:   (*metricspb.ScopeMetrics).GetMetrics,
+		resource:  (*metricspb.ResourceMetrics).GetResource,
+		scope:     (*metricspb.ScopeMetrics).GetScope,
 		payload: func(r *metricspb.ResourceMetrics, s *metricspb.ScopeMetrics, metrics []*metricspb.Metric) *metricspb.MetricsData {
 			scope := &metricspb.ScopeMetrics{Scope: s.GetScope(), SchemaUrl: s.GetSchemaUrl(), Metrics: metrics}
 			resource := &metricspb.ResourceMetrics{Resource: r.GetResource(), SchemaUrl: r.GetSchemaUrl()}
@@ -166,6 +176,8 @@ func tracesStructure() structure[*tracespb.TracesData, *tracespb.ResourceSpans, 
 		resources: (*tracespb.TracesData).GetResourceSpans,
 		scopes:    (*tracespb.ResourceSpans).GetScopeSpans,
 		entries:   (*tracespb.ScopeSpans).GetSpans,
+		resource:  (*tracespb.ResourceSpans).GetResource,
+		scope:     (*tracespb.ScopeSpans).GetScope,
 		payload: func(r *tracespb.ResourceSpans, s *tracespb.ScopeSpans, spans []*tracespb.Span) *tracespb.TracesData {
 			scope := &tracespb.ScopeSpans{Scope: s.GetScope(), SchemaUrl: s.GetSchemaUrl(), Spans: spans}
 			resource := &tracespb.ResourceSpans{Resource: r.GetResource(), SchemaUrl: r.GetSchemaUrl()}
@@ -231,17 +243,37 @@ func resolveSubjects[D any, R, S, E comparable](
 	st structure[D, R, S, E],
 	data D,
 ) ([]string, error) {
+	// Missing resources and scopes are replaced by empty ones, so expressions
+	// see empty attributes and names instead of failing.
+	emptyResource, emptyScope := &resourcepb.Resource{}, &commonpb.InstrumentationScope{}
 	vars := &activation{name: st.variable}
 	var subjects []string
 	for _, r := range st.resources(data) {
+		resource := st.resource(r)
+		if resource == nil {
+			resource = emptyResource
+		}
+		vars.resource = resource
 		for _, s := range st.scopes(r) {
 			current := make([]E, 1)
 			vars.value = st.payload(r, s, current)
-			vars.resource = r
-			vars.scope = s
+			scope := st.scope(s)
+			if scope == nil {
+				scope = emptyScope
+			}
+			vars.scope = scope
 			for _, e := range st.entries(s) {
 				current[0] = e
 				vars.entry = e
+				// Set signal-specific variables for consistency with CEL_FILTER
+				switch st.variable {
+				case logsVariable:
+					vars.record = e
+				case metricsVariable:
+					vars.metric = e
+				case tracesVariable:
+					vars.span = e
+				}
 				subject, err := evalSubject(program, vars)
 				if err != nil {
 					return nil, err
@@ -331,6 +363,9 @@ type activation struct {
 	resource any
 	scope    any
 	entry    any
+	record   any
+	metric   any
+	span     any
 }
 
 func (a *activation) ResolveName(name string) (any, bool) {
@@ -341,8 +376,13 @@ func (a *activation) ResolveName(name string) (any, bool) {
 		return a.resource, true
 	case scopeVariable:
 		return a.scope, true
-	case entryVariable:
-		return a.entry, true
+
+	case recordVariable:
+		return a.record, true
+	case metricVariable:
+		return a.metric, true
+	case spanVariable:
+		return a.span, true
 	}
 	return nil, false
 }

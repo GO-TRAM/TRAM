@@ -106,16 +106,14 @@ const (
 	metricsByTeam = "'metrics.' + metrics.resource_metrics[0].scope_metrics[0].metrics[0].gauge.data_points[0].attributes.get_attr('team')"
 	tracesByTeam  = "'traces.' + traces.resource_spans[0].scope_spans[0].spans[0].attributes.get_attr('team')"
 
-	// New simplified expressions using direct variables
 	logsByTeamNew    = "'logs.' + record.attributes.get_attr('team')"
-	metricsByTeamNew = "'metrics.' + record.gauge.data_points[0].attributes.get_attr('team')"
-	tracesByTeamNew  = "'traces.' + record.attributes.get_attr('team')"
+	metricsByTeamNew = "'metrics.' + metric.name"
+	tracesByTeamNew  = "'traces.' + span.attributes.get_attr('team')"
 )
 
 func TestGroupEventsBySubjects(t *testing.T) {
 	t.Parallel()
 
-	// 4 records over 2 resources, alternating between team-0 and team-1.
 	shape := otlpgen.Shape{Records: 4, Resources: 2, Teams: 2}
 
 	cases := []struct {
@@ -193,6 +191,48 @@ func TestGroupEventsBySubjects(t *testing.T) {
 			},
 		},
 		{
+			name:    "metrics with new variables",
+			subject: map[string]any{"metrics": "'metrics.' + metric.name"},
+			event:   &domain.Event{Metrics: otlpgen.Metrics(shape)},
+			expected: map[string]map[domain.Signal][]string{
+				"metrics.metric_0": {domain.SignalMetrics: {"service-0/otlpgen/metric_0"}},
+				"metrics.metric_1": {domain.SignalMetrics: {"service-0/otlpgen/metric_1"}},
+				"metrics.metric_2": {domain.SignalMetrics: {"service-1/otlpgen/metric_2"}},
+				"metrics.metric_3": {domain.SignalMetrics: {"service-1/otlpgen/metric_3"}},
+			},
+		},
+		{
+			name:    "logs split by resource and scope variables",
+			subject: map[string]any{"logs": "'logs.' + scope.name + '.' + resource.attributes.get_attr('service.name')"},
+			event:   &domain.Event{Logs: otlpgen.Logs(shape)},
+			expected: map[string]map[domain.Signal][]string{
+				"logs.otlpgen.service-0": {
+					domain.SignalLogs: {"service-0/otlpgen/log message 0", "service-0/otlpgen/log message 1"},
+				},
+				"logs.otlpgen.service-1": {
+					domain.SignalLogs: {"service-1/otlpgen/log message 2", "service-1/otlpgen/log message 3"},
+				},
+			},
+		},
+		{
+			name:    "metrics split by resource variable",
+			subject: map[string]any{"metrics": "'metrics.' + resource.attributes.get_attr('service.name')"},
+			event:   &domain.Event{Metrics: otlpgen.Metrics(shape)},
+			expected: map[string]map[domain.Signal][]string{
+				"metrics.service-0": {domain.SignalMetrics: {"service-0/otlpgen/metric_0", "service-0/otlpgen/metric_1"}},
+				"metrics.service-1": {domain.SignalMetrics: {"service-1/otlpgen/metric_2", "service-1/otlpgen/metric_3"}},
+			},
+		},
+		{
+			name:    "traces split by resource variable",
+			subject: map[string]any{"traces": "'traces.' + resource.attributes.get_attr('service.name')"},
+			event:   &domain.Event{Traces: otlpgen.Traces(shape)},
+			expected: map[string]map[domain.Signal][]string{
+				"traces.service-0": {domain.SignalTraces: {"service-0/otlpgen/span-0", "service-0/otlpgen/span-1"}},
+				"traces.service-1": {domain.SignalTraces: {"service-1/otlpgen/span-2", "service-1/otlpgen/span-3"}},
+			},
+		},
+		{
 			name:    "signals without expression are not published",
 			subject: map[string]any{"logs": "'logs.all'"},
 			event: &domain.Event{
@@ -253,6 +293,24 @@ func TestGroupEventsBySubjectsRequiresStringSubject(t *testing.T) {
 		&domain.Event{Logs: otlpgen.Logs(otlpgen.Shape{Records: 1, Resources: 1})},
 	)
 	assert.Error(t, err)
+}
+
+// Records without a resource or scope see empty ones, like in cel_filter, so
+// expressions on them do not fail.
+func TestGroupEventsBySubjectsWithoutResourceAndScope(t *testing.T) {
+	t.Parallel()
+
+	sink := newSink(t, map[string]any{
+		"logs": "'logs.' + string(size(resource.attributes)) + '.' + (scope.name == '' ? 'none' : scope.name)",
+	})
+	event := &domain.Event{Logs: &logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{
+		ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{{}}}},
+	}}}}
+
+	messages, err := natssink.GroupEventsBySubjects(sink, event)
+	require.NoError(t, err)
+	require.Len(t, messages, 1)
+	assert.Equal(t, "logs.0.none", messages[0].Subject)
 }
 
 // An event whose subject cannot be resolved fails the same way on every
