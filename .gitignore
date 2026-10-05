@@ -1,7 +1,7 @@
 # Build output
 /tram
 /benchreport
-
+/setup/tlmr-demo
 # Local cluster credentials
 kubeconfig
 

@@ -31,6 +31,9 @@ import (
 
 const (
 	scenarioPackage = "./internal/scenario/"
+	// streamsBenchtime runs each streams benchmark once; one run observes the
+	// idle streams for several seconds already.
+	streamsBenchtime = "1x"
 
 	// pageFilePermissions are those of a file in the repository.
 	pageFilePermissions = 0o644
@@ -95,6 +98,8 @@ func run(ctx context.Context, opts options) error {
 		"environment":           renderEnvironment(env, opts.count, opts.scenarioTime, opts.componentTime),
 		"scenarios":             renderScenarios(results),
 		"sizing":                renderSizing(results),
+		"streams":               renderStreams(results),
+		"streams-fleet":         renderStreamsFleet(results),
 		"components-per-record": renderComponents(results, perRecordComponents(), true),
 		"components-per-event":  renderComponents(results, perEventComponents(), false),
 	}
@@ -139,6 +144,10 @@ func runBenchmarks(ctx context.Context, count int, scenarioTime, componentTime s
 	var out bytes.Buffer
 	log.Print("running scenario benchmarks")
 	if err := goTest(ctx, &out, "Scenario", scenarioTime, count, scenarioPackage); err != nil {
+		return nil, err
+	}
+	log.Print("running streams benchmarks")
+	if err := goTest(ctx, &out, "Streams", streamsBenchtime, count, scenarioPackage); err != nil {
 		return nil, err
 	}
 
@@ -333,9 +342,10 @@ func renderEnvironment(e env, count int, scenarioTime, componentTime string) str
 	fmt.Fprintf(&b, "| NATS | `%s` in a local container |\n", natstest.Image)
 	fmt.Fprintf(
 		&b,
-		"| Runs | %d per benchmark, medians shown; scenarios `-benchtime=%s`, components `-benchtime=%s` |\n",
+		"| Runs | %d per benchmark, medians shown; scenarios `-benchtime=%s`, streams `-benchtime=%s`, components `-benchtime=%s` |\n",
 		count,
 		scenarioTime,
+		streamsBenchtime,
 		componentTime,
 	)
 	return b.String()
@@ -347,7 +357,7 @@ func scenarioOrder() []struct{ name, title string } {
 		{"otlp-nats", "OTLP → NATS"},
 		{"otlp-batch-nats", "OTLP → batch → NATS"},
 		{"otlp-split-nats", "OTLP → 2 × cel_filter → 2 × NATS"},
-		{"nats-filter-nats", "NATS → cel_filter → NATS"},
+		{scenarioNATSFilterNATS, "NATS → cel_filter → NATS"},
 	}
 }
 
@@ -457,6 +467,120 @@ func renderSizing(results map[string]result) string {
 			row.label, duration(cpu), cpu*hundredThousand/billion, cpu*million/billion)
 	}
 	return b.String()
+}
+
+// scenarioNATSFilterNATS is the NATS forwarding scenario, which
+// BenchmarkScenario and BenchmarkStreams share.
+const scenarioNATSFilterNATS = "nats-filter-nats"
+
+// streamCounts are the stream counts of BenchmarkStreams.
+func streamCounts() []int {
+	return []int{10, 100, 1000}
+}
+
+// fleetBaseStreams is the measured stream count the fleet table projects
+// from; the largest one, where fixed costs of the process weigh least.
+const fleetBaseStreams = 1000
+
+// minStreamsForIdleCPU is the smallest stream count whose idle CPU stands out
+// from the noise of the process.
+const minStreamsForIdleCPU = 1000
+
+// streamsShapes lists the stream shapes of BenchmarkStreams in page order.
+func streamsShapes() []struct{ name, workers, title string } {
+	return []struct{ name, workers, title string }{
+		{scenarioNATSFilterNATS, "1", "NATS (1 worker) → cel_filter → NATS"},
+		{scenarioNATSFilterNATS, "4", "NATS (4 workers) → cel_filter → NATS"},
+		{"otlp-batch-nats", "0", "OTLP → batch → NATS"},
+	}
+}
+
+func streamsKey(shape, workers string, streams int) string {
+	return fmt.Sprintf("%s|Streams/%s/workers=%s/streams=%d", scenarioPkg, shape, workers, streams)
+}
+
+func renderStreams(results map[string]result) string {
+	var b strings.Builder
+	b.WriteString(
+		"| Stream | Streams | Build | Heap | Goroutines | NATS connections | NATS messages/s, idle | Idle CPU of a core |\n",
+	)
+	b.WriteString("|---|---|---|---|---|---|---|---|\n")
+	rows := 0
+	for _, shape := range streamsShapes() {
+		for _, n := range streamCounts() {
+			r, ok := results[streamsKey(shape.name, shape.workers, n)]
+			if !ok {
+				continue
+			}
+			rows++
+			m := r.metrics
+			// The idle CPU of a few streams is below the noise of the process.
+			idleCPU := "–"
+			if n >= minStreamsForIdleCPU {
+				idleCPU = coreShare(m["idle-cpu-µs/s/stream"])
+			}
+			fmt.Fprintf(&b, "| %s | %s | %s | %.0f KiB | %.1f | %.1f | %.2f | %s |\n",
+				shape.title, streamCount(n),
+				duration(m["build-µs/stream"]*thousand), m["heap-KiB/stream"], m["goroutines/stream"],
+				m["nats-conns/stream"], m["nats-msgs/s/stream"], idleCPU)
+		}
+	}
+	if rows == 0 {
+		return "_No streams results; the streams benchmarks need Docker or Podman._\n"
+	}
+	return b.String()
+}
+
+// fleetSizes are the stream counts and replicas the fleet table projects.
+func fleetSizes() []struct{ streams, replicas int } {
+	return []struct{ streams, replicas int }{
+		{100, 1}, {100, 10}, {1000, 1}, {1000, 3}, {1000, 10},
+	}
+}
+
+// renderStreamsFleet projects the per-stream costs of the largest measured
+// count onto instances that each run every stream. The process costs apply
+// per replica; the NATS server sees the sum of all replicas.
+func renderStreamsFleet(results map[string]result) string {
+	var b strings.Builder
+	b.WriteString(
+		"| Stream | Streams | Replicas | Heap per replica | Idle CPU per replica, of a core | NATS connections | NATS messages/s, idle |\n",
+	)
+	b.WriteString("|---|---|---|---|---|---|---|\n")
+	rows := 0
+	for _, shape := range streamsShapes() {
+		r, ok := results[streamsKey(shape.name, shape.workers, fleetBaseStreams)]
+		if !ok {
+			continue
+		}
+		m := r.metrics
+		for _, size := range fleetSizes() {
+			rows++
+			n, replicas := float64(size.streams), float64(size.replicas)
+			fmt.Fprintf(&b, "| %s | %s | %d | %.0f MiB | %s | %s | %s |\n",
+				shape.title, streamCount(size.streams), size.replicas,
+				m["heap-KiB/stream"]*n/kibibyte, coreShare(m["idle-cpu-µs/s/stream"]*n),
+				count(m["nats-conns/stream"]*n*replicas), count(m["nats-msgs/s/stream"]*n*replicas))
+		}
+	}
+	if rows == 0 {
+		return "_No streams results; the streams benchmarks need Docker or Podman._\n"
+	}
+	return b.String()
+}
+
+// coreShare formats CPU time per second, given in µs/s, as a percentage of
+// one core.
+func coreShare(microsPerSecond float64) string {
+	return fmt.Sprintf("%.2g %%", microsPerSecond/million*percent)
+}
+
+// streamCount formats a number of streams with a thousands separator.
+func streamCount(n int) string {
+	if n < thousand {
+		return strconv.Itoa(n)
+	}
+	return fmt.Sprintf("%d,%03d", n/thousand, n%thousand)
 }
 
 type component struct{ label, pkg, name string }
@@ -614,6 +738,7 @@ func replaceSection(page []byte, name, content string) ([]byte, error) {
 }
 
 const (
+	kibibyte        = 1024
 	thousand        = 1e3
 	tenThousand     = 1e4
 	hundredThousand = 1e5

@@ -21,12 +21,12 @@ Absolute numbers depend on the machine, its load and the network to NATS, so tre
 <!-- BEGIN benchreport:environment -->
 | | |
 |---|---|
-| Commit | `290ed1d (with uncommitted changes)` |
-| Date | 2026-10-02 |
+| Commit | `4eb3fca (with uncommitted changes)` |
+| Date | 2026-10-05 |
 | CPU | Apple M2 Pro |
-| Go | go1.26.6 |
+| Go | go1.27.1 |
 | NATS | `nats:2.11` in a local container |
-| Runs | 3 per benchmark, medians shown; scenarios `-benchtime=1s`, components `-benchtime=300ms` |
+| Runs | 3 per benchmark, medians shown; scenarios `-benchtime=1s`, streams `-benchtime=1x`, components `-benchtime=300ms` |
 <!-- END benchreport:environment -->
 
 ---
@@ -47,57 +47,57 @@ Configuration used in all scenarios:
 
 | Callers | Records per event | Records/s | Events/s | CPU per record | Records/s per core | p50 latency | p99 latency | Allocs per record | Spread |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | 1 (1 service) | 3.2 k | 3.2 k | 216.90 µs | 4.6 k | 0.30 ms | 0.42 ms | 190 | ±4% |
-| 1 | 100 (1 service) | 109 k | 1.1 k | 8.97 µs | 111 k | 0.88 ms | 1.39 ms | 54 | ±3% |
-| 1 | 1000 (10 services) | 128 k | 128 | 6.92 µs | 144 k | 7.86 ms | 8.70 ms | 53 | ±3% |
-| 4 | 1 (1 service) | 8.8 k | 8.8 k | 228.04 µs | 4.4 k | 0.44 ms | 0.75 ms | 190 | ±6% |
-| 4 | 100 (1 service) | 324 k | 3.2 k | 10.38 µs | 96 k | 1.20 ms | 1.93 ms | 54 | ±1% |
-| 4 | 1000 (10 services) | 397 k | 397 | 7.09 µs | 141 k | 10.02 ms | 12.29 ms | 53 | ±4% |
-| 8 | 1 (1 service) | 14 k | 14 k | 204.71 µs | 4.9 k | 0.56 ms | 0.95 ms | 190 | ±1% |
-| 8 | 100 (1 service) | 425 k | 4.2 k | 10.29 µs | 97 k | 1.84 ms | 3.28 ms | 54 | ±0% |
-| 8 | 1000 (10 services) | 542 k | 542 | 6.81 µs | 147 k | 14.66 ms | 19.75 ms | 53 | ±6% |
+| 1 | 1 (1 service) | 3.0 k | 3.0 k | 229.42 µs | 4.4 k | 0.32 ms | 0.45 ms | 193 | ±4% |
+| 1 | 100 (1 service) | 68 k | 685 | 11.38 µs | 88 k | 1.31 ms | 3.86 ms | 54 | ±98% ⚠️ |
+| 1 | 1000 (10 services) | 116 k | 116 | 7.44 µs | 134 k | 8.06 ms | 14.52 ms | 53 | ±8% |
+| 4 | 1 (1 service) | 8.1 k | 8.1 k | 246.89 µs | 4.0 k | 0.47 ms | 0.84 ms | 193 | ±2% |
+| 4 | 100 (1 service) | 291 k | 2.9 k | 11.30 µs | 88 k | 1.30 ms | 2.39 ms | 54 | ±36% ⚠️ |
+| 4 | 1000 (10 services) | 355 k | 354 | 7.54 µs | 133 k | 11.12 ms | 16.62 ms | 53 | ±27% ⚠️ |
+| 8 | 1 (1 service) | 13 k | 13 k | 218.53 µs | 4.6 k | 0.58 ms | 1.03 ms | 193 | ±2% |
+| 8 | 100 (1 service) | 422 k | 4.2 k | 11.19 µs | 89 k | 1.87 ms | 3.15 ms | 54 | ±5% |
+| 8 | 1000 (10 services) | 525 k | 525 | 7.18 µs | 139 k | 15.10 ms | 21.23 ms | 53 | ±7% |
 
 #### `otlp-batch-nats`: OTLP → batch → NATS
 
 | Callers | Records per event | Records/s | Events/s | CPU per record | Records/s per core | p50 latency | p99 latency | Allocs per record | Spread |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | 1 (1 service) | 79 | 79 | 976.55 µs | 1.0 k | 12.79 ms | 14.34 ms | 203 | ±4% |
-| 1 | 100 (1 service) | 7.2 k | 72 | 24.89 µs | 40 k | 13.85 ms | 16.03 ms | 54 | ±5% |
-| 1 | 1000 (10 services) | 126 k | 126 | 7.08 µs | 141 k | 7.99 ms | 8.67 ms | 53 | ±1% |
-| 4 | 1 (1 service) | 311 | 311 | 457.72 µs | 2.2 k | 12.86 ms | 14.09 ms | 170 | ±0% |
-| 4 | 100 (1 service) | 27 k | 272 | 18.07 µs | 55 k | 14.86 ms | 16.23 ms | 53 | ±2% |
-| 4 | 1000 (10 services) | 386 k | 386 | 7.12 µs | 141 k | 10.28 ms | 12.35 ms | 53 | ±2% |
-| 8 | 1 (1 service) | 621 | 621 | 332.07 µs | 3.0 k | 12.85 ms | 13.83 ms | 164 | ±3% |
-| 8 | 100 (1 service) | 50 k | 500 | 13.18 µs | 76 k | 15.82 ms | 17.16 ms | 53 | ±6% |
-| 8 | 1000 (10 services) | 536 k | 536 | 6.92 µs | 144 k | 14.73 ms | 20.54 ms | 53 | ±1% |
+| 1 | 1 (1 service) | 73 | 73 | 1.6 ms | 625 | 13.78 ms | 15.63 ms | 213 | ±5% |
+| 1 | 100 (1 service) | 6.5 k | 65 | 40.02 µs | 25 k | 15.63 ms | 19.41 ms | 54 | ±5% |
+| 1 | 1000 (10 services) | 123 k | 123 | 7.31 µs | 137 k | 8.15 ms | 10.72 ms | 53 | ±9% |
+| 4 | 1 (1 service) | 284 | 284 | 834.27 µs | 1.2 k | 14.11 ms | 15.65 ms | 184 | ±5% |
+| 4 | 100 (1 service) | 23 k | 226 | 23.48 µs | 43 k | 17.42 ms | 30.17 ms | 54 | ±2% |
+| 4 | 1000 (10 services) | 382 k | 382 | 7.37 µs | 136 k | 10.45 ms | 12.73 ms | 53 | ±1% |
+| 8 | 1 (1 service) | 565 | 565 | 649.43 µs | 1.5 k | 14.16 ms | 16.94 ms | 179 | ±1% |
+| 8 | 100 (1 service) | 40 k | 396 | 20.62 µs | 48 k | 19.95 ms | 25.00 ms | 54 | ±4% |
+| 8 | 1000 (10 services) | 539 k | 539 | 7.12 µs | 141 k | 14.71 ms | 21.07 ms | 53 | ±4% |
 
 #### `otlp-split-nats`: OTLP → 2 × cel_filter → 2 × NATS
 
 | Callers | Records per event | Records/s | Events/s | CPU per record | Records/s per core | p50 latency | p99 latency | Allocs per record | Spread |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | 1 (1 service) | 3.0 k | 3.0 k | 251.54 µs | 4.0 k | 0.33 ms | 0.42 ms | 228 | ±0% |
-| 1 | 100 (1 service) | 97 k | 966 | 14.81 µs | 68 k | 0.98 ms | 1.58 ms | 87 | ±3% |
-| 1 | 1000 (10 services) | 113 k | 113 | 12.62 µs | 79 k | 8.85 ms | 9.58 ms | 86 | ±1% |
-| 4 | 1 (1 service) | 8.2 k | 8.2 k | 255.55 µs | 3.9 k | 0.47 ms | 0.80 ms | 228 | ±3% |
-| 4 | 100 (1 service) | 234 k | 2.3 k | 17.59 µs | 57 k | 1.67 ms | 2.65 ms | 87 | ±9% |
-| 4 | 1000 (10 services) | 293 k | 293 | 13.22 µs | 76 k | 13.78 ms | 15.90 ms | 86 | ±11% ⚠️ |
-| 8 | 1 (1 service) | 14 k | 14 k | 224.97 µs | 4.4 k | 0.57 ms | 0.99 ms | 228 | ±0% |
-| 8 | 100 (1 service) | 310 k | 3.1 k | 16.64 µs | 60 k | 2.52 ms | 4.50 ms | 87 | ±2% |
-| 8 | 1000 (10 services) | 387 k | 387 | 12.64 µs | 79 k | 20.55 ms | 27.54 ms | 86 | ±3% |
+| 1 | 1 (1 service) | 2.9 k | 2.9 k | 259.25 µs | 3.9 k | 0.34 ms | 0.47 ms | 238 | ±3% |
+| 1 | 100 (1 service) | 80 k | 800 | 14.90 µs | 67 k | 1.20 ms | 1.87 ms | 87 | ±8% |
+| 1 | 1000 (10 services) | 105 k | 105 | 12.41 µs | 81 k | 9.45 ms | 11.52 ms | 86 | ±4% |
+| 4 | 1 (1 service) | 8.2 k | 8.2 k | 270.14 µs | 3.7 k | 0.48 ms | 0.81 ms | 238 | ±5% |
+| 4 | 100 (1 service) | 233 k | 2.3 k | 18.52 µs | 54 k | 1.67 ms | 2.69 ms | 88 | ±3% |
+| 4 | 1000 (10 services) | 295 k | 295 | 13.43 µs | 74 k | 13.64 ms | 16.13 ms | 86 | ±1% |
+| 8 | 1 (1 service) | 13 k | 13 k | 246.06 µs | 4.1 k | 0.60 ms | 1.04 ms | 238 | ±2% |
+| 8 | 100 (1 service) | 309 k | 3.1 k | 18.25 µs | 55 k | 2.57 ms | 4.12 ms | 87 | ±1% |
+| 8 | 1000 (10 services) | 390 k | 390 | 13.20 µs | 76 k | 20.47 ms | 29.63 ms | 86 | ±9% |
 
 #### `nats-filter-nats`: NATS → cel_filter → NATS
 
 | Callers | Records per event | Records/s | Events/s | CPU per record | Records/s per core | p50 latency | p99 latency | Allocs per record | Spread |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | 1 (1 service) | 3.3 k | 3.3 k | 177.19 µs | 5.6 k | – | – | 164 | ±6% |
-| 1 | 100 (1 service) | 104 k | 1.0 k | 9.78 µs | 102 k | – | – | 61 | ±5% |
-| 1 | 1000 (10 services) | 114 k | 114 | 8.03 µs | 125 k | – | – | 61 | ±2% |
-| 4 | 1 (1 service) | 8.8 k | 8.8 k | 148.47 µs | 6.7 k | – | – | 156 | ±7% |
-| 4 | 100 (1 service) | 282 k | 2.8 k | 9.21 µs | 109 k | – | – | 61 | ±4% |
-| 4 | 1000 (10 services) | 314 k | 314 | 7.26 µs | 138 k | – | – | 61 | ±1% |
-| 8 | 1 (1 service) | 14 k | 14 k | 130.98 µs | 7.6 k | – | – | 154 | ±7% |
-| 8 | 100 (1 service) | 381 k | 3.8 k | 9.07 µs | 110 k | – | – | 61 | ±8% |
-| 8 | 1000 (10 services) | 428 k | 428 | 7.13 µs | 140 k | – | – | 61 | ±6% |
+| 1 | 1 (1 service) | 3.3 k | 3.3 k | 180.96 µs | 5.5 k | – | – | 158 | ±2% |
+| 1 | 100 (1 service) | 103 k | 1.0 k | 10.42 µs | 96 k | – | – | 61 | ±1% |
+| 1 | 1000 (10 services) | 115 k | 116 | 8.24 µs | 121 k | – | – | 61 | ±5% |
+| 4 | 1 (1 service) | 9.0 k | 9.0 k | 157.98 µs | 6.3 k | – | – | 152 | ±2% |
+| 4 | 100 (1 service) | 279 k | 2.8 k | 9.78 µs | 102 k | – | – | 61 | ±2% |
+| 4 | 1000 (10 services) | 321 k | 321 | 7.47 µs | 134 k | – | – | 61 | ±2% |
+| 8 | 1 (1 service) | 14 k | 14 k | 139.86 µs | 7.2 k | – | – | 151 | ±2% |
+| 8 | 100 (1 service) | 376 k | 3.8 k | 9.61 µs | 104 k | – | – | 61 | ±3% |
+| 8 | 1000 (10 services) | 429 k | 429 | 7.24 µs | 138 k | – | – | 61 | ±0% |
 
 <!-- END benchreport:scenarios -->
 
@@ -108,16 +108,72 @@ CPU needed for pure processing, from the CPU per record of the scenarios above. 
 <!-- BEGIN benchreport:sizing -->
 | Pipeline | CPU per record | Cores for 100 k records/s | Cores for 1 M records/s |
 |---|---|---|---|
-| Batched: OTLP → batch → NATS, 1,000 records per request, 8 callers | 6.92 µs | 0.7 | 6.9 |
-| Split: OTLP → 2 × cel_filter → 2 × NATS, 1,000 records per request, 8 callers | 12.64 µs | 1.3 | 12.6 |
-| Forwarding: NATS → cel_filter → NATS, 1,000 records per message, 8 workers | 7.13 µs | 0.7 | 7.1 |
-| Unbatched: OTLP → NATS, 1 record per request, 8 callers | 204.71 µs | 20.5 | 204.7 |
+| Batched: OTLP → batch → NATS, 1,000 records per request, 8 callers | 7.12 µs | 0.7 | 7.1 |
+| Split: OTLP → 2 × cel_filter → 2 × NATS, 1,000 records per request, 8 callers | 13.20 µs | 1.3 | 13.2 |
+| Forwarding: NATS → cel_filter → NATS, 1,000 records per message, 8 workers | 7.24 µs | 0.7 | 7.2 |
+| Unbatched: OTLP → NATS, 1 record per request, 8 callers | 218.53 µs | 21.9 | 218.5 |
 <!-- END benchreport:sizing -->
 
 Scaling out works because Tram keeps no state between events, with two conditions:
 
 - **NATS source:** set `durable`, so the pods share one consumer and split the messages. Without it, every pod receives every message
 - **NATS server:** all pods publish to the same JetStream streams. A stream is written by one NATS node, so at very high load NATS, not Tram, becomes the limit; spread the data over several streams
+
+## Streams per Instance
+
+The cost of processing data is shared by the replicas, but the cost of a stream itself is not: every replica that runs a stream holds its connections, goroutines and memory, and its NATS source workers keep asking the NATS server for messages even when there are none. This section measures that cost, so you can tell when to shard streams over several deployments with `--watch-namespace` or `--stream-selector` (see [the operator documentation](internal/adapters/k8scrd/README.md#selecting-streams)) instead of running every stream on every replica.
+
+`BenchmarkStreams` builds 10, 100 and 1,000 streams of one shape in one Tram core and observes them for 10 seconds without data. Values are per stream, measured against the process before the streams were built:
+
+- **Build:** time to create the stream through the core, including connecting to NATS
+- **Heap:** live heap after a garbage collection. RSS is higher; see [Sizing](#sizing)
+- **NATS connections:** client connections the NATS server sees. Every NATS source and sink has its own
+- **NATS messages/s, idle:** messages the NATS server receives from the idle stream, mostly the pull requests of the NATS source's workers. Each worker renews its request every 5 seconds
+- **Idle CPU:** CPU the process uses for the idle stream, as a share of one core
+
+Idle CPU is shown for 1,000 streams only; for fewer streams it is below the noise of the process.
+
+<!-- BEGIN benchreport:streams -->
+| Stream | Streams | Build | Heap | Goroutines | NATS connections | NATS messages/s, idle | Idle CPU of a core |
+|---|---|---|---|---|---|---|---|
+| NATS (1 worker) → cel_filter → NATS | 10 | 12.0 ms | 342 KiB | 11.0 | 2.0 | 0.20 | – |
+| NATS (1 worker) → cel_filter → NATS | 100 | 6.8 ms | 336 KiB | 11.0 | 2.0 | 0.20 | – |
+| NATS (1 worker) → cel_filter → NATS | 1,000 | 4.2 ms | 336 KiB | 11.0 | 2.0 | 0.22 | 0.016 % |
+| NATS (4 workers) → cel_filter → NATS | 10 | 10.4 ms | 346 KiB | 17.0 | 2.0 | 0.80 | – |
+| NATS (4 workers) → cel_filter → NATS | 100 | 5.4 ms | 344 KiB | 17.0 | 2.0 | 0.80 | – |
+| NATS (4 workers) → cel_filter → NATS | 1,000 | 4.1 ms | 345 KiB | 17.0 | 2.0 | 0.91 | 0.032 % |
+| OTLP → batch → NATS | 10 | 8.2 ms | 211 KiB | 5.0 | 1.0 | 0.00 | – |
+| OTLP → batch → NATS | 100 | 5.5 ms | 207 KiB | 5.0 | 1.0 | 0.00 | – |
+| OTLP → batch → NATS | 1,000 | 5.1 ms | 207 KiB | 5.0 | 1.0 | 0.00 | 0.0022 % |
+<!-- END benchreport:streams -->
+
+What a number of streams costs when every replica runs all of them, projected from the 1,000-stream rows. Heap and CPU are per replica; connections and messages add up on the NATS server over all replicas:
+
+<!-- BEGIN benchreport:streams-fleet -->
+| Stream | Streams | Replicas | Heap per replica | Idle CPU per replica, of a core | NATS connections | NATS messages/s, idle |
+|---|---|---|---|---|---|---|
+| NATS (1 worker) → cel_filter → NATS | 100 | 1 | 33 MiB | 1.6 % | 200 | 22 |
+| NATS (1 worker) → cel_filter → NATS | 100 | 10 | 33 MiB | 1.6 % | 2.0 k | 224 |
+| NATS (1 worker) → cel_filter → NATS | 1,000 | 1 | 328 MiB | 16 % | 2.0 k | 224 |
+| NATS (1 worker) → cel_filter → NATS | 1,000 | 3 | 328 MiB | 16 % | 6.0 k | 673 |
+| NATS (1 worker) → cel_filter → NATS | 1,000 | 10 | 328 MiB | 16 % | 20 k | 2.2 k |
+| NATS (4 workers) → cel_filter → NATS | 100 | 1 | 34 MiB | 3.2 % | 200 | 91 |
+| NATS (4 workers) → cel_filter → NATS | 100 | 10 | 34 MiB | 3.2 % | 2.0 k | 912 |
+| NATS (4 workers) → cel_filter → NATS | 1,000 | 1 | 337 MiB | 32 % | 2.0 k | 912 |
+| NATS (4 workers) → cel_filter → NATS | 1,000 | 3 | 337 MiB | 32 % | 6.0 k | 2.7 k |
+| NATS (4 workers) → cel_filter → NATS | 1,000 | 10 | 337 MiB | 32 % | 20 k | 9.1 k |
+| OTLP → batch → NATS | 100 | 1 | 20 MiB | 0.22 % | 100 | 0 |
+| OTLP → batch → NATS | 100 | 10 | 20 MiB | 0.22 % | 1.0 k | 0 |
+| OTLP → batch → NATS | 1,000 | 1 | 202 MiB | 2.2 % | 1.0 k | 0 |
+| OTLP → batch → NATS | 1,000 | 3 | 202 MiB | 2.2 % | 3.0 k | 0 |
+| OTLP → batch → NATS | 1,000 | 10 | 202 MiB | 2.2 % | 10 k | 0 |
+<!-- END benchreport:streams-fleet -->
+
+How to read it:
+
+- **Memory limits the streams per replica first.** Most of a stream's heap are the buffers of its NATS connections. Plan the memory request of a replica from the streams it runs, not only from its data rate
+- **Replicas multiply the load on NATS.** Doubling the replicas of a deployment that runs every stream doubles the connections and idle requests the NATS server handles, while each replica still holds all streams. Shard the streams when the per-replica heap or the NATS totals get too high, and scale replicas within a shard for the data rate
+- **Workers multiply the idle requests.** Give a NATS source more workers only where its data rate needs them
 
 ## Where the Time Goes
 
@@ -126,20 +182,20 @@ Costs of single components, measured in isolation. Per-record costs are measured
 <!-- BEGIN benchreport:components-per-record -->
 | Component | Per record | Allocs per record | Records/s | Spread |
 |---|---|---|---|---|
-| NATS sink: group and publish, 10 subjects | 7.10 µs | 31.2 | 141 k | ±7% |
-| NATS sink: group and publish, 1 subject | 4.84 µs | 30.1 | 207 k | ±2% |
-| NATS sink: grouping by subject only | 2.11 µs | 30.1 | 475 k | ±5% |
-| Serializing for NATS and back (logs) | 2.31 µs | 34.2 | 434 k | ±1% |
-| NATS source, 1 worker | 1.95 µs | 34.2 | 513 k | ±4% |
-| NATS source, 8 workers | 562.0 ns | 34.2 | 1.78 M | ±2% |
-| OTLP source: decoding a request | 1.64 µs | 34.3 | 612 k | ±3% |
-| cel_filter, keeping half of the records | 1.36 µs | 16.6 | 737 k | ±0% |
-| cel_filter, keeping all records | 666.0 ns | 8.0 | 1.50 M | ±1% |
-| cel_validator, record-level expression | 837.3 ns | 9.1 | 1.19 M | ±2% |
-| cel_validator, resource-level expression | 10.0 ns | 0.1 | 99.75 M | ±6% |
-| Record filter helper without CEL | 10.8 ns | 0.0 | 92.84 M | ±1% |
-| batch, 8 concurrent callers | 0.8 ns | 0.0 | 1.27 G | ±5% |
-| noop stage | 1.2 ns | 0.0 | 820.34 M | ±1% |
+| NATS sink: group and publish, 10 subjects | 8.33 µs | 31.2 | 120 k | ±66% ⚠️ |
+| NATS sink: group and publish, 1 subject | 7.61 µs | 30.1 | 131 k | ±28% ⚠️ |
+| NATS sink: grouping by subject only | 1.92 µs | 30.1 | 522 k | ±5% |
+| Serializing for NATS and back (logs) | 2.32 µs | 34.2 | 430 k | ±5% |
+| NATS source, 1 worker | 1.91 µs | 34.2 | 523 k | ±5% |
+| NATS source, 8 workers | 564.4 ns | 34.2 | 1.77 M | ±1% |
+| OTLP source: decoding a request | 1.53 µs | 34.3 | 654 k | ±4% |
+| cel_filter, keeping half of the records | 1.29 µs | 16.6 | 778 k | ±3% |
+| cel_filter, keeping all records | 638.4 ns | 8.0 | 1.57 M | ±1% |
+| cel_validator, record-level expression | 815.8 ns | 9.1 | 1.23 M | ±1% |
+| cel_validator, resource-level expression | 9.7 ns | 0.1 | 103.28 M | ±1% |
+| Record filter helper without CEL | 11.3 ns | 0.0 | 88.50 M | ±1% |
+| batch, 8 concurrent callers | 0.8 ns | 0.0 | 1.25 G | ±10% |
+| noop stage | 3.0 ns | 0.0 | 337.50 M | ±5% |
 <!-- END benchreport:components-per-record -->
 
 Fixed costs per event, independent of its size. They dominate when events are small:
@@ -147,12 +203,12 @@ Fixed costs per event, independent of its size. They dominate when events are sm
 <!-- BEGIN benchreport:components-per-event -->
 | Component | Per event | Allocs per event | Spread |
 |---|---|---|---|
-| NATS sink: one record (waits for the acknowledgement) | 217.32 µs | 69 | ±3% |
-| OTLP source: request with one record | 5.38 µs | 73 | ±1% |
-| batch, one caller | 1.05 µs | 15 | ±4% |
-| Passing an event to 1 child | 529.8 ns | 6 | ±1% |
-| Passing an event to 8 children | 2.71 µs | 20 | ±3% |
-| Each additional noop stage | 604.4 ns | 7 | ±4% |
+| NATS sink: one record (waits for the acknowledgement) | 217.96 µs | 64 | ±7% |
+| OTLP source: request with one record | 5.95 µs | 83 | ±9% |
+| batch, one caller | 952.0 ns | 15 | ±0% |
+| Passing an event to 1 child | 461.4 ns | 6 | ±1% |
+| Passing an event to 8 children | 2.50 µs | 20 | ±9% |
+| Each additional noop stage | 2.15 µs | 7 | ±3% |
 <!-- END benchreport:components-per-event -->
 
 ## Tuning
@@ -167,7 +223,8 @@ Fixed costs per event, independent of its size. They dominate when events are sm
 
 - NATS ran in a container on the same machine. Over a real network, every acknowledgement takes longer, which affects small events and many subjects most
 - The OTLP scenarios generate load from the same process and machine, which competes with Tram for CPU
-- The benchmarks measure one Tram instance; they do not cover several pods sharing a NATS server
+- The benchmarks measure one Tram instance; they do not cover several pods sharing a NATS server. The fleet table under [Streams per Instance](#streams-per-instance) multiplies the per-stream costs instead, assuming the NATS server's cost grows linearly with connections and requests
+- `BenchmarkStreams` measures idle streams. It does not measure how idle streams slow down a busy one, beyond the idle CPU they use
 
 ---
 
@@ -180,7 +237,7 @@ export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/run/podman/podman.sock
 export TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED=true
 ```
 
-Then run all benchmarks and update this page (takes about 15 minutes):
+Then run all benchmarks and update this page (takes about 25 minutes, of which the streams benchmarks take about 9):
 
 ```bash
 go run ./tools/benchreport -raw bench.txt

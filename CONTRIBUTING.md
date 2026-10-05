@@ -654,6 +654,7 @@ Benchmarks cover the per-event hot path:
 | `BenchmarkHandleLogs` | `source/otlp` | Reading and decoding OTLP requests |
 | `BenchmarkOTLPDataRoundTrip` | `core/domain` | Serializing events for NATS |
 | `BenchmarkScenario` | `scenario` | Complete pipelines end to end: throughput, CPU per record, latency (container) |
+| `BenchmarkStreams` | `scenario` | Cost of idle streams for 10 to 1,000 streams per instance: build time, heap, goroutines, NATS connections and requests, idle CPU (container; each case takes about 20 seconds, run it with `-benchtime 1x`) |
 
 [BENCHMARK.md](BENCHMARK.md) presents these results. After performance-relevant changes, regenerate it with `task bench:report` (see the page for details); add new scenarios to `internal/scenario` and new components to the lists in `tools/benchreport`.
 
