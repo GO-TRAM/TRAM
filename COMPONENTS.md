@@ -478,6 +478,7 @@ Publishes OTLP-encoded events to NATS JetStream. Uses dynamic subject mapping wi
 | `subject` | object | Yes | - | Subject configuration for dynamic subject mapping |
 | `retention` | string | No | - | Stream message retention as a Go duration (e.g., `"24h"`, `"168h"`; days are not supported) |
 | `size` | int | No | - | Maximum stream size in bytes |
+| `compression` | string | No | - | How JetStream compresses the stream on disk: `"s2"` or `"none"` |
 
 **Subject Configuration:**
 
@@ -542,8 +543,9 @@ Signals without an expression are not published by this sink.
 ```
 
 **Behavior Notes:**
-- When the stream is created in Tram, the sink creates a missing JetStream stream from `register`, `retention` and `size`. An existing stream is only extended: `register` subjects it does not cover yet are added, and `retention` and `size` are applied if set. Other settings, limits that are not set, and the subjects of other sinks or writers are kept, so several sinks can share a stream and it can be configured outside Tram
-- Subjects are never removed from a stream; removing one from `register` leaves it on the stream. Set `retention` and `size` in one sink only, since sinks with different values replace each other's when they start
+- When the stream is created in Tram, the sink creates a missing JetStream stream from `register`, `retention`, `size` and `compression`. An existing stream is only extended: `register` subjects it does not cover yet are added, and `retention`, `size` and `compression` are applied if set. Other settings, limits that are not set, and the subjects of other sinks or writers are kept, so several sinks can share a stream and it can be configured outside Tram
+- Subjects are never removed from a stream; removing one from `register` leaves it on the stream. Set `retention`, `size` and `compression` in one sink only, since sinks with different values replace each other's when they start
+- Compression saves disk space and costs CPU on the NATS server; how much it saves depends on the data. Changing it affects only data written afterwards. `size` counts the messages uncompressed
 - Records are grouped by their resolved subject and published as one OTLP message per subject and signal type, so different signal types may share a subject. Each message has a `Tram-Signal` header with the signal type, which the [NATS Source](#nats-source) needs to decode it
 - Records keep their resource and scope. If all records of a signal type resolve to the same subject, the payload is published unchanged. Resources that appear in several entries of an event, e.g. after a `batch` stage, stay separate entries in the message, which OTLP allows
 - The `register` subjects configure the stream, while the CEL expressions determine the subject of each record. Records whose subject is not covered by `register` cannot be published

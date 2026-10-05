@@ -90,12 +90,27 @@ func configFromSpec(spec *Spec) (jetstream.StreamConfig, error) {
 	if err != nil {
 		return jetstream.StreamConfig{}, err
 	}
+	compression, _ := compressionFromSpec(spec)
 	return jetstream.StreamConfig{
-		Name:     spec.Stream,
-		Subjects: spec.Subject.Register,
-		MaxAge:   maxAge,
-		MaxBytes: spec.Size,
+		Name:        spec.Stream,
+		Subjects:    spec.Subject.Register,
+		MaxAge:      maxAge,
+		MaxBytes:    spec.Size,
+		Compression: compression,
 	}, nil
+}
+
+// compressionFromSpec returns the compression of the spec and whether it sets
+// one.
+func compressionFromSpec(spec *Spec) (jetstream.StoreCompression, bool) {
+	switch spec.Compression {
+	case "s2":
+		return jetstream.S2Compression, true
+	case "none":
+		return jetstream.NoCompression, true
+	default:
+		return jetstream.NoCompression, false
+	}
 }
 
 // streamUpdate describes what mergeStreamConfig changed.
@@ -147,6 +162,18 @@ func mergeStreamConfig(existing jetstream.StreamConfig, spec *Spec) (jetstream.S
 				fmt.Sprintf("size %d -> %d", merged.MaxBytes, spec.Size))
 		}
 		merged.MaxBytes = spec.Size
+		update.limitsChanged = true
+	}
+
+	// JetStream compresses only blocks written after the change; existing
+	// blocks keep theirs.
+	if compression, ok := compressionFromSpec(spec); ok && merged.Compression != compression {
+		if merged.Compression != jetstream.NoCompression {
+			// Spelled as in the spec; String gives "S2" and "None".
+			update.replacedLimits = append(update.replacedLimits, fmt.Sprintf("compression %s -> %s",
+				strings.ToLower(merged.Compression.String()), spec.Compression))
+		}
+		merged.Compression = compression
 		update.limitsChanged = true
 	}
 

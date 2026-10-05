@@ -131,6 +131,35 @@ func TestNATS(t *testing.T) {
 		assert.Equal(t, time.Hour, config.MaxAge, "limits set beforehand are kept")
 	})
 
+	// A sink creates a missing stream with its retention, size and
+	// compression, and messages published to it read back unchanged.
+	t.Run("sink creates a compressed stream with limits", func(t *testing.T) {
+		t.Parallel()
+
+		out := n.stream("compressed")
+		spec := n.sinkSpec(out, map[string]any{
+			"logs": fmt.Sprintf("'%s.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')", out),
+		})
+		spec["retention"] = "4h"
+		spec["size"] = float64(1 << 30)
+		spec["compression"] = "s2"
+		p := newPipeline(t, nil, []domain.SinkSpec{{Name: "out", Type: "nats", From: "in", Spec: spec}})
+
+		require.Equal(t, http.StatusOK, p.post(t, request("shop", rec{"r1", "A"}, rec{"r2", "B"}), 10*time.Second))
+		assert.Equal(
+			t,
+			map[string][]string{out + ".shop": {"shop/e2e/r1", "shop/e2e/r2"}},
+			bySubject(t, n.read(t, out)),
+		)
+
+		stream, err := n.js.Stream(t.Context(), out)
+		require.NoError(t, err)
+		config := stream.CachedInfo().Config
+		assert.Equal(t, jetstream.S2Compression, config.Compression)
+		assert.Equal(t, 4*time.Hour, config.MaxAge)
+		assert.Equal(t, int64(1<<30), config.MaxBytes)
+	})
+
 	// What Tram's NATS sink publishes is consumed by Tram's NATS source in a
 	// second stream, filtered there, and arrives with resource and scope.
 	t.Run("sink to source round trip", func(t *testing.T) {

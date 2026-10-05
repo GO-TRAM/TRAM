@@ -114,6 +114,43 @@ func TestMergeStreamConfig(t *testing.T) {
 		assert.Empty(t, update.ReplacedLimits)
 	})
 
+	t.Run("applies compression set in the spec", func(t *testing.T) {
+		t.Parallel()
+
+		s := spec("logs.>")
+		s.Compression = "s2"
+		merged, update, err := natssink.MergeStreamConfig(existing(), s)
+		require.NoError(t, err)
+		assert.True(t, update.Changed)
+		assert.Equal(t, jetstream.S2Compression, merged.Compression)
+		assert.Empty(t, update.ReplacedLimits, "turning compression on replaces no setting")
+	})
+
+	t.Run("replacing a compression is reported", func(t *testing.T) {
+		t.Parallel()
+
+		in := existing()
+		in.Compression = jetstream.S2Compression
+		s := spec("logs.>")
+		s.Compression = "none"
+		merged, update, err := natssink.MergeStreamConfig(in, s)
+		require.NoError(t, err)
+		assert.True(t, update.Changed)
+		assert.Equal(t, jetstream.NoCompression, merged.Compression)
+		assert.Equal(t, []string{"compression s2 -> none"}, update.ReplacedLimits)
+	})
+
+	t.Run("a spec without compression keeps the stream's", func(t *testing.T) {
+		t.Parallel()
+
+		in := existing()
+		in.Compression = jetstream.S2Compression
+		merged, update, err := natssink.MergeStreamConfig(in, spec("logs.>"))
+		require.NoError(t, err)
+		assert.False(t, update.Changed)
+		assert.Equal(t, jetstream.S2Compression, merged.Compression)
+	})
+
 	t.Run("invalid retention", func(t *testing.T) {
 		t.Parallel()
 

@@ -15,10 +15,27 @@ func TestSpecValidation(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name      string
-		subject   map[string]any
-		expectErr bool
+		name        string
+		subject     map[string]any
+		compression string
+		expectErr   bool
 	}{
+		{
+			name:        "s2 compression",
+			subject:     map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			compression: "s2",
+		},
+		{
+			name:        "no compression",
+			subject:     map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			compression: "none",
+		},
+		{
+			name:        "unknown compression",
+			subject:     map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			compression: "zstd",
+			expectErr:   true,
+		},
 		{
 			name:    "all signals",
 			subject: map[string]any{"register": []any{"a.>"}, "logs": "'a.l'", "metrics": "'a.m'", "traces": "'a.t'"},
@@ -43,11 +60,15 @@ func TestSpecValidation(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := base.New[natssink.Spec]("nats", "src", map[string]any{
+			spec := map[string]any{
 				"url":     "nats://localhost:4222",
 				"stream":  "s",
 				"subject": c.subject,
-			}, validator.New())
+			}
+			if c.compression != "" {
+				spec["compression"] = c.compression
+			}
+			_, err := base.New[natssink.Spec]("nats", "src", spec, validator.New())
 			if c.expectErr {
 				assert.Error(t, err)
 			} else {

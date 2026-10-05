@@ -6,6 +6,9 @@ type Spec struct {
 	Subject   SubjectSpec `json:"subject"   validate:"required"`
 	Retention string      `json:"retention"`
 	Size      int64       `json:"size"`
+	// Compression is how JetStream compresses the stream on disk: "s2" or
+	// "none". Empty leaves it as it is.
+	Compression string `json:"compression" validate:"omitempty,oneof=none s2"`
 }
 
 // SubjectSpec maps each signal type to a CEL expression that computes the
