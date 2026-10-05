@@ -29,12 +29,11 @@ const (
 )
 
 const (
-	fetchBatch = 10
 	// fetchTimeout bounds how long one fetch waits for messages. Stopping the
 	// source cancels a pending fetch right away.
 	fetchTimeout = 5 * time.Second
 
-	// After a failed fetch, the worker waits before the next one. The wait
+	// After a failed fetch, the source waits before the next one. The wait
 	// grows by fetchRetryGrowth with every failure in a row, between these
 	// bounds.
 	minFetchRetryDelay = 100 * time.Millisecond
@@ -48,7 +47,8 @@ type NATS struct {
 	logger *slog.Logger
 	nc     *nats.Conn
 	js     jetstream.JetStream
-	wg     sync.WaitGroup
+	// wg tracks the messages being handled.
+	wg sync.WaitGroup
 
 	// stop is cancelled by Stop and interrupts pending fetches.
 	stop   context.Context
@@ -119,30 +119,37 @@ func (n *NATS) Run(ctx context.Context) error {
 		workers = n.Spec().Workers
 	}
 
-	for range workers {
-		n.wg.Go(func() { n.worker(ctx, cons) })
-	}
-
-	<-n.stop.Done()
-	n.wg.Wait()
+	n.consume(ctx, cons, int(workers))
 	return nil
 }
 
-// worker fetches messages until the source is stopped. Fetches and the wait
-// after a failed fetch are interrupted by Stop; deliveries use ctx, so a
-// message being processed when the source stops is still delivered and
-// acknowledged.
-func (n *NATS) worker(ctx context.Context, cons jetstream.Consumer) {
+// consume fetches messages until the source is stopped and handles each in
+// its own goroutine, at most workers at a time. Only as many messages are
+// fetched as slots are free, so no fetched message waits for another to be
+// handled while its ack wait runs. A stage that holds messages, like a batch,
+// therefore holds up to workers of them.
+//
+// Fetches and the wait after a failed fetch are interrupted by Stop;
+// deliveries use ctx, so messages being handled when the source stops are
+// still delivered and acknowledged. consume returns once they are done.
+func (n *NATS) consume(ctx context.Context, cons jetstream.Consumer, workers int) {
+	defer n.wg.Wait()
+
+	slots := make(chan struct{}, workers)
 	var delay time.Duration
-	for n.stop.Err() == nil {
-		err := n.fetch(ctx, cons)
+	for {
+		free := n.acquire(slots)
+		if free == 0 {
+			return
+		}
+		err := n.fetch(ctx, cons, slots, free)
 		if err == nil || n.stop.Err() != nil {
 			delay = 0
 			continue
 		}
 
 		// Failing fetches often fail right away, e.g. while disconnected, so
-		// the worker waits before the next one instead of spinning.
+		// the source waits before the next one instead of spinning.
 		delay = min(max(fetchRetryGrowth*delay, minFetchRetryDelay), maxFetchRetryDelay)
 		n.logger.ErrorContext(ctx, "Could not fetch messages, retrying",
 			slog.String("source", n.Name()), slog.Duration("delay", delay), slog.Any("error", err))
@@ -156,22 +163,62 @@ func (n *NATS) worker(ctx context.Context, cons jetstream.Consumer) {
 	}
 }
 
-// fetch fetches one batch of messages and handles them. It returns the error
-// of a failed fetch, which is reported either right away or once the batch
-// has ended.
-func (n *NATS) fetch(ctx context.Context, cons jetstream.Consumer) error {
+// acquire waits until at least one slot is free and takes all free slots. It
+// returns how many it took, or 0 once the source is stopped.
+func (n *NATS) acquire(slots chan struct{}) int {
+	// With a slot free, select would pick at random between it and a stop
+	// that already happened, and fetch again.
+	if n.stop.Err() != nil {
+		return 0
+	}
+	select {
+	case slots <- struct{}{}:
+	case <-n.stop.Done():
+		return 0
+	}
+	free := 1
+	for {
+		select {
+		case slots <- struct{}{}:
+			free++
+		default:
+			return free
+		}
+	}
+}
+
+// release frees count slots.
+func release(slots chan struct{}, count int) {
+	for range count {
+		<-slots
+	}
+}
+
+// fetch fetches up to free messages, one per slot taken, and hands each to
+// its own goroutine, which frees its slot once the message is handled. Slots
+// of messages the fetch did not return are freed when it ends. It returns the
+// error of a failed fetch, which is reported either right away or once the
+// fetch has ended.
+func (n *NATS) fetch(ctx context.Context, cons jetstream.Consumer, slots chan struct{}, free int) error {
 	fetchCtx, cancel := context.WithTimeout(n.stop, fetchTimeout)
 	defer cancel()
 
-	msgs, err := cons.Fetch(fetchBatch, jetstream.FetchContext(fetchCtx))
+	msgs, err := cons.Fetch(free, jetstream.FetchContext(fetchCtx))
 	if err != nil {
+		release(slots, free)
 		return err
 	}
+	received := 0
 	for msg := range msgs.Messages() {
-		n.handle(ctx, msg)
+		received++
+		n.wg.Go(func() {
+			defer release(slots, 1)
+			n.handle(ctx, msg)
+		})
 	}
+	release(slots, free-received)
 
-	// A batch that ends because the wait is over or the source stops did not
+	// A fetch that ends because the wait is over or the source stops did not
 	// fail.
 	err = msgs.Error()
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {

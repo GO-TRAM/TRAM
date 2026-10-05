@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -15,19 +16,22 @@ import (
 	"github.com/stretchr/testify/require"
 
 	natssource "codeberg.org/eljoth/tram/internal/adapters/source/nats"
+	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
-// fakeConsumer answers every fetch with the result of fetch.
+// fakeConsumer answers every fetch with the result of fetch, which gets the
+// number of messages asked for.
 type fakeConsumer struct {
 	jetstream.Consumer
 
 	fetches atomic.Int64
-	fetch   func() (jetstream.MessageBatch, error)
+	fetch   func(batch int) (jetstream.MessageBatch, error)
 }
 
-func (c *fakeConsumer) Fetch(int, ...jetstream.FetchOpt) (jetstream.MessageBatch, error) {
+func (c *fakeConsumer) Fetch(batch int, _ ...jetstream.FetchOpt) (jetstream.MessageBatch, error) {
 	c.fetches.Add(1)
-	return c.fetch()
+	return c.fetch(batch)
 }
 
 // endedBatch is a batch without messages that ended with err.
@@ -41,8 +45,134 @@ func (b endedBatch) Messages() <-chan jetstream.Msg {
 
 func (b endedBatch) Error() error { return b.err }
 
-// runWorker runs one worker against cons for d and returns what it logged.
-func runWorker(t *testing.T, cons *fakeConsumer, d time.Duration) string {
+// fullBatch is a batch that returns msgs and ends without an error.
+type fullBatch struct{ ch chan jetstream.Msg }
+
+func newFullBatch(msgs []jetstream.Msg) fullBatch {
+	ch := make(chan jetstream.Msg, len(msgs))
+	for _, m := range msgs {
+		ch <- m
+	}
+	close(ch)
+	return fullBatch{ch: ch}
+}
+
+func (b fullBatch) Messages() <-chan jetstream.Msg { return b.ch }
+func (b fullBatch) Error() error                   { return nil }
+
+// fakeMsg is a message with a log record that counts its acknowledgements.
+type fakeMsg struct {
+	jetstream.Msg
+
+	data []byte
+	acks *atomic.Int64
+}
+
+func (m fakeMsg) Headers() nats.Header {
+	return nats.Header{natssource.SignalHeader: []string{string(domain.SignalLogs)}}
+}
+func (m fakeMsg) Data() []byte { return m.data }
+func (m fakeMsg) Ack() error   { m.acks.Add(1); return nil }
+
+// queue hands out total messages to fetches, as many as each asks for, and
+// records how many each fetch asked for. Once it is empty, fetches end after a
+// short wait, like a fetch whose wait is over.
+type queue struct {
+	t    *testing.T
+	data []byte
+	acks atomic.Int64
+
+	mu        sync.Mutex
+	remaining int
+	asked     []int
+}
+
+func newQueue(t *testing.T, total int) *queue {
+	t.Helper()
+	_, data, err := (&domain.Event{Logs: otlpgen.Logs(otlpgen.Shape{Records: 1, Resources: 1})}).MarshalOTLPData()
+	require.NoError(t, err)
+	return &queue{t: t, data: data, remaining: total}
+}
+
+func (q *queue) fetch(batch int) (jetstream.MessageBatch, error) {
+	q.mu.Lock()
+	q.asked = append(q.asked, batch)
+	n := min(batch, q.remaining)
+	q.remaining -= n
+	q.mu.Unlock()
+
+	if n == 0 {
+		time.Sleep(5 * time.Millisecond)
+		return endedBatch{err: context.DeadlineExceeded}, nil
+	}
+	msgs := make([]jetstream.Msg, n)
+	for i := range msgs {
+		msgs[i] = fakeMsg{data: q.data, acks: &q.acks}
+	}
+	return newFullBatch(msgs), nil
+}
+
+func (q *queue) askedFor() []int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return append([]int(nil), q.asked...)
+}
+
+// blockingSubscriber holds every delivery until it gets a token from proceed,
+// and tracks how many deliveries it holds at the same time.
+type blockingSubscriber struct {
+	proceed chan struct{}
+
+	inFlight    atomic.Int64
+	maxInFlight atomic.Int64
+	delivered   atomic.Int64
+}
+
+func newBlockingSubscriber() *blockingSubscriber {
+	return &blockingSubscriber{proceed: make(chan struct{})}
+}
+
+func (s *blockingSubscriber) Name() string { return "blocking" }
+func (s *blockingSubscriber) From() string { return "nats" }
+func (s *blockingSubscriber) Stop() error  { return nil }
+func (s *blockingSubscriber) Notify(context.Context, *domain.Event) error {
+	current := s.inFlight.Add(1)
+	for {
+		highest := s.maxInFlight.Load()
+		if current <= highest || s.maxInFlight.CompareAndSwap(highest, current) {
+			break
+		}
+	}
+	<-s.proceed
+	s.inFlight.Add(-1)
+	s.delivered.Add(1)
+	return nil
+}
+
+// consumer starts consuming from cons with workers in the background and
+// delivers to sub. done is closed once consume has returned.
+func consumer(
+	t *testing.T,
+	cons *fakeConsumer,
+	sub *blockingSubscriber,
+	workers int,
+) (*natssource.NATS, chan struct{}) {
+	t.Helper()
+	src, err := natssource.NewWithoutConnection(slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+	require.NoError(t, src.Subscribe(sub))
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		natssource.Consume(t.Context(), src, cons, workers)
+	}()
+	return src, done
+}
+
+// runConsume consumes from cons with one worker for d and returns what it
+// logged.
+func runConsume(t *testing.T, cons *fakeConsumer, d time.Duration) string {
 	t.Helper()
 
 	var logs bytes.Buffer
@@ -52,7 +182,7 @@ func runWorker(t *testing.T, cons *fakeConsumer, d time.Duration) string {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		natssource.RunWorker(t.Context(), src, cons)
+		natssource.Consume(t.Context(), src, cons, 1)
 	}()
 
 	time.Sleep(d)
@@ -60,28 +190,28 @@ func runWorker(t *testing.T, cons *fakeConsumer, d time.Duration) string {
 	select {
 	case <-done:
 	case <-time.After(time.Second):
-		t.Fatal("worker did not stop")
+		t.Fatal("the source did not stop")
 	}
 	return logs.String()
 }
 
-// Failing fetches often fail right away, e.g. while disconnected. The worker
+// Failing fetches often fail right away, e.g. while disconnected. The source
 // has to wait between them instead of spinning, whether the fetch fails
 // directly or its batch ends with an error.
-func TestWorkerBacksOffAfterFailedFetches(t *testing.T) {
+func TestConsumeBacksOffAfterFailedFetches(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
 		name  string
-		fetch func() (jetstream.MessageBatch, error)
+		fetch func(int) (jetstream.MessageBatch, error)
 	}{
 		{
 			name:  "fetch fails",
-			fetch: func() (jetstream.MessageBatch, error) { return nil, nats.ErrConnectionClosed },
+			fetch: func(int) (jetstream.MessageBatch, error) { return nil, nats.ErrConnectionClosed },
 		},
 		{
 			name: "batch ends with an error",
-			fetch: func() (jetstream.MessageBatch, error) {
+			fetch: func(int) (jetstream.MessageBatch, error) {
 				return endedBatch{err: errors.New("consumer deleted")}, nil
 			},
 		},
@@ -92,26 +222,114 @@ func TestWorkerBacksOffAfterFailedFetches(t *testing.T) {
 			t.Parallel()
 
 			cons := &fakeConsumer{fetch: c.fetch}
-			logs := runWorker(t, cons, 350*time.Millisecond)
+			logs := runConsume(t, cons, 350*time.Millisecond)
 
 			// Waits of 100ms and 200ms allow three fetches in 350ms.
-			assert.LessOrEqual(t, cons.fetches.Load(), int64(4), "the worker spins")
-			assert.GreaterOrEqual(t, cons.fetches.Load(), int64(2), "the worker gives up")
+			assert.LessOrEqual(t, cons.fetches.Load(), int64(4), "the source spins")
+			assert.GreaterOrEqual(t, cons.fetches.Load(), int64(2), "the source gives up")
 			assert.Contains(t, logs, "Could not fetch messages")
 		})
 	}
 }
 
-// A batch that ends because its wait is over is no failure: the worker fetches
-// again right away and logs nothing.
-func TestWorkerDoesNotBackOffAfterTimeout(t *testing.T) {
+// A batch that ends because its wait is over is no failure: the source
+// fetches again right away and logs nothing.
+func TestConsumeDoesNotBackOffAfterTimeout(t *testing.T) {
 	t.Parallel()
 
-	cons := &fakeConsumer{fetch: func() (jetstream.MessageBatch, error) {
+	cons := &fakeConsumer{fetch: func(int) (jetstream.MessageBatch, error) {
 		return endedBatch{err: context.DeadlineExceeded}, nil
 	}}
-	logs := runWorker(t, cons, 100*time.Millisecond)
+	logs := runConsume(t, cons, 100*time.Millisecond)
 
 	assert.Greater(t, cons.fetches.Load(), int64(10))
 	assert.NotContains(t, logs, "Could not fetch messages")
+}
+
+// The source handles up to workers messages at the same time, independent of
+// how they were fetched, and fetches a new message as soon as one is done.
+// A stage that holds messages, like a batch, therefore gets up to workers of
+// them.
+func TestConsumeHandlesUpToWorkersMessagesAtOnce(t *testing.T) {
+	t.Parallel()
+
+	const workers, total = 3, 10
+	q := newQueue(t, total)
+	sub := newBlockingSubscriber()
+	src, done := consumer(t, &fakeConsumer{fetch: q.fetch}, sub, workers)
+
+	require.Eventually(t, func() bool { return sub.inFlight.Load() == workers }, time.Second, time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
+	assert.Equal(t, int64(workers), sub.maxInFlight.Load(), "more messages than workers are handled")
+
+	// Finishing one message frees its slot, which is refilled.
+	sub.proceed <- struct{}{}
+	require.Eventually(t, func() bool {
+		return sub.delivered.Load() == 1 && sub.inFlight.Load() == workers
+	}, time.Second, time.Millisecond)
+
+	close(sub.proceed)
+	require.Eventually(t, func() bool { return q.acks.Load() == total }, time.Second, time.Millisecond)
+	assert.Equal(t, int64(workers), sub.maxInFlight.Load())
+
+	natssource.CancelFetching(src)
+	<-done
+}
+
+// A fetch asks for no more messages than slots are free, so no fetched
+// message waits for a slot while its ack wait runs.
+func TestConsumeFetchesOnlyForFreeSlots(t *testing.T) {
+	t.Parallel()
+
+	const workers = 4
+	q := newQueue(t, 2*workers)
+	sub := newBlockingSubscriber()
+	src, done := consumer(t, &fakeConsumer{fetch: q.fetch}, sub, workers)
+
+	require.Eventually(t, func() bool { return sub.inFlight.Load() == workers }, time.Second, time.Millisecond)
+	for range 2 {
+		sub.proceed <- struct{}{}
+	}
+	require.Eventually(t, func() bool {
+		return sub.delivered.Load() == 2 && sub.inFlight.Load() == workers
+	}, time.Second, time.Millisecond)
+
+	asked := q.askedFor()
+	require.NotEmpty(t, asked)
+	assert.Equal(t, workers, asked[0], "the first fetch takes all slots")
+	for _, n := range asked[1:] {
+		assert.LessOrEqual(t, n, 2, "a fetch asked for more messages than slots were free")
+	}
+
+	close(sub.proceed)
+	natssource.CancelFetching(src)
+	<-done
+}
+
+// Stopping ends fetching right away, but consume returns only once the
+// messages being handled are delivered and acknowledged, so their
+// acknowledgements are not lost when the connection closes.
+func TestConsumeWaitsForMessagesBeingHandled(t *testing.T) {
+	t.Parallel()
+
+	q := newQueue(t, 2)
+	sub := newBlockingSubscriber()
+	src, done := consumer(t, &fakeConsumer{fetch: q.fetch}, sub, 2)
+
+	require.Eventually(t, func() bool { return sub.inFlight.Load() == 2 }, time.Second, time.Millisecond)
+	natssource.CancelFetching(src)
+
+	select {
+	case <-done:
+		t.Fatal("consume returned while messages were being handled")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(sub.proceed)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("consume did not return after the messages were handled")
+	}
+	assert.Equal(t, int64(2), q.acks.Load())
 }

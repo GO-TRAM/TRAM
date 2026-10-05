@@ -41,7 +41,7 @@ const (
 	scopeVariable    = "scope"
 	recordVariable   = "record"
 
-	// Signal-specific entry variable names for consistency with CEL_FILTER
+	// Signal-specific entry variable names for consistency with CEL_FILTER.
 	metricVariable = "metric"
 	spanVariable   = "span"
 

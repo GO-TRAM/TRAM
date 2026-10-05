@@ -202,9 +202,11 @@ func TestGroupEventsBySubjects(t *testing.T) {
 			},
 		},
 		{
-			name:    "logs split by resource and scope variables",
-			subject: map[string]any{"logs": "'logs.' + scope.name + '.' + resource.attributes.get_attr('service.name')"},
-			event:   &domain.Event{Logs: otlpgen.Logs(shape)},
+			name: "logs split by resource and scope variables",
+			subject: map[string]any{
+				"logs": "'logs.' + scope.name + '.' + resource.attributes.get_attr('service.name')",
+			},
+			event: &domain.Event{Logs: otlpgen.Logs(shape)},
 			expected: map[string]map[domain.Signal][]string{
 				"logs.otlpgen.service-0": {
 					domain.SignalLogs: {"service-0/otlpgen/log message 0", "service-0/otlpgen/log message 1"},
@@ -219,8 +221,12 @@ func TestGroupEventsBySubjects(t *testing.T) {
 			subject: map[string]any{"metrics": "'metrics.' + resource.attributes.get_attr('service.name')"},
 			event:   &domain.Event{Metrics: otlpgen.Metrics(shape)},
 			expected: map[string]map[domain.Signal][]string{
-				"metrics.service-0": {domain.SignalMetrics: {"service-0/otlpgen/metric_0", "service-0/otlpgen/metric_1"}},
-				"metrics.service-1": {domain.SignalMetrics: {"service-1/otlpgen/metric_2", "service-1/otlpgen/metric_3"}},
+				"metrics.service-0": {
+					domain.SignalMetrics: {"service-0/otlpgen/metric_0", "service-0/otlpgen/metric_1"},
+				},
+				"metrics.service-1": {
+					domain.SignalMetrics: {"service-1/otlpgen/metric_2", "service-1/otlpgen/metric_3"},
+				},
 			},
 		},
 		{

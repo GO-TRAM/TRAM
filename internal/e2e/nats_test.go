@@ -216,6 +216,96 @@ func TestNATS(t *testing.T) {
 		assert.ElementsMatch(t, []string{"logs", "metrics", "traces"}, signals)
 	})
 
+	// The source handles up to workers messages at the same time, so a batch
+	// stage after it fills up with that many messages instead of one per fetch
+	// loop. Here 300 messages fill one batch long before its timeout, and all
+	// of them are acknowledged once it is delivered.
+	t.Run("workers fill a batch", func(t *testing.T) {
+		t.Parallel()
+
+		const messages = 300
+		mid := n.stream("workers")
+		_, err := n.js.CreateStream(t.Context(), jetstream.StreamConfig{Name: mid, Subjects: []string{mid + ".>"}})
+		require.NoError(t, err)
+		_, payload, err := (&domain.Event{Logs: otlpgen.Logs(otlpgen.Shape{Records: 1, Resources: 1})}).MarshalOTLPData()
+		require.NoError(t, err)
+		for range messages {
+			_, err = n.js.PublishMsg(t.Context(), &nats.Msg{
+				Subject: mid + ".logs",
+				Data:    payload,
+				Header:  nats.Header{signalHeader: []string{string(domain.SignalLogs)}},
+			})
+			require.NoError(t, err)
+		}
+
+		in := n.sourceSpec(mid)
+		in.Spec["workers"] = float64(messages)
+		forward := newStream(t, in, []domain.StageSpec{batchStage(messages, "30s")},
+			[]domain.SinkSpec{captureSinkSpec("received", "batch")})
+
+		received := forward.sinks.sink(t, "received")
+		require.Eventually(t, func() bool { return len(received.received()) > 0 }, 10*time.Second, 10*time.Millisecond,
+			"the batch was not filled by the messages in flight")
+		events := received.received()
+		require.Len(t, events, 1)
+		assert.Equal(t, messages, events[0].RecordCount())
+
+		cons, err := n.js.Consumer(t.Context(), mid, mid)
+		require.NoError(t, err)
+		require.Eventually(t, func() bool {
+			info, infoErr := cons.Info(t.Context())
+			return infoErr == nil && info.NumAckPending == 0 && info.NumPending == 0
+		}, 10*time.Second, 10*time.Millisecond, "the messages were not acknowledged")
+	})
+
+	// The source fetches only as many messages as it can handle right away,
+	// so JetStream never has more unacknowledged messages out than workers:
+	// none waits for a worker while its ack wait runs. With fetches of a fixed
+	// size per worker, most of them used to.
+	t.Run("no fetched message waits for a worker", func(t *testing.T) {
+		t.Parallel()
+
+		const messages, workers = 200, 20
+		mid := n.stream("waiting")
+		_, err := n.js.CreateStream(t.Context(), jetstream.StreamConfig{Name: mid, Subjects: []string{mid + ".>"}})
+		require.NoError(t, err)
+		_, payload, err := (&domain.Event{Logs: otlpgen.Logs(otlpgen.Shape{Records: 1, Resources: 1})}).MarshalOTLPData()
+		require.NoError(t, err)
+		for range messages {
+			_, err = n.js.PublishMsg(t.Context(), &nats.Msg{
+				Subject: mid + ".logs",
+				Data:    payload,
+				Header:  nats.Header{signalHeader: []string{string(domain.SignalLogs)}},
+			})
+			require.NoError(t, err)
+		}
+
+		in := n.sourceSpec(mid)
+		in.Spec["workers"] = float64(workers)
+		// The batch never fills, so every round of messages waits for the
+		// timeout, while their ack wait runs.
+		_ = newStream(t, in, []domain.StageSpec{batchStage(messages+1, "200ms")},
+			[]domain.SinkSpec{captureSinkSpec("received", "batch")})
+
+		// The source creates its consumer once it runs.
+		var cons jetstream.Consumer
+		require.Eventually(t, func() bool {
+			cons, err = n.js.Consumer(t.Context(), mid, mid)
+			return err == nil
+		}, 10*time.Second, 5*time.Millisecond, "the source did not create its consumer")
+		var highest int
+		require.Eventually(t, func() bool {
+			info, infoErr := cons.Info(t.Context())
+			if infoErr != nil {
+				return false
+			}
+			highest = max(highest, info.NumAckPending)
+			return info.NumAckPending == 0 && info.NumPending == 0
+		}, 20*time.Second, 5*time.Millisecond, "the messages were not acknowledged")
+		assert.Positive(t, highest)
+		assert.LessOrEqual(t, highest, workers, "more messages were out than workers could handle")
+	})
+
 	// Stopping waits for messages being processed, not for a pending fetch.
 	// It used to take the full fetch timeout of 5 seconds, holding up every
 	// other change to the core.

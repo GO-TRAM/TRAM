@@ -121,14 +121,14 @@ Scaling out works because Tram keeps no state between events, with two condition
 
 ## Streams per Instance
 
-The cost of processing data is shared by the replicas, but the cost of a stream itself is not: every replica that runs a stream holds its connections, goroutines and memory, and its NATS source workers keep asking the NATS server for messages even when there are none. This section measures that cost, so you can tell when to shard streams over several deployments with `--watch-namespace` or `--stream-selector` (see [the operator documentation](internal/adapters/k8scrd/README.md#selecting-streams)) instead of running every stream on every replica.
+The cost of processing data is shared by the replicas, but the cost of a stream itself is not: every replica that runs a stream holds its connections, goroutines and memory, and its NATS sources keep asking the NATS server for messages even when there are none. This section measures that cost, so you can tell when to shard streams over several deployments with `--watch-namespace` or `--stream-selector` (see [the operator documentation](internal/adapters/k8scrd/README.md#selecting-streams)) instead of running every stream on every replica.
 
 `BenchmarkStreams` builds 10, 100 and 1,000 streams of one shape in one Tram core and observes them for 10 seconds without data. Values are per stream, measured against the process before the streams were built:
 
 - **Build:** time to create the stream through the core, including connecting to NATS
 - **Heap:** live heap after a garbage collection. RSS is higher; see [Sizing](#sizing)
 - **NATS connections:** client connections the NATS server sees. Every NATS source and sink has its own
-- **NATS messages/s, idle:** messages the NATS server receives from the idle stream, mostly the pull requests of the NATS source's workers. Each worker renews its request every 5 seconds
+- **NATS messages/s, idle:** messages the NATS server receives from the idle stream, mostly the pull requests of the NATS source, which renews its request every 5 seconds
 - **Idle CPU:** CPU the process uses for the idle stream, as a share of one core
 
 Idle CPU is shown for 1,000 streams only; for fewer streams it is below the noise of the process.
@@ -173,7 +173,7 @@ How to read it:
 
 - **Memory limits the streams per replica first.** Most of a stream's heap are the buffers of its NATS connections. Plan the memory request of a replica from the streams it runs, not only from its data rate
 - **Replicas multiply the load on NATS.** Doubling the replicas of a deployment that runs every stream doubles the connections and idle requests the NATS server handles, while each replica still holds all streams. Shard the streams when the per-replica heap or the NATS totals get too high, and scale replicas within a shard for the data rate
-- **Workers multiply the idle requests.** Give a NATS source more workers only where its data rate needs them
+- **Workers cost only while messages are in flight.** A NATS source has one pending pull request however many workers it has, and runs a goroutine per message being processed
 
 ## Where the Time Goes
 
@@ -216,7 +216,7 @@ Fixed costs per event, independent of its size. They dominate when events are sm
 - **Batch before the NATS sink.** The sink waits for JetStream to acknowledge every message. With small events that round trip dominates; batching spreads it over many records. Compare `otlp-nats` with 1 and with 1,000 records per event
 - **Batching needs concurrent callers.** Each caller of a `batch` stage waits for its batch to be delivered. With a single caller, batches never fill and every event waits for `timeout`; see `otlp-batch-nats` with 1 caller
 - **Keep the number of subjects per event low.** The NATS sink publishes one message per subject and waits for each acknowledgement
-- **Use several NATS source workers.** One worker processes one message at a time
+- **Give a NATS source enough workers.** `workers` is the number of messages processed at the same time, so a `batch` stage after the source holds at most that many messages
 - **Prefer resource-level CEL expressions.** They are evaluated once per resource instead of once per record when used in `cel_validator`; per record, CEL costs about as much as decoding the record
 
 ## Known Limits

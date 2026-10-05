@@ -88,7 +88,7 @@ Consumes events from a NATS JetStream stream that were published by Tram's [NATS
 | `stream` | string | Yes | - | JetStream stream to consume from. It must exist when the Tram stream is created; otherwise the source logs an error and stays idle until the Tram stream is updated |
 | `subject` | string | Yes | - | Subject filter of the consumer; wildcards like `logs.*` are allowed |
 | `durable` | string | No | - | Name of a durable consumer. Without it, a temporary consumer is created |
-| `workers` | int | No | `1` | Number of messages processed concurrently (1-100) |
+| `workers` | int | No | `1` | Number of messages processed concurrently (1-1000) |
 
 **Example:**
 
@@ -126,7 +126,10 @@ Consumes events from a NATS JetStream stream that were published by Tram's [NATS
 - A message is acknowledged once all sinks have accepted it. If passing it on fails, it is redelivered after 5 seconds; data rejected by a stage is terminated instead
 - Delivery is at-least-once: when one branch of a stream fails, the redelivered message reaches all branches again
 - The consumer starts at the beginning of the stream. A durable consumer continues where it stopped; a temporary consumer starts from the beginning again whenever the source is created, i.e. when the Tram stream is created or its source is changed. Updates that only change stages or sinks keep the consumer
-- Each worker processes one message at a time; use several workers to let a `batch` stage merge messages
+- Up to `workers` messages are processed at the same time, each on its own. The source fetches only as many messages as workers are free, so no fetched message waits for a worker while its acknowledgement deadline runs
+- Messages are not processed in the order of the stream, unless `workers` is 1
+- A `batch` stage after the source holds up to `workers` messages, since every message waits for its batch to be delivered before it is acknowledged. To let batches fill up to `max_records` before their `timeout`, set `workers` to at least `max_records` divided by the records per message
+- JetStream hands out at most 1,000 unacknowledged messages per consumer by default (`MaxAckPending`), across all Tram replicas that share a durable consumer
 - Stopping or updating the source interrupts waiting for new messages right away; it only waits for messages that are being processed, which are still delivered and acknowledged
 
 ---
