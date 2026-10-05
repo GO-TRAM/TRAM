@@ -105,6 +105,11 @@ const (
 	logsByTeam    = "'logs.' + logs.resource_logs[0].scope_logs[0].log_records[0].attributes.get_attr('team')"
 	metricsByTeam = "'metrics.' + metrics.resource_metrics[0].scope_metrics[0].metrics[0].gauge.data_points[0].attributes.get_attr('team')"
 	tracesByTeam  = "'traces.' + traces.resource_spans[0].scope_spans[0].spans[0].attributes.get_attr('team')"
+
+	// New simplified expressions using direct variables
+	logsByTeamNew    = "'logs.' + record.attributes.get_attr('team')"
+	metricsByTeamNew = "'metrics.' + record.gauge.data_points[0].attributes.get_attr('team')"
+	tracesByTeamNew  = "'traces.' + record.attributes.get_attr('team')"
 )
 
 func TestGroupEventsBySubjects(t *testing.T) {
@@ -159,6 +164,28 @@ func TestGroupEventsBySubjects(t *testing.T) {
 		{
 			name:    "spans split by attribute",
 			subject: map[string]any{"traces": tracesByTeam},
+			event:   &domain.Event{Traces: otlpgen.Traces(shape)},
+			expected: map[string]map[domain.Signal][]string{
+				"traces.team-0": {domain.SignalTraces: {"service-0/otlpgen/span-0", "service-1/otlpgen/span-2"}},
+				"traces.team-1": {domain.SignalTraces: {"service-0/otlpgen/span-1", "service-1/otlpgen/span-3"}},
+			},
+		},
+		{
+			name:    "logs split by record attribute with new variables",
+			subject: map[string]any{"logs": logsByTeamNew},
+			event:   &domain.Event{Logs: otlpgen.Logs(shape)},
+			expected: map[string]map[domain.Signal][]string{
+				"logs.team-0": {
+					domain.SignalLogs: {"service-0/otlpgen/log message 0", "service-1/otlpgen/log message 2"},
+				},
+				"logs.team-1": {
+					domain.SignalLogs: {"service-0/otlpgen/log message 1", "service-1/otlpgen/log message 3"},
+				},
+			},
+		},
+		{
+			name:    "traces split by attribute with new variables",
+			subject: map[string]any{"traces": tracesByTeamNew},
 			event:   &domain.Event{Traces: otlpgen.Traces(shape)},
 			expected: map[string]map[domain.Signal][]string{
 				"traces.team-0": {domain.SignalTraces: {"service-0/otlpgen/span-0", "service-1/otlpgen/span-2"}},

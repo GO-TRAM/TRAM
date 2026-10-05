@@ -237,8 +237,11 @@ func resolveSubjects[D any, R, S, E comparable](
 		for _, s := range st.scopes(r) {
 			current := make([]E, 1)
 			vars.value = st.payload(r, s, current)
+			vars.resource = r
+			vars.scope = s
 			for _, e := range st.entries(s) {
 				current[0] = e
+				vars.entry = e
 				subject, err := evalSubject(program, vars)
 				if err != nil {
 					return nil, err
@@ -320,16 +323,26 @@ func allEqual(subjects []string) bool {
 	return true
 }
 
-// activation provides a single variable to CEL. It is reused for all records
+// activation provides variables to CEL. It is reused for all records
 // of a payload to avoid an allocation per evaluation.
 type activation struct {
-	name  string
-	value any
+	name     string
+	value    any
+	resource any
+	scope    any
+	entry    any
 }
 
 func (a *activation) ResolveName(name string) (any, bool) {
-	if name == a.name {
+	switch name {
+	case a.name:
 		return a.value, true
+	case resourceVariable:
+		return a.resource, true
+	case scopeVariable:
+		return a.scope, true
+	case entryVariable:
+		return a.entry, true
 	}
 	return nil, false
 }
