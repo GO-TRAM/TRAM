@@ -344,8 +344,8 @@
             "type": "prometheus",
             "uid": "openobserve-metrics"
           },
-          "expr": "sum by (signal) (rate(tram_node_records_total{kind=\"source\",stream=~\"$stream\"}[1m]))",
-          "legendFormat": "{{signal}}"
+          "expr": "sum by (stream, signal) (rate(tram_node_records_total{kind=\"source\",stream=~\"$stream\"}[1m]))",
+          "legendFormat": "{{stream}} \u00b7 {{signal}}"
         }
       ],
       "description": "Records per second the sources accepted.",
@@ -383,8 +383,8 @@
             "type": "prometheus",
             "uid": "openobserve-metrics"
           },
-          "expr": "sum by (node) (rate(tram_node_records_total{kind!=\"source\",stream=~\"$stream\"}[1m]))",
-          "legendFormat": "{{node}}"
+          "expr": "sum by (stream, node) (rate(tram_node_records_total{kind!=\"source\",stream=~\"$stream\"}[1m]))",
+          "legendFormat": "{{stream}} \u00b7 {{node}}"
         }
       ],
       "description": "Records per second each stage and sink received, all signals together. A filter stage receives every signal of its parent.",
@@ -425,8 +425,8 @@
             "type": "prometheus",
             "uid": "openobserve-metrics"
           },
-          "expr": "1 - ((sum by (node, signal) (rate(tram_node_records_out_total{kind=\"stage\",stream=~\"$stream\"}[5m]))) or (sum by (node, signal) (rate(tram_node_records_total{kind=\"stage\",stream=~\"$stream\"}[5m])) * 0)) / sum by (node, signal) (rate(tram_node_records_total{kind=\"stage\",stream=~\"$stream\"}[5m]))",
-          "legendFormat": "{{node}} \u00b7 {{signal}}",
+          "expr": "1 - ((sum by (stream, node, signal) (rate(tram_node_records_out_total{kind=\"stage\",stream=~\"$stream\"}[5m]))) or (sum by (stream, node, signal) (rate(tram_node_records_total{kind=\"stage\",stream=~\"$stream\"}[5m])) * 0)) / sum by (stream, node, signal) (rate(tram_node_records_total{kind=\"stage\",stream=~\"$stream\"}[5m]))",
+          "legendFormat": "{{stream}} \u00b7 {{node}} \u00b7 {{signal}}",
           "instant": true,
           "range": false
         }
@@ -474,8 +474,8 @@
             "type": "prometheus",
             "uid": "openobserve-metrics"
           },
-          "expr": "sum by (node) (rate(tram_node_records_total{kind=\"sink\",stream=~\"$stream\"}[1m])) / sum by (node) (rate(tram_node_duration_seconds_count{kind=\"sink\",stream=~\"$stream\"}[1m]))",
-          "legendFormat": "{{node}}"
+          "expr": "sum by (stream, node) (rate(tram_node_records_total{kind=\"sink\",stream=~\"$stream\"}[1m])) / sum by (stream, node) (rate(tram_node_duration_seconds_count{kind=\"sink\",stream=~\"$stream\"}[1m]))",
+          "legendFormat": "{{stream}} \u00b7 {{node}}"
         }
       ],
       "description": "Average records per event a sink sends, i.e. how much the batch stage above it merges.",
@@ -519,8 +519,8 @@
             "type": "prometheus",
             "uid": "openobserve-metrics"
           },
-          "expr": "histogram_quantile(0.95, sum by (node, le) (rate(tram_node_duration_seconds_bucket{stream=~\"$stream\"}[1m]))) * on (node) (sum by (node) (rate(tram_node_duration_seconds_count{stream=~\"$stream\"}[1m])) / sum by (node) (rate(tram_node_duration_seconds_count{stream=~\"$stream\"}[1m])))",
-          "legendFormat": "{{node}}"
+          "expr": "histogram_quantile(0.95, sum by (stream, node, le) (rate(tram_node_duration_seconds_bucket{stream=~\"$stream\"}[1m]))) * on (stream, node) (sum by (stream, node) (rate(tram_node_duration_seconds_count{stream=~\"$stream\"}[1m])) / sum by (stream, node) (rate(tram_node_duration_seconds_count{stream=~\"$stream\"}[1m])))",
+          "legendFormat": "{{stream}} \u00b7 {{node}}"
         }
       ],
       "description": "Events pass through a stream synchronously, so the duration of a source or stage includes the nodes below it. A batch stage waits for its flush, which is how backpressure reaches the clients. The duration of a sink is its own. Multiplying by rate / rate keeps OpenObserve from filling in the quantile for times before a node had events.",
@@ -559,8 +559,8 @@
             "type": "prometheus",
             "uid": "openobserve-metrics"
           },
-          "expr": "sum by (node, outcome) (rate(tram_node_duration_seconds_count{outcome!=\"ok\",stream=~\"$stream\"}[1m]))",
-          "legendFormat": "{{node}} {{outcome}}"
+          "expr": "sum by (stream, node, outcome) (rate(tram_node_duration_seconds_count{outcome!=\"ok\",stream=~\"$stream\"}[1m]))",
+          "legendFormat": "{{stream}} \u00b7 {{node}} {{outcome}}"
         }
       ],
       "description": "Events a node rejected for good (rejected), failed to handle (error), or whose caller gave up (cancelled), per second. The cause is the lowest node in the tree with errors: a failing sink fails the stages and the source above it.",
