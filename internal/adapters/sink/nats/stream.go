@@ -76,7 +76,11 @@ func applyStream(ctx context.Context, js jetstream.JetStream, spec *Spec, logger
 }
 
 func configFromSpec(spec *Spec) (jetstream.StreamConfig, error) {
-	maxAge, err := parseRetention(spec)
+	retention, err := retentionPolicyFromSpec(spec)
+	if err != nil {
+		return jetstream.StreamConfig{}, err
+	}
+	maxAge, err := maxAgeFromSpec(spec)
 	if err != nil {
 		return jetstream.StreamConfig{}, err
 	}
@@ -84,6 +88,7 @@ func configFromSpec(spec *Spec) (jetstream.StreamConfig, error) {
 	return jetstream.StreamConfig{
 		Name:        spec.Stream,
 		Subjects:    spec.Subject.Register,
+		Retention:   retention,
 		MaxAge:      maxAge,
 		MaxBytes:    spec.Size,
 		Compression: compression,
@@ -112,7 +117,11 @@ func (u streamUpdate) changed() bool {
 }
 
 func mergeStreamConfig(existing jetstream.StreamConfig, spec *Spec) (jetstream.StreamConfig, streamUpdate, error) {
-	maxAge, err := parseRetention(spec)
+	retention, err := retentionPolicyFromSpec(spec)
+	if err != nil {
+		return existing, streamUpdate{}, err
+	}
+	maxAge, err := maxAgeFromSpec(spec)
 	if err != nil {
 		return existing, streamUpdate{}, err
 	}
@@ -131,9 +140,18 @@ func mergeStreamConfig(existing jetstream.StreamConfig, spec *Spec) (jetstream.S
 	if maxAge != 0 && merged.MaxAge != maxAge {
 		if merged.MaxAge > 0 {
 			update.replacedLimits = append(update.replacedLimits,
-				fmt.Sprintf("retention %s -> %s", merged.MaxAge, maxAge))
+				fmt.Sprintf("max_age %s -> %s", merged.MaxAge, maxAge))
 		}
 		merged.MaxAge = maxAge
+		update.limitsChanged = true
+	}
+
+	if retention != 0 && merged.Retention != retention {
+		if merged.Retention > 0 {
+			update.replacedLimits = append(update.replacedLimits,
+				fmt.Sprintf("retention %s -> %s", strings.ToLower(merged.Retention.String()), strings.ToLower(retention.String())))
+		}
+		merged.Retention = retention
 		update.limitsChanged = true
 	}
 
@@ -158,15 +176,31 @@ func mergeStreamConfig(existing jetstream.StreamConfig, spec *Spec) (jetstream.S
 	return merged, update, nil
 }
 
-func parseRetention(spec *Spec) (time.Duration, error) {
+func retentionPolicyFromSpec(spec *Spec) (jetstream.RetentionPolicy, error) {
 	if spec.Retention == "" {
+		return jetstream.LimitsPolicy, nil
+	}
+	switch spec.Retention {
+	case "limits":
+		return jetstream.LimitsPolicy, nil
+	case "interest":
+		return jetstream.InterestPolicy, nil
+	case "workqueue":
+		return jetstream.WorkQueuePolicy, nil
+	default:
+		return 0, fmt.Errorf("invalid retention policy: %q (must be 'limits', 'interest', or 'workqueue')", spec.Retention)
+	}
+}
+
+func maxAgeFromSpec(spec *Spec) (time.Duration, error) {
+	if spec.MaxAge == "" {
 		return 0, nil
 	}
-	retention, err := time.ParseDuration(spec.Retention)
+	maxAge, err := time.ParseDuration(spec.MaxAge)
 	if err != nil {
-		return 0, fmt.Errorf("invalid retention: %w", err)
+		return 0, fmt.Errorf("invalid max_age: %w", err)
 	}
-	return retention, nil
+	return maxAge, nil
 }
 
 func covered(patterns, subjects []string) bool {

@@ -4,8 +4,8 @@ type Spec struct {
 	URL         string      `json:"url"         validate:"required"`
 	Stream      string      `json:"stream"      validate:"required"`
 	Subject     SubjectSpec `json:"subject"     validate:"required"`
-	Retention   string      `json:"retention"`
-	MaxAge      string      `json:"max_age"`
+	Retention   string      `json:"retention"   validate:"omitempty,oneof=limits interest workqueue"`
+	MaxAge      string      `json:"max_age"     validate:"omitempty"`
 	Size        int64       `json:"size"`
 	Compression string      `json:"compression" validate:"omitempty,oneof=none s2"`
 }

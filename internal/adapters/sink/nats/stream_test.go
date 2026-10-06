@@ -87,14 +87,14 @@ func TestMergeStreamConfig(t *testing.T) {
 		t.Parallel()
 
 		s := spec("logs.>")
-		s.Retention = "2h"
+		s.MaxAge = "2h"
 		s.Size = 2000
 		merged, update, err := natssink.MergeStreamConfig(existing(), s)
 		require.NoError(t, err)
 		assert.True(t, update.Changed)
 		assert.Equal(t, 2*time.Hour, merged.MaxAge)
 		assert.Equal(t, int64(2000), merged.MaxBytes)
-		assert.Equal(t, []string{"retention 1h0m0s -> 2h0m0s", "size 1000 -> 2000"}, update.ReplacedLimits)
+		assert.Equal(t, []string{"max_age 1h0m0s -> 2h0m0s", "size 1000 -> 2000"}, update.ReplacedLimits)
 		assert.Equal(t, 3, merged.Replicas, "other settings are kept")
 	})
 
@@ -105,7 +105,7 @@ func TestMergeStreamConfig(t *testing.T) {
 		in.MaxAge = 0
 		in.MaxBytes = -1
 		s := spec("logs.>")
-		s.Retention = "2h"
+		s.MaxAge = "2h"
 		s.Size = 2000
 		_, update, err := natssink.MergeStreamConfig(in, s)
 		require.NoError(t, err)
@@ -154,8 +154,70 @@ func TestMergeStreamConfig(t *testing.T) {
 		t.Parallel()
 
 		s := spec("logs.>")
-		s.Retention = "soon"
+		s.Retention = "invalid"
 		_, _, err := natssink.MergeStreamConfig(existing(), s)
-		assert.ErrorContains(t, err, "invalid retention")
+		assert.ErrorContains(t, err, "invalid retention policy")
+	})
+
+	t.Run("invalid max_age", func(t *testing.T) {
+		t.Parallel()
+
+		s := spec("logs.>")
+		s.MaxAge = "invalid"
+		_, _, err := natssink.MergeStreamConfig(existing(), s)
+		assert.ErrorContains(t, err, "invalid max_age")
+	})
+
+	t.Run("applies retention policy set in the spec", func(t *testing.T) {
+		t.Parallel()
+
+		s := spec("logs.>")
+		s.Retention = "interest"
+		merged, update, err := natssink.MergeStreamConfig(existing(), s)
+		require.NoError(t, err)
+		assert.True(t, update.Changed)
+		assert.Equal(t, jetstream.InterestPolicy, merged.Retention)
+		assert.Equal(t, []string(nil), update.ReplacedLimits, "setting retention policy from default does not replace an existing limit")
+		assert.Equal(t, 1*time.Hour, merged.MaxAge, "MaxAge is kept from existing config")
+	})
+
+	t.Run("applies max_age set in the spec", func(t *testing.T) {
+		t.Parallel()
+
+		s := spec("logs.>")
+		s.MaxAge = "3h"
+		merged, update, err := natssink.MergeStreamConfig(existing(), s)
+		require.NoError(t, err)
+		assert.True(t, update.Changed)
+		assert.Equal(t, 3*time.Hour, merged.MaxAge)
+		assert.Equal(t, []string{"max_age 1h0m0s -> 3h0m0s"}, update.ReplacedLimits)
+	})
+
+	t.Run("applies both retention policy and max_age", func(t *testing.T) {
+		t.Parallel()
+
+		s := spec("logs.>")
+		s.Retention = "workqueue"
+		s.MaxAge = "4h"
+		merged, update, err := natssink.MergeStreamConfig(existing(), s)
+		require.NoError(t, err)
+		assert.True(t, update.Changed)
+		assert.Equal(t, jetstream.WorkQueuePolicy, merged.Retention)
+		assert.Equal(t, 4*time.Hour, merged.MaxAge)
+		assert.Equal(t, []string{"max_age 1h0m0s -> 4h0m0s"}, update.ReplacedLimits)
+	})
+
+	t.Run("replacing retention policy is reported", func(t *testing.T) {
+		t.Parallel()
+
+		in := existing()
+		in.Retention = jetstream.InterestPolicy
+		s := spec("logs.>")
+		s.Retention = "workqueue"
+		merged, update, err := natssink.MergeStreamConfig(in, s)
+		require.NoError(t, err)
+		assert.True(t, update.Changed)
+		assert.Equal(t, jetstream.WorkQueuePolicy, merged.Retention)
+		assert.Equal(t, []string{"retention interest -> workqueue"}, update.ReplacedLimits)
 	})
 }

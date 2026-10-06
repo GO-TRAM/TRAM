@@ -18,6 +18,8 @@ func TestSpecValidation(t *testing.T) {
 		name        string
 		subject     map[string]any
 		compression string
+		retention   string
+		maxAge      string
 		expectErr   bool
 	}{
 		{
@@ -54,6 +56,32 @@ func TestSpecValidation(t *testing.T) {
 			subject:   map[string]any{"logs": "'a.l'"},
 			expectErr: true,
 		},
+		{
+			name:       "limits retention",
+			subject:    map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			retention:  "limits",
+		},
+		{
+			name:       "interest retention",
+			subject:    map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			retention:  "interest",
+		},
+		{
+			name:       "workqueue retention",
+			subject:    map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			retention:  "workqueue",
+		},
+		{
+			name:       "invalid retention",
+			subject:    map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			retention:  "invalid",
+			expectErr:  true,
+		},
+		{
+			name:    "max_age",
+			subject: map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			maxAge:   "2h",
+		},
 	}
 
 	for _, c := range cases {
@@ -67,6 +95,12 @@ func TestSpecValidation(t *testing.T) {
 			}
 			if c.compression != "" {
 				spec["compression"] = c.compression
+			}
+			if c.retention != "" {
+				spec["retention"] = c.retention
+			}
+			if c.maxAge != "" {
+				spec["max_age"] = c.maxAge
 			}
 			_, err := base.New[natssink.Spec]("nats", "src", spec, validator.New())
 			if c.expectErr {
