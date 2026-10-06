@@ -18,15 +18,11 @@ type Event struct {
 	Traces  *tracepb.TracesData
 }
 
-// RecordCount returns the number of records in the event at the lowest level
-// each signal allows: log records, metric data points and spans.
 func (e *Event) RecordCount() int {
 	logs, metrics, traces := e.RecordCounts()
 	return logs + metrics + traces
 }
 
-// RecordCounts returns the number of records in the event per signal, in the
-// order log records, metric data points, spans.
 func (e *Event) RecordCounts() (int, int, int) {
 	if e == nil {
 		return 0, 0, 0
@@ -82,15 +78,11 @@ const (
 	SignalTraces  Signal = "traces"
 )
 
-// OTLPPayload is the serialized data of one signal of an event.
 type OTLPPayload struct {
 	Signal Signal
 	Data   []byte
 }
 
-// MarshalOTLPPayloads serializes every set signal of the event, in the order
-// logs, metrics, traces. Stages like batch merge events of different signals
-// into one, so an event can hold more than one.
 func (e *Event) MarshalOTLPPayloads() ([]OTLPPayload, error) {
 	if e == nil {
 		return nil, fmt.Errorf("event is nil")
@@ -125,9 +117,6 @@ func (e *Event) MarshalOTLPPayloads() ([]OTLPPayload, error) {
 	return payloads, nil
 }
 
-// MarshalOTLPData serializes an event that holds a single signal and returns
-// its signal type. Events holding several signals fail instead of losing
-// some; use MarshalOTLPPayloads for those.
 func (e *Event) MarshalOTLPData() (Signal, []byte, error) {
 	payloads, err := e.MarshalOTLPPayloads()
 	if err != nil {

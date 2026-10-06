@@ -1,4 +1,3 @@
-// Package base provides the common parts of all sources.
 package base
 
 import (
@@ -51,7 +50,6 @@ func (s *Source[T]) Subscribe(c domain.Subscriber) error {
 }
 
 func (s *Source[T]) SetSubscribers(subscribers []domain.Subscriber) {
-	// Taking the write lock waits for deliveries holding the read lock.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.subscribers = slices.Clone(subscribers)

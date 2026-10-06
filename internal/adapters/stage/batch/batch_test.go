@@ -15,8 +15,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
-// recorder collects delivered events. If block is set, Notify waits for it
-// to be closed.
 type recorder struct {
 	mu     sync.Mutex
 	events []*domain.Event
@@ -60,14 +58,12 @@ func logs(records int) *domain.Event {
 	return &domain.Event{Logs: otlpgen.Logs(otlpgen.Shape{Records: records, Resources: 1, Teams: 1})}
 }
 
-// notifyAsync calls Notify in the background and returns its result channel.
 func notifyAsync(ctx context.Context, b *batch.Batch, event *domain.Event) <-chan error {
 	result := make(chan error, 1)
 	go func() { result <- b.Notify(ctx, event) }()
 	return result
 }
 
-// waitForRecords waits until the open batch holds n records.
 func waitForRecords(t *testing.T, b *batch.Batch, n int) {
 	t.Helper()
 	require.Eventually(t, func() bool {
@@ -255,8 +251,6 @@ func TestCancelAfterFlushStartedWaitsForResult(t *testing.T) {
 	waitForRecords(t, b, 1)
 	filling := notifyAsync(t.Context(), b, logs(1))
 
-	// The batch is sealed and stuck in delivery; cancelling cannot withdraw
-	// the event anymore.
 	require.Eventually(t, func() bool {
 		_, open := batch.OpenRecords(b)
 		return !open
@@ -319,7 +313,6 @@ func TestMerge(t *testing.T) {
 	assert.Len(t, merged.Traces.GetResourceSpans(), 2)
 	assert.Equal(t, first.RecordCount()+second.RecordCount(), merged.RecordCount())
 
-	// The inputs are shared with other branches and must stay untouched.
 	assert.Len(t, first.Logs.GetResourceLogs(), 2)
 	assert.Nil(t, first.Metrics)
 	assert.Len(t, second.Logs.GetResourceLogs(), 2)

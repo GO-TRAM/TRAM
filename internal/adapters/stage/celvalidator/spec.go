@@ -1,6 +1,5 @@
 package celvalidator
 
-// Values of Spec.OnMismatch.
 const (
 	OnMismatchDrop   = "drop"
 	OnMismatchReject = "reject"

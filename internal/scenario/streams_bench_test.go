@@ -23,25 +23,14 @@ import (
 )
 
 const (
-	// idleWindow is how long the idle streams are observed. It spans two
-	// fetch timeouts of the NATS source (5s), so every worker renews its
-	// pull request at least once. It also exceeds the default benchtime, so
-	// `go test -bench .` runs each case once.
-	idleWindow = 10 * time.Second
-	// settleTime lets the streams finish starting before the idle window,
-	// and the streams of the previous case finish stopping before the
-	// baseline.
-	settleTime = 2 * time.Second
-	// baselineWindow measures the CPU the process uses without streams, e.g.
-	// for the samples themselves, which is subtracted from the idle window.
+	idleWindow     = 10 * time.Second
+	settleTime     = 2 * time.Second
 	baselineWindow = 3 * time.Second
 	kibibyte       = 1024
 )
 
-// streamShape is the kind of stream that is created many times.
 type streamShape struct {
-	name string
-	// workers of the NATS source; 0 for the OTLP source.
+	name    string
 	workers int
 	build   func(e *streamsEnv, i int) domain.StreamSpec
 }
@@ -96,26 +85,6 @@ func streamCounts() []int {
 	return []int{10, 100, 1000}
 }
 
-// BenchmarkStreams measures what a stream costs while no data flows, to tell
-// how many streams one Tram instance can hold before sharding them over
-// several instances pays off. Every replica that runs a stream pays this cost
-// again, unlike the cost of processing data, which replicas share.
-//
-// Each case measures the process without streams for baselineWindow, builds
-// n streams of one shape in one core, waits for them to start, and observes
-// them for idleWindow. It reports per stream, relative to the baseline:
-//
-//   - build-µs/stream: time to create the stream through the core
-//   - heap-KiB/stream: live heap after a garbage collection
-//   - goroutines/stream
-//   - nats-conns/stream: client connections the NATS server sees
-//   - nats-msgs/s/stream: messages the NATS server receives from idle streams,
-//     mostly pull requests of NATS source workers
-//   - idle-cpu-µs/s/stream: CPU time of the process per second; 1,000,000
-//     µs/s are one core
-//
-// ns/op includes the idle window and has no meaning of its own. Requires
-// Docker or Podman; skipped otherwise.
 func BenchmarkStreams(b *testing.B) {
 	server := natstest.StartServer(b)
 
@@ -143,16 +112,13 @@ func BenchmarkStreams(b *testing.B) {
 	}
 }
 
-// streamsEnv gives each run its own input and output JetStream streams, which
-// all Tram streams of the run share.
 type streamsEnv struct {
 	b             *testing.B
 	natsURL       string
 	monitoringURL string
 	js            jetstream.JetStream
 	input, output string
-	// ports are free TCP ports for OTLP sources, one per stream.
-	ports []int
+	ports         []int
 }
 
 // reservePorts finds n distinct free ports. All listeners stay open until
@@ -189,7 +155,6 @@ func newStreamsEnv(b *testing.B, server natstest.Server, js jetstream.JetStream,
 	); err != nil {
 		b.Fatal(err)
 	}
-	// Deleting the input stream also removes the consumers of its sources.
 	b.Cleanup(func() {
 		_ = js.DeleteStream(context.Background(), e.input)
 		_ = js.DeleteStream(context.Background(), e.output)
@@ -197,7 +162,6 @@ func newStreamsEnv(b *testing.B, server natstest.Server, js jetstream.JetStream,
 	return e
 }
 
-// sink publishes to the shared output stream, on a subject of its own.
 func (e *streamsEnv) sink(i int, from string) domain.SinkSpec {
 	return domain.SinkSpec{Name: "out", Type: "nats", From: from, Spec: map[string]any{
 		"url":    e.natsURL,
@@ -209,7 +173,6 @@ func (e *streamsEnv) sink(i int, from string) domain.SinkSpec {
 	}}
 }
 
-// sample is the state of the process and the NATS server at one point in time.
 type sample struct {
 	at         time.Time
 	cpu        time.Duration
@@ -235,7 +198,6 @@ func (e *streamsEnv) sample() sample {
 	}
 }
 
-// varz holds the fields of the NATS server's /varz endpoint that are used.
 type varz struct {
 	Connections int   `json:"connections"`
 	InMsgs      int64 `json:"in_msgs"`
@@ -269,7 +231,6 @@ func measureStreams(b *testing.B, e *streamsEnv, shape streamShape, n int) {
 	before := e.sample()
 	baselineCPU := cpuRate(baselineStart, before)
 
-	// Reserved just before building, so no other process takes the ports.
 	if shape.workers == 0 {
 		e.reservePorts(n)
 	}
@@ -309,13 +270,10 @@ func measureStreams(b *testing.B, e *streamsEnv, shape streamShape, n int) {
 	b.ReportMetric(perStream(cpuRate(idleStart, idleEnd)-baselineCPU), "idle-cpu-µs/s/stream")
 }
 
-// cpuRate returns the CPU time the process used between two samples, in µs
-// per second.
 func cpuRate(from, to sample) float64 {
 	return float64((to.cpu - from.cpu).Microseconds()) / to.at.Sub(from.at).Seconds()
 }
 
-// waitForConsumers waits until every NATS source has created its consumer.
 func (e *streamsEnv) waitForConsumers(n int) {
 	e.b.Helper()
 	ctx := context.Background()

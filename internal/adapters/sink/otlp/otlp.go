@@ -21,14 +21,10 @@ import (
 const (
 	Type = "otlp"
 
-	// Default timeout for HTTP requests.
 	defaultTimeout = 10 * time.Second
 
-	// Let the HTTP client follow up to 10 redirects to platform endpoints that use one.
 	maxRedirects = 10
 
-	// maxErrorBodyBytes limits how much of an error response is kept for the
-	// error message.
 	maxErrorBodyBytes = 1024
 )
 
@@ -45,7 +41,6 @@ func New(sink domain.SinkSpec, validator *validator.Validate, logger *slog.Logge
 		return nil, err
 	}
 
-	// Parse timeout
 	timeout := defaultTimeout
 	if raw := baseSink.Spec().Timeout; raw != "" {
 		timeout, err = time.ParseDuration(raw)
@@ -57,9 +52,6 @@ func New(sink domain.SinkSpec, validator *validator.Validate, logger *slog.Logge
 		}
 	}
 
-	// The default transport brings proxy settings from the environment,
-	// connection and TLS handshake timeouts, and HTTP/2. All requests go to
-	// one host, so it may keep as many idle connections as in total.
 	transport, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
 		return nil, errors.New("default HTTP transport is not an *http.Transport")
@@ -89,9 +81,6 @@ func New(sink domain.SinkSpec, validator *validator.Validate, logger *slog.Logge
 	}, nil
 }
 
-// Notify sends one request per signal of the event. Delivery is
-// at-least-once: if a later request fails, the source retries the whole
-// event, so signals sent before are sent again.
 func (o *OTLP) Notify(ctx context.Context, event *domain.Event) error {
 	if event == nil {
 		return nil
@@ -110,29 +99,24 @@ func (o *OTLP) Notify(ctx context.Context, event *domain.Event) error {
 	return nil
 }
 
-// send posts the serialized data of one signal to its OTLP endpoint.
 func (o *OTLP) send(ctx context.Context, signal domain.Signal, data []byte) error {
-	// Set up HTTP request
 	endpoint := strings.TrimRight(o.Spec().URL, "/") + o.getEndpointPath(signal)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set headers
 	req.Header.Set("Content-Type", "application/x-protobuf")
 	for key, value := range o.Spec().Headers {
 		req.Header.Set(key, value)
 	}
 
-	// Send request
 	resp, err := o.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send OTLP data: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Check response status
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 		err = fmt.Errorf("OTLP server returned status %d: %s", resp.StatusCode, string(body))
@@ -144,7 +128,6 @@ func (o *OTLP) send(ctx context.Context, signal domain.Signal, data []byte) erro
 		return err
 	}
 
-	// Read and discard response body to allow connection reuse
 	_, err = io.Copy(io.Discard, resp.Body)
 	if err != nil {
 		o.logger.WarnContext(ctx, "Failed to read response body",
@@ -170,7 +153,6 @@ func permanent(status int) bool {
 		status != http.StatusRequestTimeout && status != http.StatusTooManyRequests
 }
 
-// getEndpointPath returns the OTLP HTTP path for the given signal type.
 func (o *OTLP) getEndpointPath(signal domain.Signal) string {
 	switch signal {
 	case domain.SignalLogs:

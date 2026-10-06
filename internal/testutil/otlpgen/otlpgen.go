@@ -1,5 +1,3 @@
-// Package otlpgen builds deterministic OTLP payloads of configurable size for
-// tests and benchmarks.
 package otlpgen
 
 import (
@@ -13,12 +11,6 @@ import (
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
-// Shape describes the layout of a generated payload. Records are distributed
-// evenly over resources; every resource has a single scope.
-//
-// Each resource carries a "service.name" attribute ("service-<i>"). Each record
-// carries a "team" attribute cycling through Teams values ("team-<i>") and
-// Attributes additional attributes.
 type Shape struct {
 	Records    int
 	Resources  int
@@ -27,7 +19,6 @@ type Shape struct {
 }
 
 const (
-	// defaultAttributes is the number of attributes per record besides "team".
 	defaultAttributes = 4
 	sdkBatch          = 100
 	largeBatch        = 1000
@@ -37,9 +28,6 @@ const (
 	spanIDBytes  = 8
 )
 
-// Shapes returns the payload sizes benchmarks are expected to cover: a single
-// record, typical SDK batches, and a large batch from many services as an
-// upstream collector would send it.
 func Shapes() []Shape {
 	return []Shape{
 		{Records: 1, Resources: 1, Teams: 1, Attributes: defaultAttributes},
@@ -108,7 +96,6 @@ func Logs(s Shape) *logspb.LogsData {
 	return data
 }
 
-// Metrics generates one gauge per record, each with a single data point.
 func Metrics(s Shape) *metricspb.MetricsData {
 	data := &metricspb.MetricsData{}
 	record := 0
@@ -158,7 +145,6 @@ func Traces(s Shape) *tracepb.TracesData {
 	return data
 }
 
-// id returns a big-endian ID of size bytes (at least 8) holding n.
 func id(size int, n uint64) []byte {
 	b := make([]byte, size)
 	binary.BigEndian.PutUint64(b[size-spanIDBytes:], n)

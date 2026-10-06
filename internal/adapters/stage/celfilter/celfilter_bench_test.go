@@ -10,8 +10,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
-// BenchmarkCELFilter measures per-record filtering. Payloads alternate between
-// two teams, so "keep-half" rebuilds containers for every scope.
 func BenchmarkCELFilter(b *testing.B) {
 	expressions := []struct {
 		name string

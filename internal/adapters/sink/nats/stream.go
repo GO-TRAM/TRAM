@@ -12,17 +12,10 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-// streamSetUpAttempts bounds how often setting up the stream is tried again
-// when another sink changes it at the same time.
 const streamSetUpAttempts = 3
 
 var errSubjectsOverwritten = errors.New("subjects were removed by a concurrent update of the stream")
 
-// setUpStream makes sure the JetStream stream exists and takes the sink's
-// subjects. A missing stream is created from the spec. An existing stream is
-// only extended: subjects it does not cover yet are added and limits set in
-// the spec are applied, while everything else, like settings made by an
-// operator or the subjects of other sinks, is kept.
 func setUpStream(
 	ctx context.Context,
 	js jetstream.JetStream,
@@ -32,7 +25,6 @@ func setUpStream(
 	var err error
 	for range streamSetUpAttempts {
 		if err = applyStream(ctx, js, spec, logger); err != nil {
-			// Another sink created the stream meanwhile; extend it instead.
 			if errors.Is(err, jetstream.ErrStreamNameAlreadyInUse) {
 				continue
 			}
@@ -54,8 +46,6 @@ func setUpStream(
 	return nil, fmt.Errorf("failed to set up stream %s: %w", spec.Stream, err)
 }
 
-// applyStream creates the stream or updates it with mergeStreamConfig. An
-// existing stream that needs no change is not written to.
 func applyStream(ctx context.Context, js jetstream.JetStream, spec *Spec, logger *slog.Logger) error {
 	stream, err := js.Stream(ctx, spec.Stream)
 	if errors.Is(err, jetstream.ErrStreamNotFound) {
@@ -100,8 +90,6 @@ func configFromSpec(spec *Spec) (jetstream.StreamConfig, error) {
 	}, nil
 }
 
-// compressionFromSpec returns the compression of the spec and whether it sets
-// one.
 func compressionFromSpec(spec *Spec) (jetstream.StoreCompression, bool) {
 	switch spec.Compression {
 	case "s2":
@@ -113,12 +101,9 @@ func compressionFromSpec(spec *Spec) (jetstream.StoreCompression, bool) {
 	}
 }
 
-// streamUpdate describes what mergeStreamConfig changed.
 type streamUpdate struct {
-	subjects      []string
-	limitsChanged bool
-	// replacedLimits lists limits of the spec that replaced a different,
-	// previously set limit.
+	subjects       []string
+	limitsChanged  bool
 	replacedLimits []string
 }
 
@@ -126,9 +111,6 @@ func (u streamUpdate) changed() bool {
 	return len(u.subjects) > 0 || u.limitsChanged
 }
 
-// mergeStreamConfig returns the config the existing stream needs for the
-// sink: subjects of the spec that the stream does not cover yet are added, and
-// limits set in the spec are applied. Nothing is removed or reset.
 func mergeStreamConfig(existing jetstream.StreamConfig, spec *Spec) (jetstream.StreamConfig, streamUpdate, error) {
 	maxAge, err := parseRetention(spec)
 	if err != nil {
@@ -140,7 +122,6 @@ func mergeStreamConfig(existing jetstream.StreamConfig, spec *Spec) (jetstream.S
 	var update streamUpdate
 
 	for _, subject := range spec.Subject.Register {
-		// The stream must not get overlapping subjects, which NATS rejects.
 		if !covered(merged.Subjects, []string{subject}) {
 			merged.Subjects = append(merged.Subjects, subject)
 			update.subjects = append(update.subjects, subject)
@@ -165,11 +146,8 @@ func mergeStreamConfig(existing jetstream.StreamConfig, spec *Spec) (jetstream.S
 		update.limitsChanged = true
 	}
 
-	// JetStream compresses only blocks written after the change; existing
-	// blocks keep theirs.
 	if compression, ok := compressionFromSpec(spec); ok && merged.Compression != compression {
 		if merged.Compression != jetstream.NoCompression {
-			// Spelled as in the spec; String gives "S2" and "None".
 			update.replacedLimits = append(update.replacedLimits, fmt.Sprintf("compression %s -> %s",
 				strings.ToLower(merged.Compression.String()), spec.Compression))
 		}
@@ -180,7 +158,6 @@ func mergeStreamConfig(existing jetstream.StreamConfig, spec *Spec) (jetstream.S
 	return merged, update, nil
 }
 
-// parseRetention returns the retention of the spec, or 0 if it sets none.
 func parseRetention(spec *Spec) (time.Duration, error) {
 	if spec.Retention == "" {
 		return 0, nil
@@ -192,7 +169,6 @@ func parseRetention(spec *Spec) (time.Duration, error) {
 	return retention, nil
 }
 
-// covered reports whether every subject is matched by one of the patterns.
 func covered(patterns, subjects []string) bool {
 	for _, subject := range subjects {
 		if !slices.ContainsFunc(patterns, func(pattern string) bool { return subjectCovers(pattern, subject) }) {
@@ -202,9 +178,6 @@ func covered(patterns, subjects []string) bool {
 	return true
 }
 
-// subjectCovers reports whether pattern matches every subject that subject
-// matches. Both may contain the NATS wildcards: "*" matches one token, ">"
-// one or more trailing tokens.
 func subjectCovers(pattern, subject string) bool {
 	patternTokens := strings.Split(pattern, ".")
 	subjectTokens := strings.Split(subject, ".")
@@ -219,7 +192,6 @@ func subjectCovers(pattern, subject string) bool {
 		s := subjectTokens[i]
 		switch {
 		case s == ">":
-			// Only ">" covers any number of tokens.
 			return false
 		case p == "*":
 		case p != s || s == "*":

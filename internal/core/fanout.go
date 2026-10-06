@@ -8,8 +8,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
-// fanout stands in for a node's children, so what the node passes on is
-// counted once, not once per child.
 type fanout struct {
 	name     string
 	children []domain.Subscriber
@@ -19,7 +17,6 @@ type fanout struct {
 func (f *fanout) Name() string { return f.name }
 func (f *fanout) From() string { return "" }
 
-// Children are stopped through their own nodes.
 func (f *fanout) Stop() error { return nil }
 
 func (f *fanout) Notify(ctx context.Context, event *domain.Event) error {

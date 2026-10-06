@@ -21,7 +21,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
-// run starts a.Run and returns a channel that receives its result.
 func run(ctx context.Context, a *api.API) <-chan error {
 	done := make(chan error, 1)
 	go func() { done <- a.Run(ctx) }()
@@ -151,7 +150,6 @@ func TestMetricsEndpoint(t *testing.T) {
 	assert.Equal(t, "tram_metric 1\n", string(body))
 }
 
-// freeAddr returns a local address nothing listens on right now.
 func freeAddr(t *testing.T) string {
 	t.Helper()
 	var lc net.ListenConfig

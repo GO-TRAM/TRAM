@@ -1,19 +1,14 @@
 package nats
 
 type Spec struct {
-	URL       string      `json:"url"       validate:"required"`
-	Stream    string      `json:"stream"    validate:"required"`
-	Subject   SubjectSpec `json:"subject"   validate:"required"`
-	Retention string      `json:"retention"`
-	Size      int64       `json:"size"`
-	// Compression is how JetStream compresses the stream on disk: "s2" or
-	// "none". Empty leaves it as it is.
-	Compression string `json:"compression" validate:"omitempty,oneof=none s2"`
+	URL         string      `json:"url"         validate:"required"`
+	Stream      string      `json:"stream"      validate:"required"`
+	Subject     SubjectSpec `json:"subject"     validate:"required"`
+	Retention   string      `json:"retention"`
+	Size        int64       `json:"size"`
+	Compression string      `json:"compression" validate:"omitempty,oneof=none s2"`
 }
 
-// SubjectSpec maps each signal type to a CEL expression that computes the
-// subject. Signals without an expression are not published; at least one
-// expression is required.
 type SubjectSpec struct {
 	Register []string `json:"register"          validate:"required,min=1"`
 	Logs     string   `json:"logs,omitempty"    validate:"required_without_all=Metrics Traces"`

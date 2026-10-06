@@ -14,7 +14,6 @@ const (
 
 type NodeKind string
 
-// Order of node kinds from the root of a stream to its leaves.
 const (
 	orderSource = iota
 	orderStage

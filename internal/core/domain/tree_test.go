@@ -373,7 +373,6 @@ func TestLeafNodes(t *testing.T) {
 
 			tree, err := domain.NewTree(c.streamSpec)
 			require.NoError(t, err)
-			// The order of leaf nodes is not defined.
 			var actual []string
 			for _, node := range tree.LeafNodes() {
 				actual = append(actual, node.Name)
@@ -715,9 +714,6 @@ func TestIsConnected(t *testing.T) {
 		})
 	}
 }
-
-// ------- Benchmarks -------
-//
 
 func BenchmarkNewTree(b *testing.B) {
 	cases := []struct {

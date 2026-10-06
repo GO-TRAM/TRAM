@@ -23,8 +23,6 @@ func (discardSubscriber) From() string                                { return "
 func (discardSubscriber) Stop() error                                 { return nil }
 func (discardSubscriber) Notify(context.Context, *domain.Event) error { return nil }
 
-// BenchmarkHandleLogs measures the request path of the otlp.OTLP source: reading
-// the body, decoding it and handing it to a subscriber.
 func BenchmarkHandleLogs(b *testing.B) {
 	shapes := append(otlpgen.Shapes(), otlpgen.Shape{Records: 10000, Resources: 10, Teams: 1, Attributes: 4})
 

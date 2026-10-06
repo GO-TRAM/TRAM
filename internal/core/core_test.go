@@ -16,23 +16,18 @@ import (
 )
 
 const (
-	brokenType = "broken"
-	// Sinks of these types fail every event, permanently or not.
-	rejectingType = "rejecting"
-	failingType   = "failing"
-	// Sinks of this type wait until the event's context is done.
-	blockingType = "blocking"
-	// Stages of this type pass every event on; others swallow it.
+	brokenType     = "broken"
+	rejectingType  = "rejecting"
+	failingType    = "failing"
+	blockingType   = "blocking"
 	forwardingType = "forwarding"
 )
 
-// registry tracks the components created by the fake factories.
 type registry struct {
 	mu sync.Mutex
 	// liveSources counts sources that are not stopped yet. Like a listening
 	// port, only one may exist at a time.
 	liveSources int
-	// failSources makes this many of the next sources fail to be created.
 	failSources int
 	created     []string
 	stopped     []string
@@ -79,9 +74,8 @@ type fakeSource struct {
 	reg      *registry
 	name     string
 	shutdown chan struct{}
-	// crash makes Run return on its own once closed, like a failing source.
-	crash chan struct{}
-	subs  []domain.Subscriber
+	crash    chan struct{}
+	subs     []domain.Subscriber
 }
 
 func (s *fakeSource) Name() string { return s.name }
@@ -111,10 +105,9 @@ func (s *fakeSource) Stop() error {
 }
 
 type fakeSink struct {
-	reg  *registry
-	name string
-	from string
-	// err is returned for every event.
+	reg   *registry
+	name  string
+	from  string
 	err   error
 	block bool
 }
@@ -159,7 +152,6 @@ func (f sourceFactory) New(spec domain.SourceSpec) (domain.Source, error) {
 	return src, nil
 }
 
-// limitedSource is a fake source that cancels deliveries after timeout.
 type limitedSource struct {
 	*fakeSource
 
@@ -172,9 +164,8 @@ type fakeStage struct {
 	fakeSink
 
 	forward bool
-	// hold is how long the stage claims to hold events back at most.
-	hold time.Duration
-	subs []domain.Subscriber
+	hold    time.Duration
+	subs    []domain.Subscriber
 }
 
 func (s *fakeStage) Notify(ctx context.Context, event *domain.Event) error {
@@ -241,8 +232,6 @@ func newCore(t *testing.T) (*core.Core, *registry) {
 	return c, reg
 }
 
-// streamSpec builds a stream whose source is configured with port. Changing
-// the port changes the source, which restarts the whole stream.
 func streamSpec(port int, sinks ...domain.SinkSpec) domain.StreamSpec {
 	return domain.StreamSpec{
 		Name:   "stream",
@@ -267,12 +256,11 @@ func TestUpsertStream(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name         string
-		update       domain.StreamSpec
-		expectErr    bool
-		expectSource string
-		expectSinks  []string
-		// expectStopped lists the components stopped by the update.
+		name          string
+		update        domain.StreamSpec
+		expectErr     bool
+		expectSource  string
+		expectSinks   []string
 		expectStopped []string
 	}{
 		{
@@ -282,11 +270,10 @@ func TestUpsertStream(t *testing.T) {
 			expectStopped: []string{"source", "old"},
 		},
 		{
-			name:        "restores old stream when building the update fails",
-			update:      streamSpec(2, sink("new", brokenType)),
-			expectErr:   true,
-			expectSinks: []string{"old"},
-			// The old stream, then the source created for the failed update.
+			name:          "restores old stream when building the update fails",
+			update:        streamSpec(2, sink("new", brokenType)),
+			expectErr:     true,
+			expectSinks:   []string{"old"},
 			expectStopped: []string{"source", "old", "source"},
 		},
 		{
@@ -338,7 +325,6 @@ func TestUpsertRejectsInvalidStreamName(t *testing.T) {
 	spec.Name = "../escape"
 	_, err := c.UpsertStream(t.Context(), spec)
 	require.ErrorIs(t, err, domain.ErrInvalidStreamName)
-	// The API maps build failures to InvalidArgument.
 	require.ErrorIs(t, err, domain.ErrStreamBuildFailed)
 
 	assert.Empty(t, reg.createdNames(), "no component is created")
@@ -357,7 +343,6 @@ func TestCrashedSourceIsRestarted(t *testing.T) {
 	_, err := c.UpsertStream(t.Context(), spec)
 	require.NoError(t, err)
 
-	// The first restarts fail, like a source whose server is not up yet.
 	reg.mu.Lock()
 	reg.failSources = 2
 	reg.mu.Unlock()
@@ -372,7 +357,6 @@ func TestCrashedSourceIsRestarted(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, got.Equal(spec))
 
-	// A deliberately stopped stream is not restarted.
 	require.NoError(t, c.DeleteStream(t.Context(), "stream"))
 	time.Sleep(150 * time.Millisecond)
 	assert.Equal(t, 2, reg.sourceCount())
@@ -391,22 +375,17 @@ func TestFailedUpdateAndRestoreKeepStream(t *testing.T) {
 	events := make(chan domain.StreamSpecWatchEvent, 10)
 	require.NoError(t, c.Watch(t.Context(), events))
 
-	// Both the source of the update and the source of the restored stream
-	// fail to be created.
 	reg.mu.Lock()
 	reg.failSources = 2
 	reg.mu.Unlock()
 	_, err = c.UpsertStream(t.Context(), streamSpec(2, sink("new", "fake")))
 	require.Error(t, err)
 
-	// Drivers still see the stream as configured, and nothing told them
-	// otherwise.
 	got, err := c.GetStream(t.Context(), "stream")
 	require.NoError(t, err, "the stream disappeared")
 	assert.True(t, got.Equal(old))
 	assert.Empty(t, events, "watchers are not notified")
 
-	// The stopped stream is restarted like one whose source stopped.
 	require.Eventually(t, func() bool { return reg.sourceCount() == 2 }, 5*time.Second, 5*time.Millisecond)
 	assert.ElementsMatch(t, []string{"source", "old"}, reg.stoppedNames(), "stopped once")
 }
@@ -415,7 +394,6 @@ func TestUpsertRestartsCrashedStream(t *testing.T) {
 	t.Parallel()
 
 	c, reg := newCore(t)
-	// Long enough that only the upsert restarts the stream.
 	c.SetRestartDelays(time.Hour, time.Hour)
 
 	spec := streamSpec(1, sink("out", "fake"))
@@ -424,8 +402,6 @@ func TestUpsertRestartsCrashedStream(t *testing.T) {
 
 	close(reg.source(0).crash)
 
-	// Applying the unchanged spec again restarts the stream once the source
-	// has returned.
 	require.Eventually(t, func() bool {
 		_, upsertErr := c.UpsertStream(t.Context(), spec)
 		return upsertErr == nil && reg.sourceCount() == 2
@@ -445,8 +421,6 @@ func TestUpsertUnchangedStreamDoesNothing(t *testing.T) {
 	events := make(chan domain.StreamSpecWatchEvent, 1)
 	require.NoError(t, c.Watch(t.Context(), events))
 
-	// The same stream as another driver might represent it: empty instead of
-	// missing lists and component specs.
 	same := streamSpec(1, domain.SinkSpec{Name: "out", Type: "fake", From: "source", Spec: map[string]any{}})
 	same.Stages = []domain.StageSpec{}
 	_, err = c.UpsertStream(t.Context(), same)
@@ -488,7 +462,6 @@ func TestUpsertWithUnchangedSourceReplacesOnlyStagesAndSinks(t *testing.T) {
 	require.Len(t, events, 1)
 	assert.Equal(t, domain.StreamSpecWatchEventTypeUpsert, (<-events).EventType)
 
-	// The replaced stream is stopped and deleted like any other.
 	require.NoError(t, c.DeleteStream(t.Context(), "stream"))
 	assert.Equal(t, []string{"old", "source", "filter", "new"}, reg.stoppedNames())
 }
@@ -588,7 +561,6 @@ func TestWatch(t *testing.T) {
 	}
 	require.NoError(t, <-done)
 
-	// After the watcher is gone, changes must not block on its channel.
 	cancel()
 	deleted := make(chan error, 1)
 	go func() { deleted <- c.DeleteStream(t.Context(), "stream") }()

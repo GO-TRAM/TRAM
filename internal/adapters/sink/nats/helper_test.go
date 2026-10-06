@@ -17,7 +17,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
-// newSink builds a sink without a natssink.NATS connection for the given subject spec.
 func newSink(t testing.TB, subject map[string]any) *natssink.NATS {
 	t.Helper()
 	subject["register"] = []any{">"}
@@ -39,9 +38,6 @@ func attr(attrs []*commonpb.KeyValue, key string) string {
 	return ""
 }
 
-// contents describes what grouping produced as subject -> signal -> entries.
-// Each entry is "<service.name of its resource>/<scope name>/<entry name>",
-// so the tests also check that entries keep their resource and scope.
 func contents(t *testing.T, messages []natssink.Message) map[string]map[domain.Signal][]string {
 	t.Helper()
 	out := map[string]map[domain.Signal][]string{}
@@ -57,7 +53,6 @@ func contents(t *testing.T, messages []natssink.Message) map[string]map[domain.S
 	return out
 }
 
-// entries lists the entries of all signals in event in the format of contents.
 func entries(event *domain.Event) []string {
 	var out []string
 	entry := func(resource []*commonpb.KeyValue, scope, name string) {
@@ -268,8 +263,6 @@ func TestGroupEventsBySubjects(t *testing.T) {
 	}
 }
 
-// Logs and metrics resolving to the same subject are published as separate
-// messages, because a message carries one signal type.
 func TestGroupEventsBySubjectsSameSubjectForSeveralSignals(t *testing.T) {
 	t.Parallel()
 
@@ -301,8 +294,6 @@ func TestGroupEventsBySubjectsRequiresStringSubject(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// Records without a resource or scope see empty ones, like in cel_filter, so
-// expressions on them do not fail.
 func TestGroupEventsBySubjectsWithoutResourceAndScope(t *testing.T) {
 	t.Parallel()
 
@@ -319,9 +310,6 @@ func TestGroupEventsBySubjectsWithoutResourceAndScope(t *testing.T) {
 	assert.Equal(t, "logs.0.none", messages[0].Subject)
 }
 
-// An event whose subject cannot be resolved fails the same way on every
-// retry. It is rejected, so the source neither acknowledges it as delivered
-// nor asks for it again.
 func TestNotifyRejectsUnresolvableSubject(t *testing.T) {
 	t.Parallel()
 
@@ -353,8 +341,6 @@ func TestNotifyRejectsUnresolvableSubject(t *testing.T) {
 	}
 }
 
-// No event variable is provided, so a subject using it must fail when the
-// sink is created instead of dropping every event.
 func TestSubjectRejectsUnknownVariable(t *testing.T) {
 	t.Parallel()
 
@@ -431,8 +417,6 @@ func TestGroupEventsBySubjectsSharesData(t *testing.T) {
 func TestGroupEventsBySubjectsOrder(t *testing.T) {
 	t.Parallel()
 
-	// Subjects from the resource: the payload the expression sees is reused
-	// per scope, so this also checks it carries the right resource.
 	sink := newSink(
 		t,
 		map[string]any{"logs": "'logs.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')"},
@@ -455,8 +439,6 @@ func TestGroupEventsBySubjectsOrder(t *testing.T) {
 	)
 }
 
-// Resources are matched by their entry, not by content, so equal resources
-// from separate entries (e.g. merged by a batch stage) stay separate.
 func TestGroupEventsBySubjectsKeepsSeparateResourceEntries(t *testing.T) {
 	t.Parallel()
 

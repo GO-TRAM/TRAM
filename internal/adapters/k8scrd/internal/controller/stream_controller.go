@@ -36,7 +36,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/ports"
 )
 
-// StreamReconciler reconciles a Stream object.
 type StreamReconciler struct {
 	client.Client
 
@@ -48,8 +47,6 @@ type StreamReconciler struct {
 // +kubebuilder:rbac:groups=io.tram.core,resources=streams/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=io.tram.core,resources=streams/finalizers,verbs=update
 
-// Reconcile makes the core run the stream described by a Stream resource, or
-// removes it from the core once the resource is gone.
 func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	name := StreamName(req.NamespacedName)
@@ -69,7 +66,6 @@ func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	desired, err := toDomain(name, stream)
 	if err != nil {
-		// Retrying cannot fix a malformed spec; the next edit triggers a new reconcile.
 		return ctrl.Result{}, errors.Join(r.setActive(ctx, &stream, false), reconcile.TerminalError(err))
 	}
 
@@ -78,7 +74,6 @@ func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, fmt.Errorf("get from core: %w", err)
 	}
 
-	// Upserting restarts the stream, so only do it when the spec changed.
 	if current == nil || !current.Equal(*desired) {
 		if _, err = r.Core.UpsertStream(ctx, *desired); err != nil {
 			return ctrl.Result{}, errors.Join(r.setActive(ctx, &stream, false), fmt.Errorf("upsert into core: %w", err))
@@ -89,8 +84,6 @@ func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	return ctrl.Result{}, r.setActive(ctx, &stream, true)
 }
 
-// setActive updates the status only when it changes, so reconciles do not
-// produce needless writes.
 func (r *StreamReconciler) setActive(ctx context.Context, stream *tramv1.Stream, active bool) error {
 	if stream.Status.Active == active {
 		return nil
@@ -114,14 +107,12 @@ func toDomain(name string, s tramv1.Stream) (*domain.StreamSpec, error) {
 		return nil, fmt.Errorf("source %s: %w", s.Spec.Source.Name, err)
 	}
 
-	// Map source (single)
 	source := domain.SourceSpec{
 		Name: s.Spec.Source.Name,
 		Type: s.Spec.Source.Type,
 		Spec: sourceSpec,
 	}
 
-	// Map stages (list)
 	var stages []domain.StageSpec
 	for _, stage := range s.Spec.Stages {
 		spec, specErr := specToMap(stage.Spec)
@@ -136,7 +127,6 @@ func toDomain(name string, s tramv1.Stream) (*domain.StreamSpec, error) {
 		})
 	}
 
-	// Map sinks (list)
 	var sinks []domain.SinkSpec
 	for _, sink := range s.Spec.Sinks {
 		spec, specErr := specToMap(sink.Spec)
@@ -159,8 +149,6 @@ func toDomain(name string, s tramv1.Stream) (*domain.StreamSpec, error) {
 	}, nil
 }
 
-// specToMap decodes a component spec the same way the API and file sync do,
-// so all drivers hand identical values to the core.
 func specToMap(raw *runtime.RawExtension) (map[string]any, error) {
 	var spec map[string]any
 	if raw == nil || len(raw.Raw) == 0 {
@@ -174,8 +162,6 @@ func specToMap(raw *runtime.RawExtension) (map[string]any, error) {
 
 func (r *StreamReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		// Status writes and periodic resyncs do not change the generation, so
-		// they no longer trigger a reconcile.
 		For(&tramv1.Stream{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Named("stream").
 		Complete(r)

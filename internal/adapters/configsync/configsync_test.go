@@ -20,7 +20,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
-// streamFile is a stream file whose generator emits nothing during a test.
 const streamFile = `{
   "stream": {
     "source": {"name": "generator", "type": "generator", "spec": {"interval": "1h"}},
@@ -42,7 +41,6 @@ func writeFile(t *testing.T, dir, name, content string) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600))
 }
 
-// run starts the sync and stops it when the test ends.
 func run(t *testing.T, cs *configsync.ConfigSync) {
 	t.Helper()
 
@@ -59,7 +57,6 @@ func run(t *testing.T, cs *configsync.ConfigSync) {
 func TestStreamNameCannotEscapeDirectory(t *testing.T) {
 	t.Parallel()
 
-	// dir is nested, so a file escaping it would land in parent.
 	parent := t.TempDir()
 	dir := filepath.Join(parent, "config")
 	require.NoError(t, os.Mkdir(dir, 0o700))
@@ -69,7 +66,6 @@ func TestStreamNameCannotEscapeDirectory(t *testing.T) {
 	require.NoError(t, err)
 	run(t, cs)
 
-	// As a client of the API could send it.
 	_, err = c.UpsertStream(t.Context(), domain.StreamSpec{
 		Name:   "../escape",
 		Source: domain.SourceSpec{Name: "generator", Type: "generator", Spec: map[string]any{"interval": "1h"}},
@@ -81,8 +77,6 @@ func TestStreamNameCannotEscapeDirectory(t *testing.T) {
 	assert.ErrorIs(t, err, os.ErrNotExist, "file written outside the config directory")
 }
 
-// Editors write swap and backup files next to the file they save. Those must
-// not cancel the sync of the stream file.
 func TestOtherFilesDoNotCancelSync(t *testing.T) {
 	t.Parallel()
 
@@ -125,7 +119,6 @@ func TestUnreadableFileKeepsStream(t *testing.T) {
 	writeFile(t, dir, "edited.json", broken)
 	require.NoError(t, os.Remove(filepath.Join(dir, "removed.json")))
 
-	// Streams without a file are still deleted, which also shows the sync ran.
 	require.Eventually(t, func() bool {
 		_, getErr := c.GetStream(t.Context(), "removed")
 		return getErr != nil
@@ -138,7 +131,6 @@ func TestUnreadableFileKeepsStream(t *testing.T) {
 	require.NoError(t, err, "unreadable stream file was removed")
 	assert.Equal(t, broken, string(content)) //nolint:testifylint // Invalid JSON on purpose; compared byte for byte.
 
-	// Once the file is fixed, the stream follows it again.
 	writeFile(t, dir, "edited.json", strings.Replace(streamFile, "1h", "2h", 1))
 	require.Eventually(t, func() bool {
 		stream, getErr := c.GetStream(t.Context(), "edited")

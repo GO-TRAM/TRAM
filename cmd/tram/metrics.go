@@ -16,10 +16,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 )
 
-// setupMetrics installs the global meter provider and returns a Prometheus
-// handler for its metrics plus Go runtime and process metrics.
 func setupMetrics() (http.Handler, func(context.Context) error, error) {
-	// Not the global registry, so tests can set up several servers.
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(
 		collectors.NewGoCollector(),
@@ -33,7 +30,6 @@ func setupMetrics() (http.Handler, func(context.Context) error, error) {
 
 	provider := sdkmetric.NewMeterProvider(
 		sdkmetric.WithReader(exporter),
-		// Without traces, exemplars only cost time.
 		sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter),
 		sdkmetric.WithResource(resource.NewSchemaless(attribute.String("service.name", "tram"))),
 	)

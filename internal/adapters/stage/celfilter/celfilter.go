@@ -21,13 +21,9 @@ import (
 
 const Type = "cel_filter"
 
-// CELFilter keeps the records for which a CEL expression returns true and
-// passes on a batch with only those. Unlike cel_validator, which decides for
-// a whole event, it decides per log record, metric data point and span.
 type CELFilter struct {
 	*base.Stage[Spec]
 
-	// A nil program means the signal type is not filtered.
 	logs    cel.Program
 	metrics cel.Program
 	traces  cel.Program
@@ -54,8 +50,6 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELFilter, err
 		return nil, errors.Join(ErrCELEnvironmentInitialization, err)
 	}
 
-	// A signal type without an expression keeps a nil program and is not
-	// filtered.
 	var logs, metrics, traces cel.Program
 	if expression := base.Spec().Logs; expression != "" {
 		logs, err = compile(env, expression,
@@ -65,8 +59,6 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELFilter, err
 		}
 	}
 
-	// Data points have a different type per metric type, so datapoint is
-	// dynamically typed; the fields they share, like attributes, work for all.
 	if expression := base.Spec().Metrics; expression != "" {
 		metrics, err = compile(env, expression,
 			cel.Variable("metric", cel.ObjectType("opentelemetry.proto.metrics.v1.Metric")),
@@ -92,7 +84,6 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELFilter, err
 	}, nil
 }
 
-// compile returns nil for an empty expression, which disables filtering.
 func compile(env *cel.Env, expression string, vars ...cel.EnvOption) (cel.Program, error) {
 	env, err := env.Extend(vars...)
 	if err != nil {
@@ -167,9 +158,6 @@ func (f *CELFilter) Notify(ctx context.Context, event *domain.Event) error {
 	return f.NotifySubscribers(ctx, &filtered)
 }
 
-// eval runs a filter expression for one record. Evaluating the same record
-// again fails the same way, so errors reject the event instead of asking for
-// a retry.
 func eval(program cel.Program, vars *activation) (bool, error) {
 	out, _, err := program.Eval(vars)
 	if err != nil {
@@ -187,10 +175,7 @@ func eval(program cel.Program, vars *activation) (bool, error) {
 	return keep, nil
 }
 
-// activation provides the variables of one record to CEL. It is reused for
-// all records of an event to avoid an allocation per record.
 type activation struct {
-	// emptyResource and emptyScope stand in for missing ones.
 	emptyResource *resourcepb.Resource
 	emptyScope    *commonpb.InstrumentationScope
 
@@ -202,8 +187,6 @@ type activation struct {
 	span      *tracepb.Span
 }
 
-// set stores resource and scope; absent ones are replaced by empty messages,
-// so expressions can access their fields without checking for null.
 func (a *activation) set(resource *resourcepb.Resource, scope *commonpb.InstrumentationScope) {
 	a.resource, a.scope = resource, scope
 	if a.resource == nil {

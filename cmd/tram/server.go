@@ -60,7 +60,6 @@ func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (er
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// The meter provider has to be set before the core creates its metrics.
 	metricsHandler, shutdownMetrics, err := setupMetrics()
 	if err != nil {
 		return err
@@ -69,12 +68,10 @@ func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (er
 		err = errors.Join(err, shutdownMetrics(context.WithoutCancel(ctx)))
 	}()
 
-	// driven
 	sourceFac := source.NewFactory(logger)
 	stageFac := stage.NewFactory()
 	sinkFac := sink.NewFactory(logger)
 
-	// core
 	c := core.New(ctx, logger, sourceFac, stageFac, sinkFac)
 	defer func() {
 		err = errors.Join(err, c.Close())
@@ -85,9 +82,6 @@ func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (er
 		return err
 	}
 
-	// drivers
-	// A driver that fails cancels driversCtx, which stops the others, so Tram
-	// exits instead of running without it.
 	eg, driversCtx := errgroup.WithContext(ctx)
 
 	if opts.enableFileSync {

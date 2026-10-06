@@ -24,8 +24,6 @@ func (c *captureSubscriber) Notify(_ context.Context, e *domain.Event) error {
 	return nil
 }
 
-// TestDocumentedBehavior keeps the examples and behavior described in
-// COMPONENTS.md correct.
 func TestDocumentedBehavior(t *testing.T) {
 	t.Parallel()
 

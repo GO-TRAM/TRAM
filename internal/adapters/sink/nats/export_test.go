@@ -13,17 +13,13 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
-// Message is one message the sink would publish.
 type Message struct {
 	Subject string
 	Event   *domain.Event
 }
 
-// errNoConnection is returned by every publish of a sink built with
-// NewWithoutConnection.
 var errNoConnection = errors.New("sink has no NATS connection")
 
-// noConnection is a JetStream client whose publishes fail.
 type noConnection struct {
 	jetstream.JetStream
 }
@@ -32,8 +28,6 @@ func (noConnection) PublishMsg(context.Context, *nats.Msg, ...jetstream.PublishO
 	return nil, errNoConnection
 }
 
-// NewWithoutConnection builds a sink that can group events but has no NATS
-// connection to publish them; publishing fails.
 func NewWithoutConnection(spec map[string]any, validator *validator.Validate) (*NATS, error) {
 	b, err := base.New[Spec]("nats", "in", spec, validator)
 	if err != nil {
@@ -55,7 +49,6 @@ func SubjectCovers(pattern, subject string) bool {
 	return subjectCovers(pattern, subject)
 }
 
-// StreamUpdate describes what MergeStreamConfig changed.
 type StreamUpdate struct {
 	Changed        bool
 	Subjects       []string

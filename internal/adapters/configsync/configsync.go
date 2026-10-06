@@ -20,14 +20,10 @@ import (
 )
 
 const (
-	// fsEventBuffer holds file system events while a sync runs.
-	fsEventBuffer = 100
-	// debounceDuration waits for a burst of file changes to settle.
+	fsEventBuffer    = 100
 	debounceDuration = 100 * time.Millisecond
-	// filePermissions keeps stream files private; specs can contain
-	// credentials, e.g. in NATS URLs.
-	filePermissions = 0o600
-	fileExtension   = ".json"
+	filePermissions  = 0o600
+	fileExtension    = ".json"
 )
 
 type ConfigSync struct {
@@ -83,7 +79,6 @@ func (c *ConfigSync) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to watch core: %w", err)
 	}
 
-	// A sync scheduled before Run returns must not change streams afterwards.
 	defer func() {
 		if c.debouncer != nil {
 			c.debouncer.Stop()
@@ -109,8 +104,6 @@ func (c *ConfigSync) Run(ctx context.Context) error {
 	}
 }
 
-// forwardFSEvents passes the watcher's events on to fsEvents until ctx is
-// done.
 func (c *ConfigSync) forwardFSEvents(ctx context.Context) {
 	for event := range c.watcher.Events {
 		c.logger.DebugContext(ctx, "Received file system event",
@@ -118,15 +111,11 @@ func (c *ConfigSync) forwardFSEvents(ctx context.Context) {
 		select {
 		case c.fsEvents <- event:
 		case <-ctx.Done():
-			// Nobody reads fsEvents anymore.
 			return
 		}
 	}
 }
 
-// scheduleSync syncs once a burst of changes to stream files has settled.
-// Other files, like the swap files of editors, must not delay or cancel the
-// sync. Must only be called from Run.
 func (c *ConfigSync) scheduleSync(ctx context.Context, event fsnotify.Event) {
 	if filepath.Ext(event.Name) != fileExtension {
 		return
@@ -141,14 +130,9 @@ func (c *ConfigSync) scheduleSync(ctx context.Context, event fsnotify.Event) {
 	})
 }
 
-// sync makes the core's streams match the stream files: it creates or
-// updates a stream for every file and deletes streams without a file. A
-// stream whose file cannot be read is left as it is, because deleting it
-// would also remove the file, e.g. while an editor is still saving it.
-//
-// Syncs run one at a time: a sync that is slow, e.g. because building a
-// stream takes long, could otherwise overlap the next one and apply an older
-// state of the files after it.
+// A stream whose file cannot be read is kept: deleting it would also delete
+// the file, e.g. while an editor is still saving it. Syncs run one at a time,
+// so a slow sync cannot apply an older state of the files after a newer one.
 func (c *ConfigSync) sync(ctx context.Context) error {
 	c.syncMu.Lock()
 	defer c.syncMu.Unlock()
@@ -191,8 +175,6 @@ func (c *ConfigSync) sync(ctx context.Context) error {
 	return nil
 }
 
-// readStreamFiles reads all stream files, keyed by stream name. The names of
-// files that cannot be read are returned separately.
 func (c *ConfigSync) readStreamFiles(ctx context.Context) (map[string]Stream, map[string]struct{}, error) {
 	entries, err := os.ReadDir(c.dir)
 	if err != nil {
@@ -219,7 +201,6 @@ func (c *ConfigSync) readStreamFiles(ctx context.Context) (map[string]Stream, ma
 	return files, unreadable, nil
 }
 
-// apply creates or updates the stream from its file, unless it is unchanged.
 func (c *ConfigSync) apply(ctx context.Context, name string, file Stream) {
 	configured, err := c.core.GetStream(ctx, name)
 	if err != nil && !errors.Is(err, domain.ErrStreamNotFound) {
@@ -237,8 +218,6 @@ func (c *ConfigSync) apply(ctx context.Context, name string, file Stream) {
 }
 
 func (c *ConfigSync) onCoreChange(event domain.StreamSpecWatchEvent) error {
-	// The core validates stream names; this guards against writing outside
-	// the directory should a name ever slip through.
 	fileName := event.StreamSpec.Name + fileExtension
 	if !filepath.IsLocal(fileName) || filepath.Base(fileName) != fileName {
 		return fmt.Errorf("stream %q has no file name inside %s", event.StreamSpec.Name, c.dir)

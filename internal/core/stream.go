@@ -9,8 +9,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
-// newTree builds the node structure of a stream and validates its shape
-// without creating any components.
 func newTree(spec domain.StreamSpec) (*domain.Tree, error) {
 	tree, err := domain.NewTree(spec)
 	if err != nil {
@@ -40,8 +38,6 @@ func newTree(spec domain.StreamSpec) (*domain.Tree, error) {
 	return tree, nil
 }
 
-// buildStream creates and wires all components of tree. On failure, the
-// components created so far are stopped again.
 func (c *Core) buildStream(tree *domain.Tree) error {
 	err := c.createAll(tree)
 	if err == nil {
@@ -68,10 +64,6 @@ func (c *Core) createAll(tree *domain.Tree) error {
 	return c.createReceivers(tree)
 }
 
-// buildReceivers creates and wires the stages and sinks of tree below a
-// source that is already set on its root. The source is not subscribed to its
-// children; see replaceReceivers. On failure, the stages and sinks created so
-// far are stopped again, the source is left untouched.
 func (c *Core) buildReceivers(tree *domain.Tree) error {
 	err := c.createReceivers(tree)
 	if err == nil {
@@ -116,8 +108,6 @@ func (c *Core) createReceivers(tree *domain.Tree) error {
 	return nil
 }
 
-// wire subscribes a fan-out to every stage, and with includeRoot to the
-// source as well.
 func (c *Core) wire(tree *domain.Tree, includeRoot bool) error {
 	root := tree.Root()
 	for _, node := range tree.Map() {
@@ -151,8 +141,6 @@ func (c *Core) wire(tree *domain.Tree, includeRoot bool) error {
 	return source.Subscribe(subscriber)
 }
 
-// Every subscriber the core connects has to come from here, so it is
-// measured.
 func (c *Core) subscriber(tree *domain.Tree, node *domain.Node) (domain.Subscriber, error) {
 	subscriber, err := node.GetSubscriber()
 	if err != nil {
@@ -173,8 +161,6 @@ func (c *Core) fanoutOf(tree *domain.Tree, node *domain.Node) (*fanout, error) {
 	return &fanout{name: node.Name, children: children, out: c.metrics.output(tree.Spec.Name, node)}, nil
 }
 
-// sourceSubscriber measures the source's fan-out as the source itself: once
-// per event, with the result its client gets.
 func (c *Core) sourceSubscriber(tree *domain.Tree) (domain.Subscriber, error) {
 	root := tree.Root()
 	f, err := c.fanoutOf(tree, root)
@@ -184,11 +170,6 @@ func (c *Core) sourceSubscriber(tree *domain.Tree) (domain.Subscriber, error) {
 	return c.metrics.instrument(tree.Spec.Name, root, f), nil
 }
 
-// replaceReceivers updates a running stream whose source is unchanged: it
-// builds the new stages and sinks, switches the running source over to them,
-// and stops the old ones. The source keeps running, so a source like OTLP
-// keeps its port open. If building fails, the running stream is not touched.
-// Must be called with the write lock held.
 func (c *Core) replaceReceivers(old *stream, tree *domain.Tree) error {
 	source, err := old.tree.Root().GetSource()
 	if err != nil {
@@ -206,8 +187,6 @@ func (c *Core) replaceReceivers(old *stream, tree *domain.Tree) error {
 		return err
 	}
 
-	// Waits for events still being delivered to the old stages and sinks, so
-	// they can be stopped right after.
 	source.SetSubscribers([]domain.Subscriber{subscriber})
 	if err = stopNodes(old.tree, false); err != nil {
 		c.logger.ErrorContext(c.ctx, "Could not cleanly stop replaced components of stream",
@@ -218,9 +197,6 @@ func (c *Core) replaceReceivers(old *stream, tree *domain.Tree) error {
 	return nil
 }
 
-// runStream starts the source of a built tree and registers the stream.
-// restarts counts the restarts in a row that led to this run. Must be called
-// with the write lock held.
 func (c *Core) runStream(tree *domain.Tree, restarts int) {
 	s := &stream{
 		tree: tree,
@@ -254,10 +230,6 @@ func (c *Core) runSource(tree *domain.Tree) {
 	}
 }
 
-// scheduleRestart restarts the stream whose source run done belongs to, after
-// a delay that grows with restarts. Sources also return when they are
-// stopped, but their stream is removed or replaced by then, which
-// restartStream detects.
 func (c *Core) scheduleRestart(name string, done chan struct{}, restarts int) {
 	if c.ctx.Err() != nil {
 		return
@@ -278,10 +250,6 @@ func (c *Core) restartDelay(restarts int) time.Duration {
 	return delay
 }
 
-// restartStream rebuilds a stream whose source returned on its own, unless
-// the stream was removed or replaced meanwhile. If rebuilding fails, the
-// stream stays registered with its components stopped and is tried again
-// later.
 func (c *Core) restartStream(name string, done chan struct{}, restarts int) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -311,11 +279,6 @@ func (c *Core) restartStream(name string, done chan struct{}, restarts int) {
 	c.runStream(tree, restarts)
 }
 
-// restoreStream rebuilds and starts a previously running stream after a
-// failed update stopped it. If that fails too, the stopped stream stays
-// registered and is restarted like a stream whose source returned on its own:
-// stopping its source scheduled that restart already. Must be called with the
-// write lock held.
 func (c *Core) restoreStream(spec domain.StreamSpec) {
 	tree, err := newTree(spec)
 	if err == nil {
@@ -329,9 +292,6 @@ func (c *Core) restoreStream(spec domain.StreamSpec) {
 	c.runStream(tree, 0)
 }
 
-// stopStream stops the source, waits for it to return so no event is in
-// flight, and then stops all stages and sinks. A stream is stopped only once;
-// later calls do nothing.
 func (c *Core) stopStream(s *stream) error {
 	if s.stopped {
 		return nil

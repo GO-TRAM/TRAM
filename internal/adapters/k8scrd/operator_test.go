@@ -43,8 +43,6 @@ func TestCacheOptionsRejectsInvalidSelector(t *testing.T) {
 	require.ErrorIs(t, err, k8scrd.ErrInvalidStreamSelector)
 }
 
-// One Stream resource can be run by several deployments, either with one label
-// key per deployment or with a shared value in a set-based selector.
 func TestCacheOptionsSelectorAssignsStreams(t *testing.T) {
 	t.Parallel()
 

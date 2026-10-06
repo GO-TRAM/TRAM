@@ -30,7 +30,5 @@ var (
 	ErrNodeNotObserver      = errors.New("node is not an observer")
 	ErrNodeNotSubscriber    = errors.New("node is not a subscriber")
 	ErrPortUnavailable      = errors.New("port unavailable")
-	// ErrEventRejected marks a deliberate, permanent refusal of an event by a
-	// component, as opposed to a failure that retrying could fix.
-	ErrEventRejected = errors.New("event rejected")
+	ErrEventRejected        = errors.New("event rejected")
 )

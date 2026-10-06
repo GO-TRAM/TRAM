@@ -1,11 +1,3 @@
-// Command benchreport runs Tram's benchmarks and writes the results into the
-// generated sections of BENCHMARK.md.
-//
-//	go run ./tools/benchreport
-//
-// The NATS benchmarks need Docker or Podman; see CONTRIBUTING.md. Sections are
-// delimited by <!-- BEGIN benchreport:NAME --> and <!-- END benchreport:NAME -->
-// markers; everything outside them is left unchanged.
 package main
 
 import (
@@ -30,23 +22,16 @@ import (
 )
 
 const (
-	scenarioPackage = "./internal/scenario/"
-	// streamsBenchtime runs each streams benchmark once; one run observes the
-	// idle streams for several seconds already.
+	scenarioPackage  = "./internal/scenario/"
 	streamsBenchtime = "1x"
 
-	// pageFilePermissions are those of a file in the repository.
 	pageFilePermissions = 0o644
-	// failureLines of go test's output are shown when it fails.
-	failureLines = 30
-	// maxLineBytes allows long benchmark lines.
-	maxLineBytes = 1 << 20
-	percent      = 100
-	// spreadWarning flags results whose runs differ by more than this percentage.
-	spreadWarning = 10
+	failureLines        = 30
+	maxLineBytes        = 1 << 20
+	percent             = 100
+	spreadWarning       = 10
 )
 
-// options are the command-line flags.
 type options struct {
 	out, input, raw             string
 	count                       int
@@ -69,8 +54,6 @@ func main() {
 	}
 }
 
-// runInterruptible runs until done or interrupted with Ctrl-C, which also
-// stops a running go test.
 func runInterruptible(opts options) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -116,9 +99,6 @@ func run(ctx context.Context, opts options) error {
 	return nil
 }
 
-// benchmarkOutput reads saved output or runs the benchmarks. The commit and
-// date are stored with new output, so pages regenerated from it later still
-// show when it was measured.
 func benchmarkOutput(ctx context.Context, opts options, env env) ([]byte, error) {
 	if opts.input != "" {
 		return os.ReadFile(opts.input)
@@ -138,8 +118,6 @@ func benchmarkOutput(ctx context.Context, opts options, env env) ([]byte, error)
 	return output, nil
 }
 
-// runBenchmarks runs the scenario and component benchmarks one package at a
-// time; parallel packages would distort each other's results.
 func runBenchmarks(ctx context.Context, count int, scenarioTime, componentTime string) ([]byte, error) {
 	var out bytes.Buffer
 	log.Print("running scenario benchmarks")
@@ -171,7 +149,6 @@ func goTest(ctx context.Context, out *bytes.Buffer, pattern, benchtime string, c
 	cmd.Stdout = io.MultiWriter(&stdout, progress{})
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		// go test reports failures on stdout, which is otherwise only parsed.
 		lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
 		return fmt.Errorf("go test: %w\n%s", err, strings.Join(lines[max(0, len(lines)-failureLines):], "\n"))
 	}
@@ -179,7 +156,6 @@ func goTest(ctx context.Context, out *bytes.Buffer, pattern, benchtime string, c
 	return nil
 }
 
-// progress prints the package currently being benchmarked.
 type progress struct{}
 
 func (progress) Write(p []byte) (int, error) {
@@ -208,7 +184,6 @@ const (
 	datePrefix   = "benchreport-date: "
 )
 
-// metadata is read from the benchmark output.
 type metadata struct {
 	commit, date, cpu string
 }
@@ -233,18 +208,13 @@ func command(ctx context.Context, name string, args ...string) string {
 	return string(out)
 }
 
-// result holds the medians of all runs of one benchmark.
 type result struct {
 	metrics map[string]float64
-	// spread is the range of ns/op across runs relative to the median.
-	spread float64
+	spread  float64
 }
 
 var benchLine = regexp.MustCompile(`^Benchmark(\S+?)(-\d+)?\s+\d+\s+(.*)$`)
 
-// parse reads `go test -bench` output. Results are keyed by package path
-// relative to the module and benchmark name, e.g.
-// "internal/core|Pipeline/noop/records=1/resources=1/teams=1".
 func parse(output []byte) (map[string]result, metadata) {
 	runs := map[string][]map[string]float64{}
 	pkg, meta := "", metadata{}
@@ -276,7 +246,6 @@ func parse(output []byte) (map[string]result, metadata) {
 	return results, meta
 }
 
-// parseBenchLine returns the name and metrics of a benchmark result line.
 func parseBenchLine(line string) (string, map[string]float64, bool) {
 	m := benchLine.FindStringSubmatch(line)
 	if m == nil {
@@ -293,7 +262,6 @@ func parseBenchLine(line string) (string, map[string]float64, bool) {
 	return m[1], metrics, ok
 }
 
-// summarize takes the medians of all runs of a benchmark.
 func summarize(runs []map[string]float64) result {
 	r := result{metrics: map[string]float64{}}
 	for unit := range runs[0] {
@@ -351,7 +319,6 @@ func renderEnvironment(e env, count int, scenarioTime, componentTime string) str
 	return b.String()
 }
 
-// scenarioOrder lists the scenarios in the order they appear on the page.
 func scenarioOrder() []struct{ name, title string } {
 	return []struct{ name, title string }{
 		{"otlp-nats", "OTLP → NATS"},
@@ -429,7 +396,6 @@ func plural(n, one, many string) string {
 	return many
 }
 
-// sizingRows are the scenarios the sizing table is based on.
 func sizingRows() []struct{ label, name string } {
 	return []struct{ label, name string }{
 		{
@@ -469,24 +435,16 @@ func renderSizing(results map[string]result) string {
 	return b.String()
 }
 
-// scenarioNATSFilterNATS is the NATS forwarding scenario, which
-// BenchmarkScenario and BenchmarkStreams share.
 const scenarioNATSFilterNATS = "nats-filter-nats"
 
-// streamCounts are the stream counts of BenchmarkStreams.
 func streamCounts() []int {
 	return []int{10, 100, 1000}
 }
 
-// fleetBaseStreams is the measured stream count the fleet table projects
-// from; the largest one, where fixed costs of the process weigh least.
 const fleetBaseStreams = 1000
 
-// minStreamsForIdleCPU is the smallest stream count whose idle CPU stands out
-// from the noise of the process.
 const minStreamsForIdleCPU = 1000
 
-// streamsShapes lists the stream shapes of BenchmarkStreams in page order.
 func streamsShapes() []struct{ name, workers, title string } {
 	return []struct{ name, workers, title string }{
 		{scenarioNATSFilterNATS, "1", "NATS (1 worker) → cel_filter → NATS"},
@@ -514,7 +472,6 @@ func renderStreams(results map[string]result) string {
 			}
 			rows++
 			m := r.metrics
-			// The idle CPU of a few streams is below the noise of the process.
 			idleCPU := "–"
 			if n >= minStreamsForIdleCPU {
 				idleCPU = coreShare(m["idle-cpu-µs/s/stream"])
@@ -531,16 +488,12 @@ func renderStreams(results map[string]result) string {
 	return b.String()
 }
 
-// fleetSizes are the stream counts and replicas the fleet table projects.
 func fleetSizes() []struct{ streams, replicas int } {
 	return []struct{ streams, replicas int }{
 		{100, 1}, {100, 10}, {1000, 1}, {1000, 3}, {1000, 10},
 	}
 }
 
-// renderStreamsFleet projects the per-stream costs of the largest measured
-// count onto instances that each run every stream. The process costs apply
-// per replica; the NATS server sees the sum of all replicas.
 func renderStreamsFleet(results map[string]result) string {
 	var b strings.Builder
 	b.WriteString(
@@ -569,13 +522,10 @@ func renderStreamsFleet(results map[string]result) string {
 	return b.String()
 }
 
-// coreShare formats CPU time per second, given in µs/s, as a percentage of
-// one core.
 func coreShare(microsPerSecond float64) string {
 	return fmt.Sprintf("%.2g %%", microsPerSecond/million*percent)
 }
 
-// streamCount formats a number of streams with a thousands separator.
 func streamCount(n int) string {
 	if n < thousand {
 		return strconv.Itoa(n)
@@ -585,7 +535,6 @@ func streamCount(n int) string {
 
 type component struct{ label, pkg, name string }
 
-// Packages of the component benchmarks.
 const (
 	pkgCore         = "internal/core"
 	pkgDomain       = "internal/core/domain"
@@ -598,8 +547,6 @@ const (
 	pkgCELValidator = "internal/adapters/stage/celvalidator"
 )
 
-// perRecordComponents are measured with batches of 1,000 records from 10
-// services, so their cost is shown per record.
 func perRecordComponents() []component {
 	return []component{
 		{
@@ -663,7 +610,6 @@ func perRecordComponents() []component {
 	}
 }
 
-// perEventComponents do not depend on the payload size.
 func perEventComponents() []component {
 	return []component{
 		{
@@ -702,7 +648,6 @@ func renderComponents(results map[string]result, components []component, perReco
 		}
 		ns, allocs := r.metrics["ns/op"], r.metrics["allocs/op"]
 		if c.name == "Pipeline/noop/records=1/resources=1/teams=1" {
-			// The noop scenario includes the source's own hop; subtract it.
 			if direct, found := results[c.pkg+"|Pipeline/direct/records=1/resources=1/teams=1"]; found {
 				ns -= direct.metrics["ns/op"]
 				allocs -= direct.metrics["allocs/op"]
@@ -780,7 +725,6 @@ func millis(metrics map[string]float64, unit string) string {
 	return fmt.Sprintf("%.2f ms", v)
 }
 
-// spread flags results whose runs differ by more than spreadWarning percent.
 func spread(percentage float64) string {
 	if percentage > spreadWarning {
 		return fmt.Sprintf("±%.0f%% ⚠️", percentage)

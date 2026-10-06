@@ -45,8 +45,6 @@ func stringAttr(key, value string) *commonpb.KeyValue {
 	}
 }
 
-// customerLogs builds one resource and one scope with a record per customer,
-// like a client that sends logs of several customers in one request.
 func customerLogs(customers ...string) *domain.Event {
 	sl := &logspb.ScopeLogs{}
 	for _, c := range customers {
@@ -132,8 +130,6 @@ func TestNew(t *testing.T) {
 	}
 }
 
-// The use case that motivated the stage: records of several customers in one
-// resource and scope are split into one branch per customer.
 func TestSplitCustomersFromOneScope(t *testing.T) {
 	t.Parallel()
 
@@ -257,7 +253,6 @@ func TestNotify(t *testing.T) {
 	}
 }
 
-// TestDocumentedExamples keeps the examples in COMPONENTS.md working.
 func TestDocumentedExamples(t *testing.T) {
 	t.Parallel()
 

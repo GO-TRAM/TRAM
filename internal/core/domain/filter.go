@@ -9,21 +9,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// The Filter functions return a payload with only the records keep accepts,
-// at the lowest level of each signal: log records, metric data points and
-// spans.
-//
-// Events are shared and read-only, so the input is never modified. Records
-// are shared with the input, and only the containers above removed records
-// are rebuilt. Parts in which every record is kept are reused, so a filter
-// that keeps everything returns its input without allocating. Containers left
-// without records are removed, and nil is returned if no record is kept.
-
 type LogFilter func(resource *resourcepb.Resource, scope *commonpb.InstrumentationScope, record *logspb.LogRecord) (bool, error)
 
-// MetricFilter decides per data point. dataPoint is one of
-// *metricspb.NumberDataPoint, *metricspb.HistogramDataPoint,
-// *metricspb.ExponentialHistogramDataPoint or *metricspb.SummaryDataPoint.
 type MetricFilter func(resource *resourcepb.Resource, scope *commonpb.InstrumentationScope, metric *metricspb.Metric, dataPoint proto.Message) (bool, error)
 
 type SpanFilter func(resource *resourcepb.Resource, scope *commonpb.InstrumentationScope, span *tracepb.Span) (bool, error)
@@ -162,8 +149,6 @@ func FilterMetrics(data *metricspb.MetricsData, keep MetricFilter) (*metricspb.M
 	return &metricspb.MetricsData{ResourceMetrics: resources}, nil
 }
 
-// filterDataPoints returns the metric with only the data points keep accepts,
-// or nil if none is kept. Metrics without data points are kept unchanged.
 func filterDataPoints(m *metricspb.Metric, keep func(proto.Message) (bool, error)) (*metricspb.Metric, error) {
 	switch data := m.GetData().(type) {
 	case *metricspb.Metric_Gauge:
@@ -220,7 +205,6 @@ func filterDataPoints(m *metricspb.Metric, keep func(proto.Message) (bool, error
 	return m, nil
 }
 
-// withoutData copies the metric's metadata for a metric with fewer data points.
 func withoutData(m *metricspb.Metric) *metricspb.Metric {
 	return &metricspb.Metric{
 		Name:        m.GetName(),
@@ -239,8 +223,6 @@ func pruneDataPoints[T interface {
 	})
 }
 
-// keepIf turns a keep decision into prune's convention: the element itself to
-// keep it, the zero value (nil) to drop it.
 func keepIf[T any](v T) func(bool, error) (T, error) {
 	return func(keep bool, err error) (T, error) {
 		var zero T
@@ -251,9 +233,6 @@ func keepIf[T any](v T) func(bool, error) (T, error) {
 	}
 }
 
-// prune rebuilds in from what f returns for each element: the element itself
-// or a reduced copy to keep, or the zero value to drop it. If every element is
-// kept as it is, in is returned with unchanged set, so nothing is copied.
 func prune[T comparable](in []T, f func(T) (T, error)) ([]T, bool, error) {
 	var zero T
 	var out []T

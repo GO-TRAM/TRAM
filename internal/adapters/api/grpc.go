@@ -64,8 +64,6 @@ func (s streamServer) ListStreams(ctx context.Context, _ *v1.ListStreamsRequest)
 	return &v1.ListStreamsResponse{Streams: mmap(streams, streamSpecToPBStream)}, nil
 }
 
-// toStatus maps core errors to gRPC status codes, which the gateway turns
-// into the matching HTTP status.
 func toStatus(err error) error {
 	switch {
 	case errors.Is(err, domain.ErrStreamNotFound):
@@ -79,8 +77,6 @@ func toStatus(err error) error {
 	}
 }
 
-// statusOf converts err with toStatus and logs errors the client cannot act
-// on.
 func (s streamServer) statusOf(ctx context.Context, err error) error {
 	st := toStatus(err)
 	if status.Code(st) == codes.Internal {

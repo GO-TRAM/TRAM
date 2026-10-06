@@ -10,15 +10,11 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
-// BenchmarkCELValidator measures expression evaluation for different
-// expression shapes and payload sizes. The stage has no subscribers, so only
-// evaluation is measured.
 func BenchmarkCELValidator(b *testing.B) {
 	expressions := []struct {
 		name string
 		logs string
 	}{
-		// The empty expression compiles to "true" and is the lower bound.
 		{name: "empty", logs: ""},
 		{
 			name: "resource-attribute",
@@ -28,7 +24,6 @@ func BenchmarkCELValidator(b *testing.B) {
 			name: "record-attribute",
 			logs: "logs.resource_logs.all(r, r.scope_logs.all(s, s.log_records.all(l, l.attributes.exists(a, a.key == 'team'))))",
 		},
-		// Fails on the first record, so it shows the cost of dropping early.
 		{
 			name: "record-attribute-drop",
 			logs: "logs.resource_logs.all(r, r.scope_logs.all(s, s.log_records.all(l, l.attributes.exists(a, a.key == 'missing'))))",

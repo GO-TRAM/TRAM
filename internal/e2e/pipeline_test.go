@@ -22,14 +22,9 @@ func batchStage(maxRecords int, timeout string) domain.StageSpec {
 	}}
 }
 
-// Concurrent requests fill one batch, which arrives as one event with every
-// record in its original resource and scope.
 func TestBatchMergesConcurrentRequests(t *testing.T) {
 	t.Parallel()
 
-	// The timeout is long enough that only reaching max_records flushes the
-	// batch, and below the OTLP source's delivery_timeout, which a stream may
-	// not reach.
 	p := newPipeline(t, []domain.StageSpec{batchStage(6, "5s")}, []domain.SinkSpec{captureSinkSpec("out", "batch")})
 
 	codes := p.postConcurrently(t,
@@ -65,7 +60,6 @@ func TestBatchFlushesAfterTimeout(t *testing.T) {
 	assert.Equal(t, []string{"checkout/e2e/c1"}, arrived(p.sinks.sink(t, "out").received()))
 }
 
-// A client that gives up before the batch is flushed withdraws its records.
 func TestCancelledRequestIsNotDelivered(t *testing.T) {
 	t.Parallel()
 
@@ -79,7 +73,7 @@ func TestCancelledRequestIsNotDelivered(t *testing.T) {
 	var cancelled, kept int
 	wg.Go(func() { cancelled = p.post(t, request("checkout", rec{"gone", "A"}), 100*time.Millisecond) })
 	wg.Go(func() {
-		time.Sleep(20 * time.Millisecond) // join the batch after the first request
+		time.Sleep(20 * time.Millisecond)
 		kept = p.post(t, request("cart", rec{"stays", "A"}), 10*time.Second)
 	})
 	wg.Wait()
@@ -89,8 +83,6 @@ func TestCancelledRequestIsNotDelivered(t *testing.T) {
 	assert.Equal(t, []string{"cart/e2e/stays"}, arrived(p.sinks.sink(t, "out").received()))
 }
 
-// Records of several customers in one resource and scope are split so that
-// every record arrives in exactly one branch.
 func TestSplitByCustomer(t *testing.T) {
 	t.Parallel()
 
@@ -130,7 +122,6 @@ func TestSplitWithoutMatchesDeliversNothing(t *testing.T) {
 	assert.Empty(t, p.sinks.sink(t, "sink-a").received(), "a branch without matching records receives no event")
 }
 
-// The recommended layout: merge requests first, then split the batch.
 func TestBatchThenSplit(t *testing.T) {
 	t.Parallel()
 
@@ -159,8 +150,6 @@ func TestBatchThenSplit(t *testing.T) {
 	assert.ElementsMatch(t, []string{"checkout/e2e/c2", "cart/e2e/k1"}, arrived(toRest))
 }
 
-// Clients learn whether their data was delivered: rejections and permanent
-// sink errors are 400, temporary sink errors 503.
 func TestDeliveryResultReachesClient(t *testing.T) {
 	t.Parallel()
 
@@ -208,8 +197,7 @@ func TestDeliveryResultReachesClient(t *testing.T) {
 				From: "in",
 				Spec: map[string]any{"fail": "temporary"},
 			},
-			payload: request("shop", rec{"r1", "A"}),
-			// Retryable for OTLP clients, unlike 500.
+			payload:  request("shop", rec{"r1", "A"}),
 			expected: http.StatusServiceUnavailable,
 		},
 	}
@@ -229,8 +217,6 @@ func TestDeliveryResultReachesClient(t *testing.T) {
 	}
 }
 
-// Replacing the sinks of a stream while clients keep sending loses and
-// duplicates nothing, and the OTLP port stays open.
 func TestUpdateUnderLoadKeepsEveryRecord(t *testing.T) {
 	t.Parallel()
 

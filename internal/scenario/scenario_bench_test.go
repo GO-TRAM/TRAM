@@ -28,19 +28,13 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
-// signalHeader must match the header of Tram's NATS sink and source.
 const signalHeader = "Tram-Signal"
 
-// scenario is a pipeline benchmarked end to end.
 type scenario struct {
-	name string
-	// source is "otlp" (requests over HTTP) or "nats" (messages in JetStream).
+	name   string
 	source string
-	// teams is the number of distinct "team" attribute values in the payload.
-	teams int
-	// stages and sinks hang off the source named "in". Sinks get their output
-	// stream from the env.
-	build func(e *env) ([]domain.StageSpec, []domain.SinkSpec)
+	teams  int
+	build  func(e *env) ([]domain.StageSpec, []domain.SinkSpec)
 }
 
 func scenarios() []scenario {
@@ -93,8 +87,6 @@ func scenarios() []scenario {
 	}
 }
 
-// The batch stage is configured to flush 1,000 records or after 10ms, so
-// single callers do not wait for the 200ms default timeout.
 const (
 	batchMaxRecords = 1000
 	batchTimeout    = "10ms"
@@ -112,12 +104,6 @@ func shapes() []otlpgen.Shape {
 	}
 }
 
-// BenchmarkScenario runs every scenario for every concurrency and payload
-// size. One iteration is one OTLP request or one NATS message. Besides
-// throughput, it reports the process's CPU time per record, which includes
-// the HTTP client generating the load, and request latencies.
-//
-// Requires Docker or Podman; skipped otherwise.
 func BenchmarkScenario(b *testing.B) {
 	natsURL := natstest.Start(b)
 
@@ -151,8 +137,6 @@ func BenchmarkScenario(b *testing.B) {
 	}
 }
 
-// env gives each benchmark run its own NATS streams, so runs do not see each
-// other's messages.
 type env struct {
 	b       *testing.B
 	natsURL string
@@ -161,7 +145,6 @@ type env struct {
 	streams []string
 }
 
-// newEnv numbers the environments with runs, so their stream names are unique.
 func newEnv(b *testing.B, natsURL string, js jetstream.JetStream, runs *atomic.Int64) *env {
 	e := &env{b: b, natsURL: natsURL, js: js, prefix: fmt.Sprintf("bench%d", runs.Add(1))}
 	b.Cleanup(func() {
@@ -178,7 +161,6 @@ func (e *env) stream(suffix string) string {
 	return name
 }
 
-// natsSink publishes to its own stream, one subject per service.
 func (e *env) natsSink(name, from string) domain.SinkSpec {
 	stream := e.stream(name)
 	return domain.SinkSpec{Name: name, Type: "nats", From: from, Spec: map[string]any{
@@ -196,7 +178,6 @@ func (e *env) natsSink(name, from string) domain.SinkSpec {
 	}}
 }
 
-// startStream builds the stream through the core, like `tram server` does.
 func startStream(b *testing.B, in domain.SourceSpec, stages []domain.StageSpec, sinks []domain.SinkSpec) {
 	logger := slog.New(slog.DiscardHandler)
 	c := core.New(context.Background(), logger, source.NewFactory(logger), stage.NewFactory(), sink.NewFactory(logger))
@@ -241,7 +222,7 @@ func benchmarkOTLP(b *testing.B, e *env, sc scenario, shape otlpgen.Shape, concu
 		}
 		return time.Since(start), nil
 	}
-	if _, sendErr := send(); sendErr != nil { // warm-up, also waits for the server
+	if _, sendErr := send(); sendErr != nil {
 		b.Fatal(sendErr)
 	}
 
@@ -295,8 +276,6 @@ func benchmarkNATS(b *testing.B, e *env, sc scenario, shape otlpgen.Shape, concu
 
 	stages, sinks := sc.build(e)
 	output := e.streams[len(e.streams)-1]
-	// Every message has one subject per service, so the sink publishes one
-	// message per resource.
 	want := uint64(b.N * shape.Resources)
 
 	b.ReportAllocs()
@@ -318,8 +297,6 @@ func benchmarkNATS(b *testing.B, e *env, sc scenario, shape otlpgen.Shape, concu
 	report(b, shape, cpu)
 }
 
-// report adds throughput and CPU time per record. records/s/core is how many
-// records one fully used CPU core can process.
 func report(b *testing.B, shape otlpgen.Shape, cpu time.Duration) {
 	records := float64(shape.Records * b.N)
 	b.ReportMetric(records/b.Elapsed().Seconds(), "records/s")
@@ -328,7 +305,6 @@ func report(b *testing.B, shape otlpgen.Shape, cpu time.Duration) {
 	b.ReportMetric(records/cpu.Seconds(), "records/s/core")
 }
 
-// cpuTime returns the user and system CPU time the process has used.
 func cpuTime() time.Duration {
 	var usage syscall.Rusage
 	_ = syscall.Getrusage(syscall.RUSAGE_SELF, &usage)
@@ -351,8 +327,6 @@ func freePort(b *testing.B) int {
 	return l.Addr().(*net.TCPAddr).Port
 }
 
-// publish stores n copies of payload in the stream, the way Tram's NATS sink
-// writes them.
 func publish(b *testing.B, js jetstream.JetStream, subject string, signal domain.Signal, payload []byte, n int) {
 	b.Helper()
 	acks := make([]jetstream.PubAckFuture, 0, n)
@@ -376,7 +350,6 @@ func publish(b *testing.B, js jetstream.JetStream, subject string, signal domain
 	}
 }
 
-// waitForMessages polls the stream until it holds want messages.
 func waitForMessages(b *testing.B, js jetstream.JetStream, stream string, want uint64) {
 	b.Helper()
 	ctx := context.Background()

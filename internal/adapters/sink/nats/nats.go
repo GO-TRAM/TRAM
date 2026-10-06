@@ -27,25 +27,19 @@ import (
 const (
 	Type = "nats"
 
-	// SignalHeader carries the domain.Signal of the published payload. It must
-	// match the header the nats source reads.
 	SignalHeader = "Tram-Signal"
 
-	// Names of the variables the subject expressions see.
 	logsVariable    = "logs"
 	metricsVariable = "metrics"
 	tracesVariable  = "traces"
 
-	// Names of the shortcut variables for direct access to current context.
 	resourceVariable = "resource"
 	scopeVariable    = "scope"
 	recordVariable   = "record"
 
-	// Signal-specific entry variable names for consistency with CEL_FILTER.
 	metricVariable = "metric"
 	spanVariable   = "span"
 
-	// getAttrArguments are the receiver and the key of get_attr.
 	getAttrArguments = 2
 )
 
@@ -59,7 +53,6 @@ type NATS struct {
 	stream    jetstream.Stream
 }
 
-// subjects holds the compiled subject expressions per signal type.
 type subjects struct {
 	logs    cel.Program
 	metrics cel.Program
@@ -72,8 +65,6 @@ func New(sink domain.SinkSpec, validator *validator.Validate, logger *slog.Logge
 		return nil, err
 	}
 
-	// Compiled before connecting, so invalid expressions fail without
-	// touching NATS.
 	compiled, err := compileSubjects(base.Spec().Subject)
 	if err != nil {
 		return nil, err
@@ -171,8 +162,6 @@ func compileSubjects(subject SubjectSpec) (subjects, error) {
 	return compiled, nil
 }
 
-// getAttr implements get_attr: the string value of the attribute with the
-// given key, or "" if there is none.
 func getAttr(args ...ref.Val) ref.Val {
 	if len(args) != getAttrArguments {
 		return types.NewErr("get_attr expects exactly 2 arguments")

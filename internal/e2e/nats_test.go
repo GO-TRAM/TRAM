@@ -19,12 +19,8 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
-// signalHeader must match the header of Tram's NATS sink and source.
 const signalHeader = "Tram-Signal"
 
-// TestNATS runs pipelines against a NATS server in a container and checks what
-// actually ends up in JetStream. All subtests share the container and use
-// their own streams. Requires Docker or Podman; skipped otherwise.
 func TestNATS(t *testing.T) {
 	t.Parallel()
 
@@ -34,8 +30,6 @@ func TestNATS(t *testing.T) {
 		t.Parallel()
 
 		out := n.stream("out")
-		// Only reaching max_records flushes the batch; the timeout just has to
-		// stay below the source's delivery timeout.
 		p := newPipeline(t,
 			[]domain.StageSpec{batchStage(6, "5s")},
 			[]domain.SinkSpec{n.sinkByService("out", "batch", out)})
@@ -88,9 +82,6 @@ func TestNATS(t *testing.T) {
 		)
 	})
 
-	// Two sinks share a JetStream stream that was set up beforehand. Each adds
-	// its subjects, and neither removes the other's or resets the stream's
-	// limits.
 	t.Run("sinks share a stream set up beforehand", func(t *testing.T) {
 		t.Parallel()
 
@@ -131,8 +122,6 @@ func TestNATS(t *testing.T) {
 		assert.Equal(t, time.Hour, config.MaxAge, "limits set beforehand are kept")
 	})
 
-	// A sink creates a missing stream with its retention, size and
-	// compression, and messages published to it read back unchanged.
 	t.Run("sink creates a compressed stream with limits", func(t *testing.T) {
 		t.Parallel()
 
@@ -160,8 +149,6 @@ func TestNATS(t *testing.T) {
 		assert.Equal(t, int64(1<<30), config.MaxBytes)
 	})
 
-	// What Tram's NATS sink publishes is consumed by Tram's NATS source in a
-	// second stream, filtered there, and arrives with resource and scope.
 	t.Run("sink to source round trip", func(t *testing.T) {
 		t.Parallel()
 
@@ -187,8 +174,6 @@ func TestNATS(t *testing.T) {
 		assert.ElementsMatch(t, []string{"shop/e2e/r1", "shop/e2e/r3", "cart/e2e/k2"}, arrived(received.received()))
 	})
 
-	// Logs, metrics and traces keep their type through NATS. Decoding them
-	// without the signal header used to turn everything into logs.
 	t.Run("signal types survive the round trip", func(t *testing.T) {
 		t.Parallel()
 
@@ -207,14 +192,12 @@ func TestNATS(t *testing.T) {
 		require.Equal(t, http.StatusOK, ingest.postTo(t, "/v1/metrics", otlpgen.Metrics(shape), 10*time.Second))
 		require.Equal(t, http.StatusOK, ingest.postTo(t, "/v1/traces", otlpgen.Traces(shape), 10*time.Second))
 
-		// The JetStream messages carry the signal type.
 		var headers []string
 		for _, m := range n.read(t, mid) {
 			headers = append(headers, m.Subject+"="+m.Header.Get(signalHeader))
 		}
 		assert.ElementsMatch(t, []string{mid + ".logs=logs", mid + ".metrics=metrics", mid + ".traces=traces"}, headers)
 
-		// The source decodes each message as its own signal type.
 		received := forward.sinks.sink(t, "received")
 		require.Eventually(t, func() bool { return len(received.received()) == 3 }, 10*time.Second, 10*time.Millisecond)
 		var signals []string
@@ -245,10 +228,6 @@ func TestNATS(t *testing.T) {
 		assert.ElementsMatch(t, []string{"logs", "metrics", "traces"}, signals)
 	})
 
-	// The source handles up to workers messages at the same time, so a batch
-	// stage after it fills up with that many messages instead of one per fetch
-	// loop. Here 300 messages fill one batch long before its timeout, and all
-	// of them are acknowledged once it is delivered.
 	t.Run("workers fill a batch", func(t *testing.T) {
 		t.Parallel()
 
@@ -287,10 +266,6 @@ func TestNATS(t *testing.T) {
 		}, 10*time.Second, 10*time.Millisecond, "the messages were not acknowledged")
 	})
 
-	// The source fetches only as many messages as it can handle right away,
-	// so JetStream never has more unacknowledged messages out than workers:
-	// none waits for a worker while its ack wait runs. With fetches of a fixed
-	// size per worker, most of them used to.
 	t.Run("no fetched message waits for a worker", func(t *testing.T) {
 		t.Parallel()
 
@@ -311,12 +286,9 @@ func TestNATS(t *testing.T) {
 
 		in := n.sourceSpec(mid)
 		in.Spec["workers"] = float64(workers)
-		// The batch never fills, so every round of messages waits for the
-		// timeout, while their ack wait runs.
 		_ = newStream(t, in, []domain.StageSpec{batchStage(messages+1, "200ms")},
 			[]domain.SinkSpec{captureSinkSpec("received", "batch")})
 
-		// The source creates its consumer once it runs.
 		var cons jetstream.Consumer
 		require.Eventually(t, func() bool {
 			cons, err = n.js.Consumer(t.Context(), mid, mid)
@@ -335,24 +307,19 @@ func TestNATS(t *testing.T) {
 		assert.LessOrEqual(t, highest, workers, "more messages were out than workers could handle")
 	})
 
-	// Stopping waits for messages being processed, not for a pending fetch.
-	// It used to take the full fetch timeout of 5 seconds, holding up every
-	// other change to the core.
 	t.Run("stopping an idle source is fast", func(t *testing.T) {
 		t.Parallel()
 
 		mid := n.stream("idle")
-		_ = newPipeline(t, nil, []domain.SinkSpec{n.sinkByService("out", "in", mid)}) // creates the JetStream stream
+		_ = newPipeline(t, nil, []domain.SinkSpec{n.sinkByService("out", "in", mid)})
 		forward := newStream(t, n.sourceSpec(mid), nil, []domain.SinkSpec{captureSinkSpec("received", "in")})
-		time.Sleep(500 * time.Millisecond) // the source is now waiting in a fetch
+		time.Sleep(500 * time.Millisecond)
 
 		start := time.Now()
 		require.NoError(t, forward.core.DeleteStream(context.Background(), "e2e"))
 		assert.Less(t, time.Since(start), time.Second)
 	})
 
-	// A subject outside the stream's register cannot be published; the client
-	// is told the data was not delivered.
 	t.Run("publish failure reaches the client", func(t *testing.T) {
 		t.Parallel()
 
@@ -373,7 +340,6 @@ func TestNATS(t *testing.T) {
 	})
 }
 
-// natsServer is a NATS server in a container with a JetStream client.
 type natsServer struct {
 	url     string
 	js      jetstream.JetStream
@@ -391,7 +357,6 @@ func startNATS(t *testing.T) *natsServer {
 	return &natsServer{url: url, js: js}
 }
 
-// stream returns a stream name not used by any other subtest.
 func (n *natsServer) stream(name string) string {
 	return fmt.Sprintf("e2e%d-%s", n.streams.Add(1), name)
 }
@@ -401,14 +366,12 @@ func (n *natsServer) sinkSpec(stream string, subjects map[string]any) map[string
 	return map[string]any{"url": n.url, "stream": stream, "subject": subjects}
 }
 
-// sinkByService publishes logs to "<stream>.<service.name>".
 func (n *natsServer) sinkByService(name, from, stream string) domain.SinkSpec {
 	return domain.SinkSpec{Name: name, Type: "nats", From: from, Spec: n.sinkSpec(stream, map[string]any{
 		"logs": fmt.Sprintf("'%s.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')", stream),
 	})}
 }
 
-// sourceSpec consumes everything published to the stream.
 func (n *natsServer) sourceSpec(stream string) domain.SourceSpec {
 	return domain.SourceSpec{Name: "in", Type: "nats", Spec: map[string]any{
 		"url":     n.url,
@@ -418,8 +381,6 @@ func (n *natsServer) sourceSpec(stream string) domain.SourceSpec {
 	}}
 }
 
-// read returns every message in the stream, in order. A stream that was never
-// created counts as empty.
 func (n *natsServer) read(t *testing.T, name string) []*jetstream.RawStreamMsg {
 	t.Helper()
 	ctx := context.Background()
@@ -439,8 +400,6 @@ func (n *natsServer) read(t *testing.T, name string) []*jetstream.RawStreamMsg {
 	return messages
 }
 
-// bySubject decodes log messages the way Tram's NATS source does and lists
-// their records per subject.
 func bySubject(t *testing.T, messages []*jetstream.RawStreamMsg) map[string][]string {
 	t.Helper()
 	out := map[string][]string{}

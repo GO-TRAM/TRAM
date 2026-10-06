@@ -37,12 +37,8 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*Delay, error) 
 	}, nil
 }
 
-// MaxHold returns the delay.
 func (d *Delay) MaxHold() time.Duration { return d.delay }
 
-// Notify holds the event back for the configured delay before passing it on.
-// Waiting is the purpose of this stage, so it blocks the caller, but it gives
-// up as soon as ctx is done or the stage is stopped.
 func (d *Delay) Notify(ctx context.Context, event *domain.Event) error {
 	timer := time.NewTimer(d.delay)
 	defer timer.Stop()

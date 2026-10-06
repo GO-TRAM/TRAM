@@ -18,18 +18,13 @@ import (
 const (
 	Type = "batch"
 
-	// The defaults match the OpenTelemetry Collector's batch processor.
 	defaultMaxRecords = 8192
 	defaultTimeout    = 200 * time.Millisecond
 )
 
-// Batch merges events from concurrent callers into one event.
-//
-// Notify blocks until the batch holding the event has been delivered and
-// returns the delivery result. Sources therefore still ack or reject exactly
-// what was delivered, and a slow downstream slows the sources down instead of
-// growing the buffer. Batching only helps when events arrive concurrently,
-// e.g. from parallel OTLP requests or several NATS workers.
+// Batch blocks Notify until the batch holding the event has been delivered, so
+// sources ack exactly what was delivered and a slow downstream slows them down
+// instead of growing a buffer.
 type Batch struct {
 	*base.Stage[Spec]
 
@@ -39,19 +34,14 @@ type Batch struct {
 	mu      sync.Mutex
 	current *batch
 	stopped bool
-	// flushes tracks pending timers and running flushes, so Stop can wait
-	// for them.
 	flushes sync.WaitGroup
 }
 
-// batch is guarded by Batch.mu until it is sealed.
 type batch struct {
 	entries []*entry
 	records int
-	// sealed is set when the flush starts; no event is added or withdrawn
-	// afterwards.
-	sealed bool
-	timer  *time.Timer
+	sealed  bool
+	timer   *time.Timer
 }
 
 type entry struct {
@@ -59,9 +49,8 @@ type entry struct {
 	event     *domain.Event
 	records   int
 	cancelled bool
-	// done is closed once the batch has been delivered; err holds the result.
-	done chan struct{}
-	err  error
+	done      chan struct{}
+	err       error
 }
 
 func New(stage domain.StageSpec, validator *validator.Validate) (*Batch, error) {
@@ -93,13 +82,8 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*Batch, error) 
 	}, nil
 }
 
-// MaxHold returns the timeout.
 func (b *Batch) MaxHold() time.Duration { return b.timeout }
 
-// Notify adds the event to the current batch and waits for its delivery. If
-// ctx is cancelled before the batch flushes, the event is withdrawn and not
-// delivered. Once the flush has started the event is part of it, so Notify
-// waits for the result instead.
 func (b *Batch) Notify(ctx context.Context, event *domain.Event) error {
 	records := event.RecordCount()
 	if records == 0 {
@@ -124,15 +108,11 @@ func (b *Batch) Notify(ctx context.Context, event *domain.Event) error {
 	current.records += records
 	full := current.records >= b.maxRecords
 	if full {
-		// Detach the batch right away, so no caller joins it before the
-		// flush below seals it.
 		b.current = nil
 		b.flushes.Add(1)
 	}
 	b.mu.Unlock()
 
-	// The caller that fills the batch delivers it, which needs no extra
-	// goroutine and lets backpressure reach the source directly.
 	if full {
 		b.flush(current)
 		b.flushes.Done()
@@ -159,8 +139,6 @@ func (b *Batch) Notify(ctx context.Context, event *domain.Event) error {
 	return e.err
 }
 
-// newBatch opens a batch that flushes after the timeout. Must be called with
-// b.mu held.
 func (b *Batch) newBatch() *batch {
 	current := &batch{}
 	b.current = current
@@ -172,8 +150,6 @@ func (b *Batch) newBatch() *batch {
 	return current
 }
 
-// flush seals the batch and delivers its remaining events. Only the first
-// call for a batch delivers it; later calls return immediately.
 func (b *Batch) flush(current *batch) {
 	b.mu.Lock()
 	if current.sealed {
@@ -185,7 +161,6 @@ func (b *Batch) flush(current *batch) {
 		b.current = nil
 	}
 	if current.timer.Stop() {
-		// The timer will not fire anymore, so release its slot.
 		b.flushes.Done()
 	}
 
@@ -212,8 +187,6 @@ func (b *Batch) flush(current *batch) {
 	}
 }
 
-// Stop delivers the open batch and waits for running flushes. Events arriving
-// afterwards are rejected with ErrBatchStopped.
 func (b *Batch) Stop() error {
 	b.mu.Lock()
 	b.stopped = true
@@ -227,10 +200,6 @@ func (b *Batch) Stop() error {
 	return b.Stage.Stop()
 }
 
-// merge combines the events into one by concatenating their resource entries
-// per signal. Resources and scopes that appear in several events are not
-// merged, which OTLP allows. The inputs are shared with other branches, so
-// they are only referenced, never modified.
 func merge(entries []*entry) *domain.Event {
 	if len(entries) == 1 {
 		return entries[0].event

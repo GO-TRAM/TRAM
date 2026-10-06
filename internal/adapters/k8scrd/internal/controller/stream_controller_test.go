@@ -17,7 +17,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
-// fakeCore stores streams in memory and counts upserts, which restart streams.
 type fakeCore struct {
 	streams map[string]domain.StreamSpec
 	upserts int
@@ -49,7 +48,6 @@ func (c *fakeCore) GetStreams(context.Context) ([]domain.StreamSpec, error) { re
 
 func (c *fakeCore) Watch(context.Context, chan domain.StreamSpecWatchEvent) error { return nil }
 
-// newStream returns a stream named "s" in namespace.
 func newStream(namespace string) *tramv1.Stream {
 	return &tramv1.Stream{
 		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "s"},
@@ -83,7 +81,6 @@ func newReconciler(t *testing.T, objs ...*tramv1.Stream) (*controller.StreamReco
 	return &controller.StreamReconciler{Client: builder.Build(), Scheme: scheme, Core: core}, core
 }
 
-// request returns a request for the stream named "s" in namespace.
 func request(namespace string) ctrl.Request {
 	return ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: "s"}}
 }
@@ -130,7 +127,6 @@ func TestReconcileKeepsNamespacesApart(t *testing.T) {
 	assert.NotContains(t, core.streams, "a.s")
 	assert.Contains(t, core.streams, "b.s")
 
-	// A repeated delete of a stream the core no longer knows is not an error.
 	_, err = r.Reconcile(t.Context(), request("a"))
 	assert.NoError(t, err)
 }

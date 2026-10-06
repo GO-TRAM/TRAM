@@ -9,7 +9,6 @@ import (
 )
 
 func main() {
-	// The level is set from the --log-level flag once it is parsed.
 	level := &slog.LevelVar{}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 	if err := newRootCmd(logger, level).Execute(); err != nil {

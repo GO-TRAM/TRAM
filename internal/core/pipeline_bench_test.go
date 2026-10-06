@@ -16,8 +16,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
-// benchSource uses the real source base for fan-out but is driven by the
-// benchmark instead of producing events itself.
 type benchSource struct {
 	*sourcebase.Source[struct{}]
 
@@ -41,8 +39,6 @@ type benchSourceFactory struct{ src *benchSource }
 
 func (f benchSourceFactory) New(domain.SourceSpec) (domain.Source, error) { return f.src, nil }
 
-// countingSink counts delivered log records, like a cheap real sink would
-// have to inspect the payload.
 type countingSink struct {
 	name, from string
 	records    *atomic.Int64
@@ -71,8 +67,6 @@ func (f countingSinkFactory) New(spec domain.SinkSpec) (domain.Sink, error) {
 	return &countingSink{name: spec.Name, from: spec.From, records: f.records}, nil
 }
 
-// topology describes the stages and sinks between the source "in" and the
-// sinks. Stages are chained in order; all sinks hang off the last stage.
 type topology struct {
 	name   string
 	stages []domain.StageSpec
@@ -122,8 +116,6 @@ func (t topology) spec() domain.StreamSpec {
 	return spec
 }
 
-// BenchmarkPipeline measures a whole stream built by the core with real
-// stages, reporting throughput in records/s so payload sizes are comparable.
 func BenchmarkPipeline(b *testing.B) {
 	for _, topo := range topologies() {
 		for _, shape := range otlpgen.Shapes() {
@@ -134,8 +126,6 @@ func BenchmarkPipeline(b *testing.B) {
 	}
 }
 
-// pipeline runs one BenchmarkPipeline case: it builds spec and checks that its
-// sinks together receive every record once per sink.
 func pipeline(b *testing.B, spec domain.StreamSpec, sinks int, shape otlpgen.Shape) {
 	src := &benchSource{shutdown: make(chan struct{})}
 	base, err := sourcebase.New[struct{}]("in", nil, validator.New())

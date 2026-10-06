@@ -9,8 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A driver that cannot start stops the server, instead of leaving it running
-// without the driver until it is signalled.
 func TestRunServerStopsWhenDriverFails(t *testing.T) {
 	t.Parallel()
 

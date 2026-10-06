@@ -14,8 +14,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
-// keepRatios decide by the record's team. Payloads alternate between two
-// teams, so "half" removes every second record and rebuilds every container.
 func keepRatios() []struct {
 	name string
 	keep func(team string) bool
@@ -30,8 +28,6 @@ func keepRatios() []struct {
 	}
 }
 
-// BenchmarkFilter measures the record filtering helpers with plain Go
-// predicates, i.e. what cel_filter costs without evaluating CEL.
 func BenchmarkFilter(b *testing.B) {
 	for _, ratio := range keepRatios() {
 		for _, shape := range otlpgen.Shapes() {

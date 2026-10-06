@@ -114,8 +114,6 @@ func (n *CELValidator) validate(
 		varName: data,
 	})
 
-	// Evaluating the same event again fails the same way, so errors reject
-	// the event instead of asking for a retry.
 	if err != nil {
 		return fmt.Errorf("%w: %w: %w", domain.ErrEventRejected, ErrCELEvaluation, err)
 	}
@@ -145,8 +143,6 @@ func (n *CELValidator) Notify(ctx context.Context, event *domain.Event) error {
 		return ErrCELEnvironmenInitialization
 	}
 
-	// The incoming event is shared with sibling branches, so drops are applied
-	// to a shallow copy.
 	copied := *event
 	event = &copied
 

@@ -18,8 +18,6 @@ func (noopSubscriber) From() string                                { return "sta
 func (noopSubscriber) Stop() error                                 { return nil }
 func (noopSubscriber) Notify(context.Context, *domain.Event) error { return nil }
 
-// BenchmarkNotifySubscribers measures the per-event cost of fanning out to
-// children, including extending the path in the context.
 func BenchmarkNotifySubscribers(b *testing.B) {
 	event := &domain.Event{}
 	ctx := context.WithValue(context.Background(), domain.ContextKeyPath, "source")

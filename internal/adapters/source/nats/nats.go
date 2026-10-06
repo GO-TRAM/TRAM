@@ -19,23 +19,14 @@ import (
 const (
 	Type = "nats"
 
-	// SignalHeader carries the domain.Signal of a consumed payload. It must
-	// match the header the nats sink writes.
 	SignalHeader = "Tram-Signal"
 
-	// redeliveryDelay keeps a failing downstream from being hammered with the
-	// same message.
 	redeliveryDelay = 5 * time.Second
 )
 
 const (
-	// fetchTimeout bounds how long one fetch waits for messages. Stopping the
-	// source cancels a pending fetch right away.
 	fetchTimeout = 5 * time.Second
 
-	// After a failed fetch, the source waits before the next one. The wait
-	// grows by fetchRetryGrowth with every failure in a row, between these
-	// bounds.
 	minFetchRetryDelay = 100 * time.Millisecond
 	maxFetchRetryDelay = 5 * time.Second
 	fetchRetryGrowth   = 2
@@ -47,10 +38,8 @@ type NATS struct {
 	logger *slog.Logger
 	nc     *nats.Conn
 	js     jetstream.JetStream
-	// wg tracks the messages being handled.
-	wg sync.WaitGroup
+	wg     sync.WaitGroup
 
-	// stop is cancelled by Stop and interrupts pending fetches.
 	stop   context.Context
 	cancel context.CancelFunc
 
@@ -123,15 +112,9 @@ func (n *NATS) Run(ctx context.Context) error {
 	return nil
 }
 
-// consume fetches messages until the source is stopped and handles each in
-// its own goroutine, at most workers at a time. Only as many messages are
-// fetched as slots are free, so no fetched message waits for another to be
-// handled while its ack wait runs. A stage that holds messages, like a batch,
-// therefore holds up to workers of them.
-//
-// Fetches and the wait after a failed fetch are interrupted by Stop;
-// deliveries use ctx, so messages being handled when the source stops are
-// still delivered and acknowledged. consume returns once they are done.
+// Only as many messages are fetched as slots are free, so no fetched message
+// waits for a worker while its ack wait runs. Deliveries use ctx, not the stop
+// context, so messages being handled when the source stops are still acked.
 func (n *NATS) consume(ctx context.Context, cons jetstream.Consumer, workers int) {
 	defer n.wg.Wait()
 
@@ -148,8 +131,6 @@ func (n *NATS) consume(ctx context.Context, cons jetstream.Consumer, workers int
 			continue
 		}
 
-		// Failing fetches often fail right away, e.g. while disconnected, so
-		// the source waits before the next one instead of spinning.
 		delay = min(max(fetchRetryGrowth*delay, minFetchRetryDelay), maxFetchRetryDelay)
 		n.logger.ErrorContext(ctx, "Could not fetch messages, retrying",
 			slog.String("source", n.Name()), slog.Duration("delay", delay), slog.Any("error", err))
@@ -163,8 +144,6 @@ func (n *NATS) consume(ctx context.Context, cons jetstream.Consumer, workers int
 	}
 }
 
-// acquire waits until at least one slot is free and takes all free slots. It
-// returns how many it took, or 0 once the source is stopped.
 func (n *NATS) acquire(slots chan struct{}) int {
 	// With a slot free, select would pick at random between it and a stop
 	// that already happened, and fetch again.
@@ -187,18 +166,12 @@ func (n *NATS) acquire(slots chan struct{}) int {
 	}
 }
 
-// release frees count slots.
 func release(slots chan struct{}, count int) {
 	for range count {
 		<-slots
 	}
 }
 
-// fetch fetches up to free messages, one per slot taken, and hands each to
-// its own goroutine, which frees its slot once the message is handled. Slots
-// of messages the fetch did not return are freed when it ends. It returns the
-// error of a failed fetch, which is reported either right away or once the
-// fetch has ended.
 func (n *NATS) fetch(ctx context.Context, cons jetstream.Consumer, slots chan struct{}, free int) error {
 	fetchCtx, cancel := context.WithTimeout(n.stop, fetchTimeout)
 	defer cancel()
@@ -218,8 +191,6 @@ func (n *NATS) fetch(ctx context.Context, cons jetstream.Consumer, slots chan st
 	}
 	release(slots, free-received)
 
-	// A fetch that ends because the wait is over or the source stops did not
-	// fail.
 	err = msgs.Error()
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		return nil
@@ -231,14 +202,11 @@ func (n *NATS) handle(ctx context.Context, msg jetstream.Msg) {
 	signal := domain.Signal(msg.Headers().Get(SignalHeader))
 	event, err := domain.UnmarshalOTLPData(signal, msg.Data())
 	if err != nil {
-		// Redelivery cannot fix a message that does not decode.
 		n.logger.WarnContext(ctx, "Terminated message that is not valid OTLP data", slog.Any("error", err))
 		n.term(ctx, msg)
 		return
 	}
 
-	// Delivery is at-least-once: when one branch fails, the redelivered
-	// message reaches all branches again.
 	err = n.NotifySubscribers(ctx, event)
 	if errors.Is(err, domain.ErrEventRejected) {
 		n.logger.WarnContext(ctx, "Terminated rejected message", slog.Any("error", err))
@@ -258,16 +226,12 @@ func (n *NATS) handle(ctx context.Context, msg jetstream.Msg) {
 	}
 }
 
-// term terminates a message, so it is not delivered again.
 func (n *NATS) term(ctx context.Context, msg jetstream.Msg) {
 	if err := msg.Term(); err != nil {
 		n.logger.ErrorContext(ctx, "Could not terminate message", slog.Any("error", err))
 	}
 }
 
-// Stop interrupts pending fetches; Run returns once messages being processed
-// are done. Stop may be called without Run, e.g. when building the stream
-// failed, and then closes the connection itself.
 func (n *NATS) Stop() error {
 	n.mu.Lock()
 	n.stopped = true

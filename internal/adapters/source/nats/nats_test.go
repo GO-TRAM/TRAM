@@ -20,8 +20,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
-// fakeConsumer answers every fetch with the result of fetch, which gets the
-// number of messages asked for.
 type fakeConsumer struct {
 	jetstream.Consumer
 
@@ -34,7 +32,6 @@ func (c *fakeConsumer) Fetch(batch int, _ ...jetstream.FetchOpt) (jetstream.Mess
 	return c.fetch(batch)
 }
 
-// endedBatch is a batch without messages that ended with err.
 type endedBatch struct{ err error }
 
 func (b endedBatch) Messages() <-chan jetstream.Msg {
@@ -45,7 +42,6 @@ func (b endedBatch) Messages() <-chan jetstream.Msg {
 
 func (b endedBatch) Error() error { return b.err }
 
-// fullBatch is a batch that returns msgs and ends without an error.
 type fullBatch struct{ ch chan jetstream.Msg }
 
 func newFullBatch(msgs []jetstream.Msg) fullBatch {
@@ -60,7 +56,6 @@ func newFullBatch(msgs []jetstream.Msg) fullBatch {
 func (b fullBatch) Messages() <-chan jetstream.Msg { return b.ch }
 func (b fullBatch) Error() error                   { return nil }
 
-// fakeMsg is a message with a log record that counts its acknowledgements.
 type fakeMsg struct {
 	jetstream.Msg
 
@@ -74,9 +69,6 @@ func (m fakeMsg) Headers() nats.Header {
 func (m fakeMsg) Data() []byte { return m.data }
 func (m fakeMsg) Ack() error   { m.acks.Add(1); return nil }
 
-// queue hands out total messages to fetches, as many as each asks for, and
-// records how many each fetch asked for. Once it is empty, fetches end after a
-// short wait, like a fetch whose wait is over.
 type queue struct {
 	t    *testing.T
 	data []byte
@@ -118,8 +110,6 @@ func (q *queue) askedFor() []int {
 	return append([]int(nil), q.asked...)
 }
 
-// blockingSubscriber holds every delivery until it gets a token from proceed,
-// and tracks how many deliveries it holds at the same time.
 type blockingSubscriber struct {
 	proceed chan struct{}
 
@@ -149,8 +139,6 @@ func (s *blockingSubscriber) Notify(context.Context, *domain.Event) error {
 	return nil
 }
 
-// consumer starts consuming from cons with workers in the background and
-// delivers to sub. done is closed once consume has returned.
 func consumer(
 	t *testing.T,
 	cons *fakeConsumer,
@@ -170,8 +158,6 @@ func consumer(
 	return src, done
 }
 
-// runConsume consumes from cons with one worker for d and returns what it
-// logged.
 func runConsume(t *testing.T, cons *fakeConsumer, d time.Duration) string {
 	t.Helper()
 
@@ -195,9 +181,6 @@ func runConsume(t *testing.T, cons *fakeConsumer, d time.Duration) string {
 	return logs.String()
 }
 
-// Failing fetches often fail right away, e.g. while disconnected. The source
-// has to wait between them instead of spinning, whether the fetch fails
-// directly or its batch ends with an error.
 func TestConsumeBacksOffAfterFailedFetches(t *testing.T) {
 	t.Parallel()
 
@@ -232,8 +215,6 @@ func TestConsumeBacksOffAfterFailedFetches(t *testing.T) {
 	}
 }
 
-// A batch that ends because its wait is over is no failure: the source
-// fetches again right away and logs nothing.
 func TestConsumeDoesNotBackOffAfterTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -246,10 +227,6 @@ func TestConsumeDoesNotBackOffAfterTimeout(t *testing.T) {
 	assert.NotContains(t, logs, "Could not fetch messages")
 }
 
-// The source handles up to workers messages at the same time, independent of
-// how they were fetched, and fetches a new message as soon as one is done.
-// A stage that holds messages, like a batch, therefore gets up to workers of
-// them.
 func TestConsumeHandlesUpToWorkersMessagesAtOnce(t *testing.T) {
 	t.Parallel()
 
@@ -262,7 +239,6 @@ func TestConsumeHandlesUpToWorkersMessagesAtOnce(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	assert.Equal(t, int64(workers), sub.maxInFlight.Load(), "more messages than workers are handled")
 
-	// Finishing one message frees its slot, which is refilled.
 	sub.proceed <- struct{}{}
 	require.Eventually(t, func() bool {
 		return sub.delivered.Load() == 1 && sub.inFlight.Load() == workers
@@ -276,8 +252,6 @@ func TestConsumeHandlesUpToWorkersMessagesAtOnce(t *testing.T) {
 	<-done
 }
 
-// A fetch asks for no more messages than slots are free, so no fetched
-// message waits for a slot while its ack wait runs.
 func TestConsumeFetchesOnlyForFreeSlots(t *testing.T) {
 	t.Parallel()
 
@@ -306,9 +280,6 @@ func TestConsumeFetchesOnlyForFreeSlots(t *testing.T) {
 	<-done
 }
 
-// Stopping ends fetching right away, but consume returns only once the
-// messages being handled are delivered and acknowledged, so their
-// acknowledgements are not lost when the connection closes.
 func TestConsumeWaitsForMessagesBeingHandled(t *testing.T) {
 	t.Parallel()
 

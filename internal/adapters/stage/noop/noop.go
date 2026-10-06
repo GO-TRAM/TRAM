@@ -1,4 +1,3 @@
-// Package noop provides a stage that passes events on unchanged.
 package noop
 
 import (

@@ -10,8 +10,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
-// groupingShapes vary the dimensions grouping cost depends on: records to
-// evaluate and clone, resources to match, and subjects to group into.
 func groupingShapes() []otlpgen.Shape {
 	return []otlpgen.Shape{
 		{Records: 100, Resources: 1, Teams: 1, Attributes: 4},
@@ -25,8 +23,6 @@ func groupingShapes() []otlpgen.Shape {
 	}
 }
 
-// newGroupingSink builds a sink without a natssink.NATS connection, which grouping
-// does not need.
 func newGroupingSink(b testing.TB, logsSubject string) *natssink.NATS {
 	b.Helper()
 	subject := map[string]any{"register": []any{"logs.>"}, "logs": logsSubject}
@@ -41,8 +37,6 @@ func newGroupingSink(b testing.TB, logsSubject string) *natssink.NATS {
 	return sink
 }
 
-// BenchmarkGroupEventsBySubjects measures splitting a batch into one batch per
-// subject, which the sink does for every event before publishing.
 func BenchmarkGroupEventsBySubjects(b *testing.B) {
 	sink := newGroupingSink(
 		b,

@@ -22,7 +22,6 @@ const (
 	shutdownTimeout   = 5 * time.Second
 	readHeaderTimeout = 10 * time.Second
 
-	// servers is the number of servers Run runs: gRPC and the HTTP gateway.
 	servers = 2
 )
 
@@ -35,7 +34,6 @@ type API struct {
 	logger             *slog.Logger
 }
 
-// New creates the API; metricsHandler, if set, is served on GET /metrics.
 func New(
 	core ports.Core,
 	grpcServerEndpoint, httpServerEndpoint string,
@@ -51,16 +49,11 @@ func New(
 	}, nil
 }
 
-// Run serves the gRPC API and its HTTP gateway until ctx is done. It returns
-// an error if a server cannot listen or stops on its own, so the caller does
-// not keep running without the API.
 func (a *API) Run(ctx context.Context) error {
 	a.grpcServer = grpc.NewServer()
 
 	v1.RegisterStreamServiceServer(a.grpcServer, &streamServer{core: a.core, logger: a.logger})
 
-	// The gateway connects to the gRPC server lazily, so it can be set up
-	// before the server listens.
 	mux := runtime.NewServeMux()
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 	if err := v1.RegisterStreamServiceHandlerFromEndpoint(ctx, mux, a.grpcServerEndpoint, opts); err != nil {
@@ -75,8 +68,6 @@ func (a *API) Run(ctx context.Context) error {
 		}
 	}
 
-	// Both ports are bound before serving, so a port in use fails Run right
-	// away.
 	var lc net.ListenConfig
 	grpcListener, err := lc.Listen(ctx, "tcp", a.grpcServerEndpoint)
 	if err != nil {
@@ -127,8 +118,6 @@ func (a *API) Run(ctx context.Context) error {
 		a.logger.ErrorContext(ctx, "Could not shut down HTTP gateway cleanly", slog.Any("error", err))
 	}
 
-	// Calls in progress, e.g. a PutStream building a stream, may finish, but
-	// not for longer than the shutdown timeout.
 	grpcStopped := make(chan struct{})
 	go func() {
 		a.grpcServer.GracefulStop()

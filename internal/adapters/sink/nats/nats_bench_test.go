@@ -13,12 +13,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
-// BenchmarkNotify measures the whole sink against a NATS server in a
-// container: grouping records by subject and publishing one message per
-// subject, waiting for JetStream's acknowledgement each time. Compare with
-// BenchmarkGroupEventsBySubjects to see the share of publishing.
-//
-// Requires Docker or Podman; skipped otherwise.
 func BenchmarkNotify(b *testing.B) {
 	url := natstest.Start(b)
 
@@ -26,15 +20,13 @@ func BenchmarkNotify(b *testing.B) {
 		{Records: 1, Resources: 1, Teams: 1, Attributes: 4},
 		{Records: 100, Resources: 1, Teams: 1, Attributes: 4},
 		{Records: 1000, Resources: 10, Teams: 1, Attributes: 4},
-		// 10 subjects per event, so 10 messages are published per Notify.
 		{Records: 1000, Resources: 10, Teams: 10, Attributes: 4},
 	}
 
 	for _, shape := range shapes {
 		sink, err := natssink.New(domain.SinkSpec{Name: "nats", From: "in", Spec: map[string]any{
-			"url":    url,
-			"stream": "bench",
-			// Bounds the container's storage; old messages are discarded.
+			"url":       url,
+			"stream":    "bench",
 			"size":      float64(256 << 20),
 			"retention": "1m",
 			"subject": map[string]any{

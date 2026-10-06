@@ -14,24 +14,18 @@ import (
 const meterName = "codeberg.org/eljoth/tram/internal/core"
 
 const (
-	outcomeOK       = "ok"
-	outcomeRejected = "rejected"
-	// The caller gave up, e.g. an OTLP client that closed its connection. An
-	// expired delivery_timeout is an error instead: then Tram was too slow.
+	outcomeOK        = "ok"
+	outcomeRejected  = "rejected"
 	outcomeCancelled = "cancelled"
 	outcomeError     = "error"
 )
 
-// metrics are recorded by the core around the components, so components need
-// no instrumentation of their own.
 type metrics struct {
 	records    metric.Int64Counter
 	recordsOut metric.Int64Counter
 	duration   metric.Float64Histogram
 }
 
-// An instrument that cannot be created records nothing; the error is returned
-// for logging.
 func newMetrics(provider metric.MeterProvider) (*metrics, error) {
 	meter := provider.Meter(meterName)
 
@@ -66,8 +60,6 @@ func durationBuckets() []float64 {
 	}
 }
 
-// Attribute sets and option slices are built once per node rather than per
-// call, since Notify is on the hot path.
 func nodeAttributes(stream string, node *domain.Node) func(key, value string) metric.MeasurementOption {
 	base := []attribute.KeyValue{
 		attribute.String("stream", stream),
@@ -106,7 +98,6 @@ func (c *recordCounter) count(ctx context.Context, event *domain.Event) {
 	c.add(ctx, spans, c.spans)
 }
 
-// Skipping zero keeps series of signals a node never sees from appearing.
 func (c *recordCounter) add(ctx context.Context, records int, signal []metric.AddOption) {
 	if records > 0 {
 		c.counter.Add(ctx, int64(records), signal...)

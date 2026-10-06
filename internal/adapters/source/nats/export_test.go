@@ -10,8 +10,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/adapters/source/base"
 )
 
-// NewWithoutConnection builds a source that can consume from a fake consumer,
-// without a NATS connection.
 func NewWithoutConnection(logger *slog.Logger) (*NATS, error) {
 	b, err := base.New[Spec]("nats", map[string]any{
 		"url":     "nats://localhost:4222",
@@ -25,13 +23,10 @@ func NewWithoutConnection(logger *slog.Logger) (*NATS, error) {
 	return &NATS{Source: b, logger: logger, stop: stop, cancel: cancel}, nil
 }
 
-// Consume consumes with the given number of workers until CancelFetching is
-// called and the messages being handled are done.
 func Consume(ctx context.Context, n *NATS, cons jetstream.Consumer, workers int) {
 	n.consume(ctx, cons, workers)
 }
 
-// CancelFetching stops fetching like Stop, without closing a connection.
 func CancelFetching(n *NATS) {
 	n.cancel()
 }

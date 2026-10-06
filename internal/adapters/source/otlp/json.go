@@ -13,11 +13,9 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// unmarshalJSON decodes an OTLP/JSON payload into msg. OTLP/JSON follows the
-// protobuf JSON mapping, except that trace and span IDs are hex strings
-// instead of base64, so they are converted first; protojson then decodes them
-// as the bytes they stand for. Unknown fields are ignored, as the OTLP
-// specification asks of receivers.
+// OTLP/JSON follows the protobuf JSON mapping, except that trace and span IDs
+// are hex instead of base64, so they are converted before protojson decodes
+// them.
 func unmarshalJSON(body []byte, msg proto.Message) error {
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	// Numbers stay as written, so 64-bit integers do not lose precision.
@@ -74,9 +72,6 @@ func hexIDsInObject(object map[string]any) error {
 	return nil
 }
 
-// isIDField reports whether key is a trace or span ID field of OTLP, under one
-// of the JSON names protojson accepts. All of them are bytes fields, and no
-// other field of OTLP has one of these names.
 func isIDField(key string) bool {
 	switch key {
 	case "traceId", "spanId", "parentSpanId", "trace_id", "span_id", "parent_span_id":

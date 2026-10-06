@@ -44,7 +44,6 @@ func TestSubjectCovers(t *testing.T) {
 func TestMergeStreamConfig(t *testing.T) {
 	t.Parallel()
 
-	// existing is a stream set up by an operator, with settings no sink knows.
 	existing := func() jetstream.StreamConfig {
 		return jetstream.StreamConfig{
 			Name:     "telemetry",

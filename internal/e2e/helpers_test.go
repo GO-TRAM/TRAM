@@ -29,17 +29,12 @@ import (
 
 const isCustomerA = "record.attributes.exists(a, a.key == 'customer' && a.value.string_value == 'A')"
 
-// discard returns a logger for streams whose log output is not of interest.
 func discard() *slog.Logger {
 	return slog.New(slog.DiscardHandler)
 }
 
-// captureType is the sink type handled by captureFactory.
 const captureType = "capture"
 
-// captureSink records every event it receives. Its spec can make it fail:
-// {"fail": "temporary"} returns a plain error, {"fail": "permanent"} a
-// rejection.
 type captureSink struct {
 	name, from string
 	fail       string
@@ -71,9 +66,6 @@ func (s *captureSink) received() []*domain.Event {
 	return append([]*domain.Event(nil), s.events...)
 }
 
-// captureFactory creates capturing sinks and keeps them by name, so tests can
-// inspect what each sink of a stream received. Other sink types are created
-// by the real sink factory.
 type captureFactory struct {
 	real ports.Factory[domain.SinkSpec, domain.Sink]
 
@@ -102,16 +94,13 @@ func (f *captureFactory) sink(t *testing.T, name string) *captureSink {
 	return s
 }
 
-// pipeline is a running stream named "e2e" whose source is called "in".
 type pipeline struct {
-	core  *core.Core
-	sinks *captureFactory
-	in    domain.SourceSpec
-	// baseURL is set for OTLP sources.
+	core    *core.Core
+	sinks   *captureFactory
+	in      domain.SourceSpec
 	baseURL string
 }
 
-// newPipeline starts a stream with an OTLP source on a free port.
 func newPipeline(t *testing.T, stages []domain.StageSpec, sinks []domain.SinkSpec) *pipeline {
 	t.Helper()
 	port := freePort(t)
@@ -125,7 +114,6 @@ func newPipeline(t *testing.T, stages []domain.StageSpec, sinks []domain.SinkSpe
 	return p
 }
 
-// newStream starts a stream with any source.
 func newStream(t *testing.T, in domain.SourceSpec, stages []domain.StageSpec, sinks []domain.SinkSpec) *pipeline {
 	t.Helper()
 	p := &pipeline{
@@ -138,7 +126,6 @@ func newStream(t *testing.T, in domain.SourceSpec, stages []domain.StageSpec, si
 	return p
 }
 
-// update replaces the stages and sinks of the running stream.
 func (p *pipeline) update(t *testing.T, stages []domain.StageSpec, sinks []domain.SinkSpec) {
 	t.Helper()
 	_, err := p.core.UpsertStream(
@@ -148,14 +135,11 @@ func (p *pipeline) update(t *testing.T, stages []domain.StageSpec, sinks []domai
 	require.NoError(t, err)
 }
 
-// post sends an OTLP/HTTP logs request and returns the status code. It
-// returns 0 if the request failed, e.g. because of the client's timeout.
 func (p *pipeline) post(t *testing.T, logs *logspb.LogsData, timeout time.Duration) int {
 	t.Helper()
 	return p.postTo(t, "/v1/logs", logs, timeout)
 }
 
-// postTo sends a payload to an OTLP/HTTP path, e.g. /v1/metrics.
 func (p *pipeline) postTo(t *testing.T, path string, payload proto.Message, timeout time.Duration) int {
 	t.Helper()
 	body, err := proto.Marshal(payload)
@@ -170,8 +154,6 @@ func (p *pipeline) postTo(t *testing.T, path string, payload proto.Message, time
 	return resp.StatusCode
 }
 
-// postConcurrently sends all requests at the same time and returns their
-// status codes in order.
 func (p *pipeline) postConcurrently(t *testing.T, requests ...*logspb.LogsData) []int {
 	t.Helper()
 	codes := make([]int, len(requests))
@@ -191,10 +173,8 @@ func freePort(t *testing.T) int {
 	return l.Addr().(*net.TCPAddr).Port
 }
 
-// rec is a log record identified by id, belonging to a customer.
 type rec struct{ id, customer string }
 
-// request builds a payload with one resource for service and one scope.
 func request(service string, records ...rec) *logspb.LogsData {
 	sl := &logspb.ScopeLogs{Scope: &commonpb.InstrumentationScope{Name: "e2e"}}
 	for _, r := range records {
@@ -216,8 +196,6 @@ func stringAttr(key, value string) *commonpb.KeyValue {
 	}
 }
 
-// arrived lists every record in the events as "<service>/<scope>/<id>", so
-// tests also check that records kept their resource and scope.
 func arrived(events []*domain.Event) []string {
 	var out []string
 	for _, e := range events {

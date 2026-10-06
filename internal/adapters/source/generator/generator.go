@@ -34,7 +34,6 @@ func New(source domain.SourceSpec, validator *validator.Validate) (*Generator, e
 	if err != nil {
 		return nil, err
 	}
-	// A zero or negative interval would generate events in a busy loop.
 	if interval <= 0 {
 		return nil, fmt.Errorf("interval %s is not positive", base.Spec().Interval)
 	}
@@ -60,7 +59,6 @@ func (g *Generator) Run(ctx context.Context) error {
 	}
 }
 
-// Stop ends Run. It can be called more than once.
 func (g *Generator) Stop() error {
 	g.stopOnce.Do(func() { close(g.shutdown) })
 	return nil

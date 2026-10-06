@@ -21,7 +21,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
-// countingSubscriber signals done once it has received want records.
 type countingSubscriber struct {
 	records atomic.Int64
 	want    int64
@@ -39,11 +38,6 @@ func (c *countingSubscriber) Notify(_ context.Context, e *domain.Event) error {
 	return nil
 }
 
-// BenchmarkConsume measures how fast the source fetches, decodes, delivers and
-// acknowledges messages from a NATS server in a container. The messages are
-// published before timing starts, so b.N is used instead of b.Loop.
-//
-// Requires Docker or Podman; skipped otherwise.
 func BenchmarkConsume(b *testing.B) {
 	url := natstest.Start(b)
 
@@ -72,7 +66,6 @@ func BenchmarkConsume(b *testing.B) {
 			}
 
 			b.Run(fmt.Sprintf("workers=%d/%s", workers, shape), func(b *testing.B) {
-				// Every run of the function gets a fresh stream.
 				run++
 				consume(b, js, url, fmt.Sprintf("consume-%d", run), workers, shape.Records, payload)
 			})
@@ -80,8 +73,6 @@ func BenchmarkConsume(b *testing.B) {
 	}
 }
 
-// consume runs one BenchmarkConsume case on a fresh stream holding exactly
-// b.N messages of payload, each with records log records.
 func consume(b *testing.B, js jetstream.JetStream, url, name string, workers, records int, payload []byte) {
 	subject := name + ".logs"
 	ctx := context.Background()
@@ -125,8 +116,6 @@ func consume(b *testing.B, js jetstream.JetStream, url, name string, workers, re
 	b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "messages/s")
 }
 
-// publish stores n copies of payload in the stream, the way the NATS sink
-// writes them.
 func publish(b *testing.B, js jetstream.JetStream, subject string, payload []byte, n int) {
 	b.Helper()
 	acks := make([]jetstream.PubAckFuture, 0, n)

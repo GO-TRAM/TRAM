@@ -9,8 +9,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
-// holdSpec builds one branch per holds slice, each a chain of stages ending in
-// a sink. An empty limit means a source without delivery timeout.
 func holdSpec(limit string, branches ...[]string) domain.StreamSpec {
 	spec := domain.StreamSpec{
 		Name:   "stream",

@@ -36,23 +36,11 @@ func initCEL(celEnv *cel.Env, expression string, opts ...cel.EnvOption) (cel.Pro
 	return celProgram, nil
 }
 
-// message is one NATS message: the records of one signal type that resolved
-// to the same subject.
 type message struct {
 	subject string
 	event   *domain.Event
 }
 
-// groupEventsBySubjects evaluates the subject expressions for every log
-// record, metric and span, and groups them into one message per subject and
-// signal type, in the order the subjects first occur.
-//
-// The event is shared with other branches, so it is not modified: records,
-// resources and scopes are shared with it, and only the containers holding
-// them are new. Records keep their resource and scope entry; equal resources
-// from different entries of the event stay separate entries, which OTLP
-// allows. If all records of a signal type resolve to the same subject, its
-// payload is published as it is.
 func (n *NATS) groupEventsBySubjects(event *domain.Event) ([]message, error) {
 	var messages []message
 
@@ -83,20 +71,13 @@ func (n *NATS) groupEventsBySubjects(event *domain.Event) ([]message, error) {
 	return messages, nil
 }
 
-// structure describes how a signal type nests its entries: payload D holds
-// resources R, which hold scopes S, which hold entries E (log records, metrics
-// or spans). The functions build and fill new containers and only copy the
-// container fields; entries, resources and scopes are shared.
 type structure[D any, R, S, E comparable] struct {
-	variable  string
-	resources func(D) []R
-	scopes    func(R) []S
-	entries   func(S) []E
-	// resource and scope return the OTLP resource and scope of a container,
-	// which the resource and scope variables refer to.
-	resource func(R) *resourcepb.Resource
-	scope    func(S) *commonpb.InstrumentationScope
-	// payload returns a payload holding entries under a copy of r and s.
+	variable       string
+	resources      func(D) []R
+	scopes         func(R) []S
+	entries        func(S) []E
+	resource       func(R) *resourcepb.Resource
+	scope          func(S) *commonpb.InstrumentationScope
 	payload        func(r R, s S, entries []E) D
 	newPayload     func() D
 	newResource    func(R) R
@@ -200,10 +181,6 @@ func tracesStructure() structure[*tracespb.TracesData, *tracespb.ResourceSpans, 
 	}
 }
 
-// group evaluates the expression for each entry in two passes: the first
-// resolves all subjects, the second groups the entries only if they differ.
-// The expression sees a payload containing just the current entry in its
-// resource and scope; that payload is built once per scope and reused.
 func group[D any, R, S, E comparable](program cel.Program, st structure[D, R, S, E], data D) ([]message, error) {
 	subjects, err := resolveSubjects(program, st, data)
 	if err != nil || len(subjects) == 0 {
@@ -243,8 +220,6 @@ func resolveSubjects[D any, R, S, E comparable](
 	st structure[D, R, S, E],
 	data D,
 ) ([]string, error) {
-	// Missing resources and scopes are replaced by empty ones, so expressions
-	// see empty attributes and names instead of failing.
 	emptyResource, emptyScope := &resourcepb.Resource{}, &commonpb.InstrumentationScope{}
 	vars := &activation{name: st.variable}
 	var subjects []string
@@ -265,7 +240,6 @@ func resolveSubjects[D any, R, S, E comparable](
 			for _, e := range st.entries(s) {
 				current[0] = e
 				vars.entry = e
-				// Set signal-specific variables for consistency with CEL_FILTER
 				switch st.variable {
 				case logsVariable:
 					vars.record = e
@@ -285,9 +259,6 @@ func resolveSubjects[D any, R, S, E comparable](
 	return subjects, nil
 }
 
-// subjectGroup collects the entries of one subject. Entries arrive resource
-// by resource and scope by scope, so remembering the last input containers is
-// enough to find the output containers they belong to.
 type subjectGroup[D any, R, S, E comparable] struct {
 	structure[D, R, S, E]
 
@@ -328,10 +299,6 @@ func evalSubject(program cel.Program, vars *activation) (string, error) {
 	return subject, nil
 }
 
-// validSubject reports why a message cannot be published to subject: NATS
-// needs tokens that are not empty, contain no whitespace and are no
-// wildcards. An expression like 'logs.' + attributes.get_attr('team') gives
-// "logs." for records without the attribute.
 func validSubject(subject string) error {
 	for token := range strings.SplitSeq(subject, ".") {
 		switch {
@@ -355,8 +322,6 @@ func allEqual(subjects []string) bool {
 	return true
 }
 
-// activation provides variables to CEL. It is reused for all records
-// of a payload to avoid an allocation per evaluation.
 type activation struct {
 	name     string
 	value    any

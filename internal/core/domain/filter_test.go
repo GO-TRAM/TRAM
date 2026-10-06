@@ -47,7 +47,6 @@ func keepTeam(name string) domain.LogFilter {
 func TestFilterLogs(t *testing.T) {
 	t.Parallel()
 
-	// 8 records over 2 resources, alternating between team-0 and team-1.
 	shape := otlpgen.Shape{Records: 8, Resources: 2, Teams: 2}
 
 	cases := []struct {
@@ -96,7 +95,6 @@ func TestFilterLogsSharesUnfilteredParts(t *testing.T) {
 	t.Parallel()
 
 	input := otlpgen.Logs(otlpgen.Shape{Records: 8, Resources: 2, Teams: 1})
-	// Drop a single record of the second resource only.
 	dropped := input.GetResourceLogs()[1].GetScopeLogs()[0].GetLogRecords()[0]
 
 	got, err := domain.FilterLogs(

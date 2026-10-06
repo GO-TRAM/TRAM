@@ -1,4 +1,3 @@
-// Package base provides the common parts of all sinks.
 package base
 
 import (

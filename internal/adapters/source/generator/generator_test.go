@@ -35,7 +35,6 @@ func TestRunReturnsAfterStop(t *testing.T) {
 	require.NoError(t, g.Stop(), "stopping again is harmless")
 }
 
-// A zero or negative interval would generate events in a busy loop.
 func TestNewRejectsNonPositiveInterval(t *testing.T) {
 	t.Parallel()
 

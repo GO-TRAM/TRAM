@@ -1,4 +1,3 @@
-// Package base provides the common parts of all stages.
 package base
 
 import (
@@ -81,8 +80,6 @@ func (s *Stage[T]) NotifySubscribers(ctx context.Context, event *domain.Event) e
 	return nil
 }
 
-// Stop releases resources held by the stage itself. Subscribers are stopped by
-// the core, which owns the lifecycle of every node in a stream.
 func (s *Stage[T]) Stop() error {
 	return nil
 }

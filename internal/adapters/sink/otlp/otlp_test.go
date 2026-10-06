@@ -163,14 +163,12 @@ func TestNotify(t *testing.T) {
 		require.NoError(t, err)
 		defer sink.Stop()
 
-		// Create a minimal valid logs event
 		validLogs, err := proto.Marshal(&logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{}}})
 		require.NoError(t, err)
 
 		event := &domain.Event{
 			Logs: &logspb.LogsData{},
 		}
-		// Manually unmarshal to set up the event properly
 		err = proto.Unmarshal(validLogs, event.Logs)
 		require.NoError(t, err)
 
@@ -182,7 +180,6 @@ func TestNotify(t *testing.T) {
 		assert.Equal(t, "application/x-protobuf", receivedHeaders.Get("Content-Type"))
 		assert.NotEmpty(t, receivedBody)
 
-		// Verify we can unmarshal the data back
 		unmarshaled := &logspb.LogsData{}
 		err = proto.Unmarshal(receivedBody, unmarshaled)
 		require.NoError(t, err)
@@ -215,14 +212,12 @@ func TestNotify(t *testing.T) {
 		require.NoError(t, err)
 		defer sink.Stop()
 
-		// Create a minimal valid metrics event
 		validMetrics, err := proto.Marshal(&metricspb.MetricsData{ResourceMetrics: []*metricspb.ResourceMetrics{{}}})
 		require.NoError(t, err)
 
 		event := &domain.Event{
 			Metrics: &metricspb.MetricsData{},
 		}
-		// Manually unmarshal to set up the event properly
 		err = proto.Unmarshal(validMetrics, event.Metrics)
 		require.NoError(t, err)
 
@@ -233,7 +228,6 @@ func TestNotify(t *testing.T) {
 		defer mu.Unlock()
 		assert.NotEmpty(t, receivedBody)
 
-		// Verify we can unmarshal the data back
 		unmarshaled := &metricspb.MetricsData{}
 		err = proto.Unmarshal(receivedBody, unmarshaled)
 		require.NoError(t, err)
@@ -243,8 +237,6 @@ func TestNotify(t *testing.T) {
 	t.Run("event with several signals", func(t *testing.T) {
 		t.Parallel()
 
-		// A batch stage merges concurrent events, so one event can hold
-		// several signals; each has to reach its own endpoint.
 		received := map[string]int{}
 		var mu sync.Mutex
 
@@ -311,7 +303,6 @@ func TestNotify(t *testing.T) {
 		require.NoError(t, err)
 		defer sink.Stop()
 
-		// Create a minimal valid logs event
 		validLogs, err := proto.Marshal(&logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{}}})
 		require.NoError(t, err)
 
@@ -382,13 +373,12 @@ func TestNotify(t *testing.T) {
 			From: "test-source",
 			Type: otlp.Type,
 			Spec: map[string]any{
-				"url": server.URL + "/", // URL with trailing slash
+				"url": server.URL + "/",
 			},
 		}, validator.New(), slog.New(slog.DiscardHandler))
 		require.NoError(t, err)
 		defer sink.Stop()
 
-		// Create a minimal valid logs event
 		validLogs, err := proto.Marshal(&logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{}}})
 		require.NoError(t, err)
 
@@ -435,7 +425,6 @@ func TestNotify(t *testing.T) {
 		require.NoError(t, err)
 		defer sink.Stop()
 
-		// Create a minimal valid logs event
 		validLogs, err := proto.Marshal(&logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{}}})
 		require.NoError(t, err)
 
@@ -468,13 +457,10 @@ func TestStop(t *testing.T) {
 	}, validator.New(), slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
 
-	// Stop should be safe to call multiple times
 	assert.NoError(t, sink.Stop())
 	assert.NoError(t, sink.Stop())
 }
 
-// Answers that refuse the data itself are rejections, so sources do not
-// retry them forever; answers that may change on a retry are plain errors.
 func TestNotifyClassifiesStatus(t *testing.T) {
 	t.Parallel()
 

@@ -16,7 +16,6 @@ func TestValidateStreamName(t *testing.T) {
 		"stream",
 		"otlp_basic",
 		"Stream-2",
-		// As the Kubernetes operator names streams: namespace.name.
 		"default.my-stream.v1",
 	}
 	for _, name := range valid {
@@ -41,8 +40,6 @@ func TestValidateStreamName(t *testing.T) {
 	}
 }
 
-// A misspelled field fails instead of being ignored, which would silently
-// apply the default.
 func TestParseSpecRejectsUnknownFields(t *testing.T) {
 	t.Parallel()
 
@@ -124,8 +121,6 @@ func TestStreamSpecEqual(t *testing.T) {
 	}
 }
 
-// The order of stages and sinks does not change the stream, so reordering
-// them in a file must not restart it.
 func TestStreamSpecEqualIgnoresOrder(t *testing.T) {
 	t.Parallel()
 

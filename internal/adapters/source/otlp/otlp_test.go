@@ -140,7 +140,6 @@ func TestHandleLogs(t *testing.T) {
 			expectEvents:  1,
 		},
 		{
-			// OTLP clients retry on 503, but drop the data on 500.
 			name:          "delivery failed",
 			body:          valid,
 			subscriberErr: errors.New("sink unavailable"),
@@ -195,8 +194,6 @@ func TestHandleLogsJSON(t *testing.T) {
 		traceID = "5B8EFFF798038103D269B633813FC60C"
 		spanID  = "eee19b7ec3c1b174"
 	)
-	// OTLP/JSON: hex IDs, an integer enum value, a 64-bit integer as string,
-	// and an unknown field, which receivers have to ignore.
 	body := `{"resourceLogs":[{"scopeLogs":[{"logRecords":[{
 		"traceId": "` + traceID + `",
 		"spanId": "` + spanID + `",

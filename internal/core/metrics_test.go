@@ -24,7 +24,6 @@ func newMeteredCore(t *testing.T) (*core.Core, *registry, *sdkmetric.ManualReade
 	return c, reg, reader
 }
 
-// collect returns counter sums and histogram counts by attribute set.
 func collect(t *testing.T, reader *sdkmetric.ManualReader, name string) map[attribute.Distinct]int64 {
 	t.Helper()
 	var rm metricdata.ResourceMetrics
@@ -117,7 +116,6 @@ func TestMetricsCountSourceOncePerEvent(t *testing.T) {
 	}, collect(t, reader, "tram.node.records"))
 }
 
-// One failing branch fails the event for the client.
 func TestMetricsRecordOutcome(t *testing.T) {
 	t.Parallel()
 
@@ -159,7 +157,6 @@ func TestMetricsCoverStages(t *testing.T) {
 
 	require.NoError(t, deliver(t, reg, logs(1)))
 
-	// The fake stage swallows events.
 	assert.Equal(t, map[attribute.Distinct]int64{
 		attrs("source", "source", signal(domain.SignalLogs)): 1,
 		attrs("stage", "stage", signal(domain.SignalLogs)):   1,
@@ -173,7 +170,6 @@ func TestMetricsSurviveReplacedReceivers(t *testing.T) {
 	_, err := c.UpsertStream(t.Context(), streamSpec(1, sink("old", "fake")))
 	require.NoError(t, err)
 
-	// Same source, so only the receivers are replaced.
 	_, err = c.UpsertStream(t.Context(), streamSpec(1, sink("new", "fake")))
 	require.NoError(t, err)
 	require.Equal(t, 1, reg.sourceCount(), "source must keep running")
@@ -217,7 +213,6 @@ func TestMetricsCountRecordsOut(t *testing.T) {
 	}, collect(t, reader, "tram.node.records"))
 }
 
-// A caller that gives up is told apart from a delivery that took too long.
 func TestMetricsRecordCancellation(t *testing.T) {
 	t.Parallel()
 

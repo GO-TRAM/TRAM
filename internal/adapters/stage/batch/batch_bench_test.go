@@ -36,13 +36,10 @@ func newBenchBatch(b *testing.B, spec map[string]any) (*batch.Batch, *countingSu
 	return batch, sub
 }
 
-// BenchmarkBatch measures the cost of passing events through the batch stage.
 func BenchmarkBatch(b *testing.B) {
 	for _, shape := range otlpgen.Shapes() {
 		event := &domain.Event{Logs: otlpgen.Logs(shape)}
 
-		// Every event fills a batch on its own, so this is the overhead of
-		// the stage without any merging.
 		b.Run("flush-per-event/"+shape.String(), func(b *testing.B) {
 			batch, _ := newBenchBatch(b, map[string]any{"max_records": shape.Records, "timeout": "1h"})
 			b.ReportAllocs()
@@ -54,8 +51,6 @@ func BenchmarkBatch(b *testing.B) {
 			b.ReportMetric(float64(shape.Records*b.N)/b.Elapsed().Seconds(), "records/s")
 		})
 
-		// Concurrent callers share batches of up to 8 events, like parallel
-		// OTLP requests or NATS workers would.
 		b.Run("parallel-8-events/"+shape.String(), func(b *testing.B) {
 			batch, sub := newBenchBatch(b, map[string]any{"max_records": 8 * shape.Records, "timeout": "1ms"})
 			b.SetParallelism(8)

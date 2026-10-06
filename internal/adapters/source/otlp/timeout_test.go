@@ -22,8 +22,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
-// slowSubscriber takes delay to accept an event, or gives up once its context
-// is done; ctxErr receives the context's error then.
 type slowSubscriber struct {
 	delay  time.Duration
 	ctxErr chan error
@@ -49,7 +47,6 @@ func logsBody(t *testing.T) []byte {
 	return body
 }
 
-// freePort returns a port nothing listens on right now.
 func freePort(t *testing.T) int {
 	t.Helper()
 	var lc net.ListenConfig
@@ -70,8 +67,6 @@ func newOTLP(t *testing.T, spec map[string]any) (*otlp.OTLP, error) {
 	)
 }
 
-// A delivery that takes too long is cancelled and answered with 503, which
-// clients retry, before the client gives up itself.
 func TestDeliveryTimeoutCancelsDelivery(t *testing.T) {
 	t.Parallel()
 
@@ -90,9 +85,6 @@ func TestDeliveryTimeoutCancelsDelivery(t *testing.T) {
 	assert.ErrorIs(t, <-sub.ctxErr, context.DeadlineExceeded, "the delivery is cancelled")
 }
 
-// A delivery that takes longer than writing a response may take is still
-// answered. A server-wide write timeout used to cut such connections, so the
-// client retried data that had arrived.
 func TestSlowDeliveryIsAnswered(t *testing.T) {
 	t.Parallel()
 

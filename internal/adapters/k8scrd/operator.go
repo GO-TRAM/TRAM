@@ -1,8 +1,6 @@
 //go:generate controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./..."
 //go:generate controller-gen crd paths="./..." output:crd:dir=config/crd/bases
 
-// Package k8scrd runs Tram's Kubernetes operator, which turns Stream custom
-// resources into streams of the core.
 package k8scrd
 
 import (
@@ -31,16 +29,9 @@ type Operator struct {
 	logger *slog.Logger
 }
 
-// Options selects the cluster and the Stream resources the operator runs.
 type Options struct {
-	// Kubeconfig is the path of a kubeconfig file. Empty uses the in-cluster
-	// configuration or the default kubeconfig.
-	Kubeconfig string
-	// Namespaces limits the operator to Stream resources in these namespaces.
-	// Empty watches all namespaces.
-	Namespaces []string
-	// StreamSelector is a label selector, e.g. "tram.io/validation=true".
-	// Empty runs Stream resources regardless of their labels.
+	Kubeconfig     string
+	Namespaces     []string
 	StreamSelector string
 
 	skipNameValidation bool

@@ -29,28 +29,18 @@ const (
 
 const (
 	shutdownTimeout = 5 * time.Second
-	// maxBodyBytes matches the OpenTelemetry Collector's default request size limit.
-	maxBodyBytes = 20 << 20
+	maxBodyBytes    = 20 << 20
 
 	readHeaderTimeout = 5 * time.Second
-	// readTimeout bounds reading a whole request. It is generous, because a
-	// body of up to maxBodyBytes can take a while on a slow connection.
-	readTimeout = time.Minute
-	idleTimeout = 15 * time.Second
+	readTimeout       = time.Minute
+	idleTimeout       = 15 * time.Second
 
-	// defaultDeliveryTimeout bounds passing a request on, so the client gets
-	// a retryable answer before it gives up itself: OpenTelemetry SDK
-	// exporters wait 10s by default.
 	defaultDeliveryTimeout = 8 * time.Second
-	// responseWriteTimeout bounds writing the response once the request was
-	// passed on, so a client that stops reading cannot hold the connection.
-	responseWriteTimeout = 10 * time.Second
+	responseWriteTimeout   = 10 * time.Second
 )
 
 const (
-	contentTypeProtobuf = "application/x-protobuf"
-	// contentTypeProtobufAlias is not part of OTLP, but some clients send it,
-	// among them Tram's OTLP sink before it followed the specification.
+	contentTypeProtobuf      = "application/x-protobuf"
 	contentTypeProtobufAlias = "application/protobuf"
 	contentTypeJSON          = "application/json"
 )
@@ -88,8 +78,6 @@ func New(source domain.SourceSpec, validator *validator.Validate, logger *slog.L
 		}
 	}
 
-	// Bind right away so a taken port fails stream creation instead of
-	// surfacing later in Run.
 	var lc net.ListenConfig
 	listener, err := lc.Listen(context.Background(), "tcp", fmt.Sprintf(":%d", base.Spec().HTTPPort))
 	if err != nil {
@@ -123,7 +111,6 @@ func New(source domain.SourceSpec, validator *validator.Validate, logger *slog.L
 	return o, nil
 }
 
-// DeliveryTimeout returns the configured delivery_timeout.
 func (o *OTLP) DeliveryTimeout() time.Duration { return o.deliveryTimeout }
 
 func (o *OTLP) Run(ctx context.Context) error {
@@ -150,23 +137,17 @@ func (o *OTLP) handleTraces(w http.ResponseWriter, r *http.Request) {
 	o.handle(w, r, traces, &domain.Event{Traces: traces})
 }
 
-// handle decodes the request body into msg, which event points to, passes
-// the event on to subscribers and answers the request.
 func (o *OTLP) handle(w http.ResponseWriter, r *http.Request, msg proto.Message, event *domain.Event) {
 	defer r.Body.Close()
 
 	contentType, status, message := o.receive(w, r, msg, event)
 
-	// The deadline starts now, after the delivery, which may take a while.
-	// Recorders in tests do not support it, which is fine to ignore.
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(o.responseWriteTimeout))
 
 	if status != http.StatusOK {
 		http.Error(w, message, status)
 		return
 	}
-	// An empty Export*ServiceResponse encodes to no bytes in protobuf and to
-	// {} in JSON.
 	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(http.StatusOK)
 	if contentType == contentTypeJSON {
@@ -174,8 +155,6 @@ func (o *OTLP) handle(w http.ResponseWriter, r *http.Request, msg proto.Message,
 	}
 }
 
-// receive reads and decodes a request and passes it on. It returns the
-// content type of the request, and the status and message to answer with.
 func (o *OTLP) receive(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -209,10 +188,6 @@ func (o *OTLP) receive(
 		return "", http.StatusBadRequest, "Error parsing request body"
 	}
 
-	// A delivery that takes too long is cancelled, so the client gets a
-	// retryable answer before it gives up, and the data it sends again was
-	// most likely not delivered yet. A batch that is already being sent is
-	// still awaited, since it holds data of other requests too.
 	ctx, cancel := context.WithTimeout(r.Context(), o.deliveryTimeout)
 	defer cancel()
 	if err = o.NotifySubscribers(ctx, event); err != nil {
@@ -225,9 +200,6 @@ func (o *OTLP) receive(
 	return contentType, http.StatusOK, ""
 }
 
-// requestContentType returns the content type of an OTLP request, normalized
-// to contentTypeProtobuf or contentTypeJSON. A missing content type counts as
-// protobuf.
 func requestContentType(r *http.Request) (string, bool) {
 	header := r.Header.Get("Content-Type")
 	if header == "" {
@@ -247,9 +219,6 @@ func requestContentType(r *http.Request) (string, bool) {
 	}
 }
 
-// readBody reads the request body and decompresses it if needed.
-// maxBodyBytes limits the decompressed body too, so a small compressed
-// request cannot expand without bound.
 func readBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
 	var body io.Reader = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 
@@ -276,8 +245,6 @@ func readBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
 	return data, nil
 }
 
-// Stop waits for in-flight requests so no event reaches subscribers after it
-// returns. It is safe to call before Run.
 func (o *OTLP) Stop() error {
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
@@ -286,7 +253,6 @@ func (o *OTLP) Stop() error {
 	if err != nil {
 		err = errors.Join(err, o.httpServer.Close())
 	}
-	// Shutdown only closes listeners passed to Serve; close it in case Run never started.
 	if cerr := o.listener.Close(); cerr != nil && !errors.Is(cerr, net.ErrClosed) {
 		err = errors.Join(err, cerr)
 	}

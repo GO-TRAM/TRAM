@@ -27,7 +27,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
-// exampleComponent is a source, stage or sink as the examples write it.
 type exampleComponent struct {
 	Name string         `json:"name"`
 	Type string         `json:"type"`
@@ -40,9 +39,6 @@ type exampleStream struct {
 	Sinks  []exampleComponent `json:"sinks"`
 }
 
-// The examples in setup/ are documentation users copy from, so every
-// component spec in them has to be accepted, with no unknown or misspelled
-// field.
 func TestExamplesAreValid(t *testing.T) {
 	t.Parallel()
 
@@ -104,8 +100,6 @@ func checkExample(t *testing.T, stream exampleStream) {
 	}
 }
 
-// parse decodes and validates a component spec the way the components do,
-// without creating them, which would open ports and connections.
 func parse[T any](raw map[string]any) error {
 	spec, err := domain.ParseSpec(raw, new(T))
 	if err != nil {

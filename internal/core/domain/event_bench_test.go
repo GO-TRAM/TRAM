@@ -7,8 +7,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
-// BenchmarkOTLPDataRoundTrip measures serializing an event and reading it
-// back, which every hop through NATS (sink to source) pays.
 func BenchmarkOTLPDataRoundTrip(b *testing.B) {
 	signals := []struct {
 		name  string

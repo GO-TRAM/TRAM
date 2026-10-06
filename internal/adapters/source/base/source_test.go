@@ -22,8 +22,6 @@ func (noopSubscriber) From() string                                { return "sou
 func (noopSubscriber) Stop() error                                 { return nil }
 func (noopSubscriber) Notify(context.Context, *domain.Event) error { return nil }
 
-// blockingSubscriber counts events and, if release is set, holds each
-// delivery until release is closed.
 type blockingSubscriber struct {
 	name     string
 	received atomic.Int32
@@ -82,8 +80,6 @@ func TestSetSubscribersWaitsForDeliveries(t *testing.T) {
 	assert.Equal(t, int32(1), replacement.received.Load(), "later events reach only the new subscriber")
 }
 
-// BenchmarkNotifySubscribers measures the per-event cost of fanning out to
-// children, independent of what the children do.
 func BenchmarkNotifySubscribers(b *testing.B) {
 	event := &domain.Event{}
 

@@ -28,7 +28,7 @@ func TestCELValidator(t *testing.T) {
 		initErr     error
 		validateErr error
 	}{
-		{ // --------- LOGS ----------
+		{
 			name: "invalid logs cel",
 			spec: domain.StageSpec{
 				Spec: map[string]any{
@@ -171,7 +171,7 @@ func TestCELValidator(t *testing.T) {
 			},
 			validateErr: celvalidator.ErrCELRejectingLogs,
 		},
-		{ // --------- METRICS ----------
+		{
 			name: "invalid metrics cel",
 			spec: domain.StageSpec{
 				Spec: map[string]any{
@@ -282,7 +282,7 @@ func TestCELValidator(t *testing.T) {
 			},
 			validateErr: celvalidator.ErrCELRejectingMetrics,
 		},
-		{ // --------- TRACES ----------
+		{
 			name: "invalid traces cel",
 			spec: domain.StageSpec{
 				Spec: map[string]any{
@@ -406,8 +406,6 @@ func TestCELValidator(t *testing.T) {
 	}
 }
 
-// Evaluating an event again fails the same way, so the sources must not ask
-// for a retry: the error is a rejection, whatever on_mismatch says.
 func TestCELValidatorEvaluationErrorRejects(t *testing.T) {
 	t.Parallel()
 
@@ -438,8 +436,6 @@ func TestCELValidatorEvaluationErrorRejects(t *testing.T) {
 	}
 }
 
-// No event variable is provided, so an expression using it must fail when
-// the stage is created instead of for every event.
 func TestCELValidatorRejectsUnknownVariable(t *testing.T) {
 	t.Parallel()
 
@@ -452,7 +448,6 @@ func TestCELValidatorRejectsUnknownVariable(t *testing.T) {
 	assert.ErrorIs(t, err, celvalidator.ErrCELInvalidLogsExpression)
 }
 
-// The event is shared with sibling branches, so dropping must not alter it.
 func TestCELValidatorDropDoesNotMutateEvent(t *testing.T) {
 	t.Parallel()
 
