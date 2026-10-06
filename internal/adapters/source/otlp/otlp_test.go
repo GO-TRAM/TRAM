@@ -225,3 +225,52 @@ func TestHandleLogsJSON(t *testing.T) {
 	assert.Equal(t, uint64(1700000000000000001), record.GetTimeUnixNano())
 	assert.Equal(t, "hello", record.GetBody().GetStringValue())
 }
+
+// The event carries the size of the request as received and decoded, which
+// the core records per source.
+func TestHandleLogsRecordsRequestSize(t *testing.T) {
+	t.Parallel()
+
+	body, err := proto.Marshal(&logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{
+		{
+			ScopeLogs: []*logspb.ScopeLogs{
+				{LogRecords: []*logspb.LogRecord{{SeverityText: "INFO"}, {SeverityText: "INFO"}}},
+			},
+		},
+	}})
+	require.NoError(t, err)
+	compressed := gzipped(t, body)
+
+	cases := []struct {
+		name     string
+		body     []byte
+		encoding string
+		expected domain.Request
+	}{
+		{name: "uncompressed", body: body, expected: domain.Request{
+			Encoding: "identity", WireBytes: len(body), DecodedBytes: len(body),
+		}},
+		{name: "gzip", body: compressed, encoding: "gzip", expected: domain.Request{
+			Encoding: "gzip", WireBytes: len(compressed), DecodedBytes: len(body),
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			o, rec := newSource(t, nil)
+			r := httptest.NewRequest(http.MethodPost, "/v1/logs", bytes.NewReader(c.body))
+			r.Header.Set("Content-Type", "application/x-protobuf")
+			if c.encoding != "" {
+				r.Header.Set("Content-Encoding", c.encoding)
+			}
+			w := httptest.NewRecorder()
+			otlp.HandleLogs(o, w, r)
+
+			require.Equal(t, http.StatusOK, w.Code)
+			require.Len(t, rec.events, 1)
+			require.NotNil(t, rec.events[0].Request)
+			assert.Equal(t, c.expected, *rec.events[0].Request)
+		})
+	}
+}

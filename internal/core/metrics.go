@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -21,9 +22,10 @@ const (
 )
 
 type metrics struct {
-	records    metric.Int64Counter
-	recordsOut metric.Int64Counter
-	duration   metric.Float64Histogram
+	records     metric.Int64Counter
+	recordsOut  metric.Int64Counter
+	duration    metric.Float64Histogram
+	requestSize metric.Int64Histogram
 }
 
 func newMetrics(provider metric.MeterProvider) (*metrics, error) {
@@ -46,8 +48,25 @@ func newMetrics(provider metric.MeterProvider) (*metrics, error) {
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(durationBuckets()...),
 	)
-	return &metrics{records: records, recordsOut: recordsOut, duration: duration},
-		errors.Join(recordsErr, recordsOutErr, durationErr)
+	requestSize, requestSizeErr := meter.Int64Histogram(
+		"tram.source.request.size",
+		metric.WithDescription(
+			"Size of the requests a source received, as received and after decoding the content encoding",
+		),
+		metric.WithUnit("By"),
+		metric.WithExplicitBucketBoundaries(requestSizeBuckets()...),
+	)
+	return &metrics{records: records, recordsOut: recordsOut, duration: duration, requestSize: requestSize},
+		errors.Join(recordsErr, recordsOutErr, durationErr, requestSizeErr)
+}
+
+// Ingresses commonly limit requests to 1 or 2 MB, and the OTLP source accepts
+// up to 20 MB decoded, so those limits are bounds of their own.
+func requestSizeBuckets() []float64 {
+	return []float64{
+		1 << 10, 4 << 10, 16 << 10, 32 << 10, 64 << 10, 128 << 10, 256 << 10, 512 << 10,
+		1 << 20, 2 << 20, 4 << 20, 8 << 20, 16 << 20, 20 << 20, 32 << 20,
+	}
 }
 
 // Finer in seconds: a batch waits just over its timeout, usually a round
@@ -113,7 +132,7 @@ func (m *metrics) instrument(stream string, node *domain.Node, subscriber domain
 	record := func(outcome string) []metric.RecordOption {
 		return []metric.RecordOption{with("outcome", outcome)}
 	}
-	return &instrumentedSubscriber{
+	s := &instrumentedSubscriber{
 		Subscriber: subscriber,
 		records:    newRecordCounter(m.records, with),
 		duration:   m.duration,
@@ -122,6 +141,49 @@ func (m *metrics) instrument(stream string, node *domain.Node, subscriber domain
 		cancelled:  record(outcomeCancelled),
 		failed:     record(outcomeError),
 	}
+	if node.Kind == domain.KindSource {
+		s.requests = newRequestSizes(m.requestSize, stream, node)
+	}
+	return s
+}
+
+// requestSizes records the sizes of the requests a source received.
+type requestSizes struct {
+	histogram metric.Int64Histogram
+	base      []attribute.KeyValue
+	// byEncoding holds the options of the encodings sources accept.
+	byEncoding map[string]sizeOptions
+}
+
+type sizeOptions struct {
+	received, decoded metric.RecordOption
+}
+
+func newRequestSizes(histogram metric.Int64Histogram, stream string, node *domain.Node) *requestSizes {
+	r := &requestSizes{histogram: histogram, base: []attribute.KeyValue{
+		attribute.String("stream", stream),
+		attribute.String("node", node.Name),
+		attribute.String("kind", string(node.Kind)),
+	}}
+	r.byEncoding = map[string]sizeOptions{"identity": r.options("identity"), "gzip": r.options("gzip")}
+	return r
+}
+
+func (r *requestSizes) options(encoding string) sizeOptions {
+	with := func(body string) metric.RecordOption {
+		return metric.WithAttributeSet(attribute.NewSet(append(slices.Clone(r.base),
+			attribute.String("encoding", encoding), attribute.String("body", body))...))
+	}
+	return sizeOptions{received: with("received"), decoded: with("decoded")}
+}
+
+func (r *requestSizes) record(ctx context.Context, request *domain.Request) {
+	opts, ok := r.byEncoding[request.Encoding]
+	if !ok {
+		opts = r.options(request.Encoding)
+	}
+	r.histogram.Record(ctx, int64(request.WireBytes), opts.received)
+	r.histogram.Record(ctx, int64(request.DecodedBytes), opts.decoded)
 }
 
 type instrumentedSubscriber struct {
@@ -130,10 +192,15 @@ type instrumentedSubscriber struct {
 	records                         recordCounter
 	duration                        metric.Float64Histogram
 	ok, rejected, cancelled, failed []metric.RecordOption
+	// requests is set for sources only.
+	requests *requestSizes
 }
 
 func (s *instrumentedSubscriber) Notify(ctx context.Context, event *domain.Event) error {
 	s.records.count(ctx, event)
+	if s.requests != nil && event.Request != nil {
+		s.requests.record(ctx, event.Request)
+	}
 
 	start := time.Now()
 	err := s.Subscriber.Notify(ctx, event)

@@ -76,6 +76,7 @@ If the source of a stream stops on its own, e.g. because its NATS stream does no
 | `tram_node_records_total` | Counter | `stream`, `node`, `kind`, `signal` | Records the node received: log records, metric data points and spans. `kind` is `source`, `stage` or `sink`, `signal` is `logs`, `metrics` or `traces` |
 | `tram_node_records_out_total` | Counter | `stream`, `node`, `kind`, `signal` | Records a source or stage passed on: log records, metric data points and spans. With several children, each record counts once, not once per child. Sinks pass nothing on |
 | `tram_node_duration_seconds` | Histogram | `stream`, `node`, `kind`, `outcome` | Time the node took to handle an event. `outcome` is `ok`, `rejected` (the event was refused for good, e.g. by a `cel_validator`), `cancelled` (the caller gave up, e.g. an OTLP client that closed its connection) or `error`. An expired `delivery_timeout` counts as `error`, since then Tram took too long |
+| `tram_source_request_size_bytes` | Histogram | `stream`, `node`, `kind`, `encoding`, `body` | Size of the requests a source decoded events from, such as the OTLP source. `body` is `received` (as sent, e.g. gzip-compressed) or `decoded` (after undoing the content encoding), `encoding` is `gzip` or `identity`. Sources that consume messages, like NATS, report nothing |
 
 The endpoint also serves the Go runtime (`go_*`) and process (`process_*`) metrics.
 
@@ -88,6 +89,16 @@ A stage's input minus its output is what it dropped, so the share each stage dro
 ```promql
 1 - sum by (stream, node) (rate(tram_node_records_out_total{kind="stage"}[5m]))
   / sum by (stream, node) (rate(tram_node_records_total{kind="stage"}[5m]))
+```
+
+The average size of the requests a source received, compressed as sent and decoded, and the share of requests above 1 MB, half of a common 2 MB ingress limit:
+
+```promql
+sum by (stream, body) (rate(tram_source_request_size_bytes_sum[5m]))
+  / sum by (stream, body) (rate(tram_source_request_size_bytes_count[5m]))
+
+1 - sum by (stream) (rate(tram_source_request_size_bytes_bucket{body="received",le="1.048576e+06"}[5m]))
+  / sum by (stream) (rate(tram_source_request_size_bytes_count{body="received"}[5m]))
 ```
 
 A stage that drops every record of a signal, such as a `cel_filter` with `"false"` for it, has no output series for that signal, so drop the `signal` label or use `or vector(0)` when comparing per signal.

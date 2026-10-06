@@ -16,6 +16,19 @@ type Event struct {
 	Logs    *logspb.LogsData
 	Metrics *metricspb.MetricsData
 	Traces  *tracepb.TracesData
+
+	// Request is set by sources that decode events from requests. Stages that
+	// build new events, like batch, do not carry it over.
+	Request *Request
+}
+
+// Request describes the request an event was decoded from.
+type Request struct {
+	// Encoding is the content encoding of the body, e.g. "gzip" or "identity".
+	Encoding string
+	// WireBytes is the size of the body as received, DecodedBytes its size
+	// after the content encoding was undone.
+	WireBytes, DecodedBytes int
 }
 
 func (e *Event) RecordCount() int {

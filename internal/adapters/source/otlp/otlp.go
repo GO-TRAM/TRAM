@@ -166,7 +166,7 @@ func (o *OTLP) receive(
 		return "", http.StatusUnsupportedMediaType, "Unsupported content type"
 	}
 
-	body, err := readBody(w, r)
+	body, request, err := readBody(w, r)
 	if err != nil {
 		_, maxBytesExceeded := errors.AsType[*http.MaxBytesError](err)
 		switch {
@@ -187,6 +187,7 @@ func (o *OTLP) receive(
 	if err != nil {
 		return "", http.StatusBadRequest, "Error parsing request body"
 	}
+	event.Request = request
 
 	ctx, cancel := context.WithTimeout(r.Context(), o.deliveryTimeout)
 	defer cancel()
@@ -219,30 +220,46 @@ func requestContentType(r *http.Request) (string, bool) {
 	}
 }
 
-func readBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
-	var body io.Reader = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+func readBody(w http.ResponseWriter, r *http.Request) ([]byte, *domain.Request, error) {
+	wire := &countingReader{r: http.MaxBytesReader(w, r.Body, maxBodyBytes)}
+	var body io.Reader = wire
+	request := &domain.Request{Encoding: "identity"}
 
-	switch strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Encoding"))) {
+	switch encoding := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Encoding"))); encoding {
 	case "", "identity":
 	case "gzip":
 		gz, err := gzip.NewReader(body)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		defer gz.Close()
 		body = gz
+		request.Encoding = encoding
 	default:
-		return nil, errUnsupportedEncoding
+		return nil, nil, errUnsupportedEncoding
 	}
 
 	data, err := io.ReadAll(io.LimitReader(body, maxBodyBytes+1))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(data) > maxBodyBytes {
-		return nil, errBodyTooLarge
+		return nil, nil, errBodyTooLarge
 	}
-	return data, nil
+	request.WireBytes, request.DecodedBytes = wire.n, len(data)
+	return data, request, nil
+}
+
+// countingReader counts the bytes read through it.
+type countingReader struct {
+	r io.Reader
+	n int
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += n
+	return n, err
 }
 
 func (o *OTLP) Stop() error {

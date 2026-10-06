@@ -258,3 +258,45 @@ func TestMetricsRecordCancellation(t *testing.T) {
 		})
 	}
 }
+
+// requestSizes returns the count and sum of every point of the request size
+// histogram, by attribute set.
+func requestSizes(t *testing.T, reader *sdkmetric.ManualReader) map[attribute.Distinct][2]int64 {
+	t.Helper()
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(t.Context(), &rm))
+
+	points := map[attribute.Distinct][2]int64{}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if data, ok := m.Data.(metricdata.Histogram[int64]); ok && m.Name == "tram.source.request.size" {
+				for _, dp := range data.DataPoints {
+					points[dp.Attributes.Equivalent()] = [2]int64{int64(dp.Count), dp.Sum}
+				}
+			}
+		}
+	}
+	return points
+}
+
+// Sources that decode requests report their size as received and decoded;
+// only the source records it, however many nodes the event passes.
+func TestMetricsRecordRequestSizeOfSources(t *testing.T) {
+	t.Parallel()
+
+	c, reg, reader := newMeteredCore(t)
+	_, err := c.UpsertStream(t.Context(), streamSpec(1, sink("sink", "fake")))
+	require.NoError(t, err)
+
+	event := logs(2)
+	event.Request = &domain.Request{Encoding: "gzip", WireBytes: 100, DecodedBytes: 500}
+	require.NoError(t, deliver(t, reg, event))
+	require.NoError(t, deliver(t, reg, event))
+	require.NoError(t, deliver(t, reg, logs(2)), "events without a request record nothing")
+
+	encoding := attribute.String("encoding", "gzip")
+	assert.Equal(t, map[attribute.Distinct][2]int64{
+		attrs("source", "source", encoding, attribute.String("body", "received")): {2, 200},
+		attrs("source", "source", encoding, attribute.String("body", "decoded")):  {2, 1000},
+	}, requestSizes(t, reader))
+}
