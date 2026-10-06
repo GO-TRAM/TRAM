@@ -28,7 +28,7 @@ func BenchmarkNotify(b *testing.B) {
 			"url":       url,
 			"stream":    "bench",
 			"size":      float64(256 << 20),
-			"retention": "1m",
+			"max_age":   "1m",
 			"subject": map[string]any{
 				"register": []any{"bench.>"},
 				"logs":     "'bench.' + logs.resource_logs[0].scope_logs[0].log_records[0].attributes.get_attr('team')",
