@@ -476,7 +476,8 @@ Publishes OTLP-encoded events to NATS JetStream. Uses dynamic subject mapping wi
 | `url` | string | Yes | - | NATS server URL (e.g., `"nats://localhost:4222"`) |
 | `stream` | string | Yes | - | JetStream stream name to publish to |
 | `subject` | object | Yes | - | Subject configuration for dynamic subject mapping |
-| `retention` | string | No | - | Stream message retention as a Go duration (e.g., `"24h"`, `"168h"`; days are not supported) |
+| `retention` | string | No | `"limits"` | Stream message retention policy: `"limits"` (retain until limits are reached), `"interest"` (remove when all consumers acknowledge), or `"workqueue"` (remove when first consumer acknowledges) |
+| `max_age` | string | No | - | Maximum age for messages in the stream as a Go duration (e.g., `"24h"`, `"168h"`; days are not supported) |
 | `size` | int | No | - | Maximum stream size in bytes |
 | `compression` | string | No | - | How JetStream compresses the stream on disk: `"s2"` or `"none"` |
 
@@ -521,7 +522,7 @@ Signals without an expression are not published by this sink.
 }
 ```
 
-**Example with retention and size limits:**
+**Example with retention and max_age limits:**
 
 ```json
 {
@@ -531,7 +532,8 @@ Signals without an expression are not published by this sink.
   "spec": {
     "url": "nats://localhost:4222",
     "stream": "tram-data",
-    "retention": "24h",
+    "retention": "interest",
+    "max_age": "24h",
     "size": 1073741824,
     "subject": {
       "register": ["logs.*", "metrics.*"],
@@ -543,8 +545,9 @@ Signals without an expression are not published by this sink.
 ```
 
 **Behavior Notes:**
-- When the stream is created in Tram, the sink creates a missing JetStream stream from `register`, `retention`, `size` and `compression`. An existing stream is only extended: `register` subjects it does not cover yet are added, and `retention`, `size` and `compression` are applied if set. Other settings, limits that are not set, and the subjects of other sinks or writers are kept, so several sinks can share a stream and it can be configured outside Tram
+- When the stream is created in Tram, the sink creates a missing JetStream stream from `register`, `retention`, `max_age`, `size` and `compression`. An existing stream is only extended: `register` subjects it does not cover yet are added, and `retention`, `max_age`, `size` and `compression` are applied if set. Other settings, limits that are not set, and the subjects of other sinks or writers are kept, so several sinks can share a stream and it can be configured outside Tram
 - Subjects are never removed from a stream; removing one from `register` leaves it on the stream. Set `retention`, `size` and `compression` in one sink only, since sinks with different values replace each other's when they start
+- The `retention` policy controls when acknowledged messages are removed: `"limits"` (default) keeps all messages until stream limits like `max_age`, `max_bytes` or `max_msgs` are reached, `"interest"` removes messages when all consumers have acknowledged them, and `"workqueue"` removes messages when the first consumer acknowledges them. The `max_age` setting applies to all messages regardless of acknowledgment status
 - Compression saves disk space and costs CPU on the NATS server; how much it saves depends on the data. Changing it affects only data written afterwards. `size` counts the messages uncompressed
 - An event becomes one message per subject. The sink publishes them all at once and reports success once JetStream has acknowledged every one; if one fails or is not acknowledged within 10 seconds, the event fails and the source retries it, so messages already stored are stored again
 - Records are grouped by their resolved subject and published as one OTLP message per subject and signal type, so different signal types may share a subject. Each message has a `Tram-Signal` header with the signal type, which the [NATS Source](#nats-source) needs to decode it

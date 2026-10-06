@@ -205,7 +205,7 @@ Source → [Stage] → Sink
 |------|-------------|
 | **Sources** | `generator`, `nats`, `otlp` |
 | **Stages** | `batch`, `cel_filter`, `cel_validator`, `delay`, `noop` |
-| **Sinks** | `debug`, `nats` |
+| **Sinks** | `debug`, `nats`, `otlp` |
 
 For detailed documentation on each component and its configuration, see [COMPONENTS.md](COMPONENTS.md).
 
