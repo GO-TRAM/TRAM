@@ -2,10 +2,12 @@ package configsync_test
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -139,4 +141,119 @@ func TestUnreadableFileKeepsStream(t *testing.T) {
 
 	_, err = c.GetStream(t.Context(), "removed")
 	assert.ErrorIs(t, err, domain.ErrStreamNotFound)
+}
+
+// failingCore fails every upsert while fail is set, like a core whose
+// components cannot connect to NATS yet, and counts the attempts.
+type failingCore struct {
+	*core.Core
+
+	fail     atomic.Bool
+	attempts atomic.Int64
+}
+
+func (c *failingCore) UpsertStream(ctx context.Context, stream domain.StreamSpec) (*domain.StreamSpec, error) {
+	c.attempts.Add(1)
+	if c.fail.Load() {
+		return nil, errors.New("failed to connect to NATS: nats: no servers available for connection")
+	}
+	return c.Core.UpsertStream(ctx, stream)
+}
+
+func startFailing(t *testing.T, dir string) *failingCore {
+	t.Helper()
+	c := &failingCore{Core: newCore(t)}
+	c.fail.Store(true)
+	cs, err := configsync.New(c, dir, slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+	configsync.SetRetryDelays(cs, 10*time.Millisecond, 80*time.Millisecond)
+	run(t, cs)
+	return c
+}
+
+// A stream that cannot be applied when Tram starts, e.g. because NATS is not
+// up yet, is applied once it can be, without its file changing.
+func TestStreamThatFailedIsAppliedLater(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeFile(t, dir, "late.json", streamFile)
+	c := startFailing(t, dir)
+
+	require.Eventually(t, func() bool { return c.attempts.Load() >= 3 }, 5*time.Second, 5*time.Millisecond,
+		"the stream was not tried again")
+	_, err := c.GetStream(t.Context(), "late")
+	require.ErrorIs(t, err, domain.ErrStreamNotFound)
+
+	c.fail.Store(false)
+	require.Eventually(t, func() bool {
+		_, getErr := c.GetStream(t.Context(), "late")
+		return getErr == nil
+	}, 5*time.Second, 5*time.Millisecond, "the stream was not applied")
+
+	// Once every stream is applied, nothing is tried again.
+	settled := c.attempts.Load()
+	time.Sleep(300 * time.Millisecond)
+	assert.Equal(t, settled, c.attempts.Load())
+}
+
+// The delay doubles with every failed sync up to its maximum, so a stream
+// that keeps failing is not tried in a busy loop.
+func TestRetriesBackOff(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeFile(t, dir, "failing.json", streamFile)
+	c := startFailing(t, dir)
+
+	// 10, 20, 40, then every 80 ms: about 8 attempts in 600 ms, while
+	// retrying every 10 ms would make about 60.
+	time.Sleep(600 * time.Millisecond)
+	assert.GreaterOrEqual(t, c.attempts.Load(), int64(5))
+	assert.LessOrEqual(t, c.attempts.Load(), int64(15))
+}
+
+// A stream whose file is removed is no longer tried.
+func TestRemovedFileIsNotTriedAgain(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeFile(t, dir, "gone.json", streamFile)
+	c := startFailing(t, dir)
+
+	require.Eventually(t, func() bool { return c.attempts.Load() >= 2 }, 5*time.Second, 5*time.Millisecond)
+	require.NoError(t, os.Remove(filepath.Join(dir, "gone.json")))
+
+	// The sync of the removal may still run once.
+	time.Sleep(300 * time.Millisecond)
+	stopped := c.attempts.Load()
+	time.Sleep(300 * time.Millisecond)
+	assert.Equal(t, stopped, c.attempts.Load())
+}
+
+// Retries end with Run: none runs after it returned.
+func TestRetriesStopWithRun(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeFile(t, dir, "failing.json", streamFile)
+	c := &failingCore{Core: newCore(t)}
+	c.fail.Store(true)
+	cs, err := configsync.New(c, dir, slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+	configsync.SetRetryDelays(cs, 10*time.Millisecond, 10*time.Millisecond)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- cs.Run(ctx) }()
+	require.Eventually(t, func() bool { return c.attempts.Load() >= 3 }, 5*time.Second, 5*time.Millisecond)
+	cancel()
+	require.NoError(t, <-done)
+	require.NoError(t, cs.Close())
+
+	// A retry that had already started may still finish.
+	time.Sleep(50 * time.Millisecond)
+	stopped := c.attempts.Load()
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, stopped, c.attempts.Load())
 }

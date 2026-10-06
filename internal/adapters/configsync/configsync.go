@@ -24,6 +24,16 @@ const (
 	debounceDuration = 100 * time.Millisecond
 	filePermissions  = 0o600
 	fileExtension    = ".json"
+
+	// Streams that could not be applied, e.g. because NATS was not up yet
+	// when Tram started, are tried again after a delay that doubles with
+	// every failed sync, between these bounds.
+	minRetryDelay    = time.Second
+	maxRetryDelay    = 30 * time.Second
+	retryDelayGrowth = 2
+	// failureLogInterval bounds how often a stream that keeps failing is
+	// logged, so hundreds of them do not flood the log on every retry.
+	failureLogInterval = time.Minute
 )
 
 type ConfigSync struct {
@@ -35,6 +45,14 @@ type ConfigSync struct {
 	debouncer        *time.Timer
 	debounceDuration time.Duration
 	syncMu           sync.Mutex
+
+	// Guarded by syncMu.
+	unapplied                    int
+	retry                        *time.Timer
+	retryDelay                   time.Duration
+	minRetryDelay, maxRetryDelay time.Duration
+	// failing holds when a stream that could not be applied was last logged.
+	failing map[string]time.Time
 }
 
 func New(c ports.Core, dir string, logger *slog.Logger) (*ConfigSync, error) {
@@ -54,9 +72,13 @@ func New(c ports.Core, dir string, logger *slog.Logger) (*ConfigSync, error) {
 		watcher:          watcher,
 		fsEvents:         make(chan fsnotify.Event, fsEventBuffer),
 		debounceDuration: debounceDuration,
+		minRetryDelay:    minRetryDelay,
+		maxRetryDelay:    maxRetryDelay,
+		failing:          map[string]time.Time{},
 	}
 
-	if err = cs.sync(context.Background()); err != nil {
+	// Streams that cannot be applied yet are tried again once Run starts.
+	if _, err = cs.sync(context.Background()); err != nil {
 		return nil, errors.Join(err, watcher.Close())
 	}
 
@@ -83,7 +105,17 @@ func (c *ConfigSync) Run(ctx context.Context) error {
 		if c.debouncer != nil {
 			c.debouncer.Stop()
 		}
+		c.syncMu.Lock()
+		if c.retry != nil {
+			c.retry.Stop()
+		}
+		c.syncMu.Unlock()
 	}()
+
+	c.syncMu.Lock()
+	unapplied := c.unapplied
+	c.syncMu.Unlock()
+	c.afterSync(ctx, unapplied, nil, false)
 
 	for {
 		select {
@@ -124,30 +156,63 @@ func (c *ConfigSync) scheduleSync(ctx context.Context, event fsnotify.Event) {
 		c.debouncer.Stop()
 	}
 	c.debouncer = time.AfterFunc(c.debounceDuration, func() {
-		if err := c.sync(ctx); err != nil {
-			c.logger.ErrorContext(ctx, "Could not sync stream files", slog.Any("error", err))
-		}
+		unapplied, err := c.sync(ctx)
+		c.afterSync(ctx, unapplied, err, true)
+	})
+}
+
+// afterSync schedules another sync if streams could not be applied or the
+// sync failed. A sync after a change to the files starts over with the
+// shortest delay.
+func (c *ConfigSync) afterSync(ctx context.Context, unapplied int, err error, filesChanged bool) {
+	if err != nil && ctx.Err() == nil {
+		c.logger.ErrorContext(ctx, "Could not sync stream files", slog.Any("error", err))
+	}
+
+	c.syncMu.Lock()
+	defer c.syncMu.Unlock()
+	if ctx.Err() != nil {
+		return
+	}
+	if c.retry != nil {
+		c.retry.Stop()
+		c.retry = nil
+	}
+	if filesChanged || (unapplied == 0 && err == nil) {
+		c.retryDelay = 0
+	}
+	if unapplied == 0 && err == nil {
+		return
+	}
+
+	c.retryDelay = min(max(retryDelayGrowth*c.retryDelay, c.minRetryDelay), c.maxRetryDelay)
+	c.logger.DebugContext(ctx, "Trying stream files again",
+		slog.Int("unapplied", unapplied), slog.Duration("delay", c.retryDelay))
+	c.retry = time.AfterFunc(c.retryDelay, func() {
+		stillUnapplied, syncErr := c.sync(ctx)
+		c.afterSync(ctx, stillUnapplied, syncErr, false)
 	})
 }
 
 // A stream whose file cannot be read is kept: deleting it would also delete
 // the file, e.g. while an editor is still saving it. Syncs run one at a time,
 // so a slow sync cannot apply an older state of the files after a newer one.
-func (c *ConfigSync) sync(ctx context.Context) error {
+// sync returns how many streams could not be applied.
+func (c *ConfigSync) sync(ctx context.Context) (int, error) {
 	c.syncMu.Lock()
 	defer c.syncMu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return err
+		return 0, err
 	}
 
 	files, unreadable, err := c.readStreamFiles(ctx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	configured, err := c.core.GetStreams(ctx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	for _, stream := range configured {
 		if _, ok := files[stream.Name]; ok {
@@ -169,10 +234,38 @@ func (c *ConfigSync) sync(ctx context.Context) error {
 		}
 	}
 
-	for name, file := range files {
-		c.apply(ctx, name, file)
+	for name := range c.failing {
+		if _, ok := files[name]; !ok {
+			delete(c.failing, name)
+		}
 	}
-	return nil
+
+	unapplied := 0
+	for name, file := range files {
+		if err = c.apply(ctx, name, file); err != nil {
+			unapplied++
+			c.logFailure(ctx, name, err)
+			continue
+		}
+		if _, failed := c.failing[name]; failed {
+			c.logger.InfoContext(ctx, "Applied stream that could not be applied before", slog.String("stream", name))
+			delete(c.failing, name)
+		}
+	}
+	c.unapplied = unapplied
+	return unapplied, nil
+}
+
+// logFailure logs a stream that could not be applied, the first time and then
+// at most every failureLogInterval. Must be called with syncMu held.
+func (c *ConfigSync) logFailure(ctx context.Context, name string, err error) {
+	last, failed := c.failing[name]
+	if failed && time.Since(last) < failureLogInterval {
+		return
+	}
+	c.failing[name] = time.Now()
+	c.logger.ErrorContext(ctx, "Could not apply stream, trying again later",
+		slog.String("stream", name), slog.Any("error", err))
 }
 
 func (c *ConfigSync) readStreamFiles(ctx context.Context) (map[string]Stream, map[string]struct{}, error) {
@@ -201,20 +294,20 @@ func (c *ConfigSync) readStreamFiles(ctx context.Context) (map[string]Stream, ma
 	return files, unreadable, nil
 }
 
-func (c *ConfigSync) apply(ctx context.Context, name string, file Stream) {
+func (c *ConfigSync) apply(ctx context.Context, name string, file Stream) error {
 	configured, err := c.core.GetStream(ctx, name)
 	if err != nil && !errors.Is(err, domain.ErrStreamNotFound) {
-		c.logger.ErrorContext(ctx, "Could not get stream", slog.String("stream", name), slog.Any("error", err))
-		return
+		return fmt.Errorf("get stream: %w", err)
 	}
 	if configured != nil && file.Equals(StreamFromDomain(*configured)) {
-		return
+		return nil
 	}
 
 	c.logger.DebugContext(ctx, "Upserting stream", slog.String("stream", name))
 	if _, err = c.core.UpsertStream(ctx, *file.AsDomain()); err != nil {
-		c.logger.ErrorContext(ctx, "Could not upsert stream", slog.String("stream", name), slog.Any("error", err))
+		return fmt.Errorf("upsert stream: %w", err)
 	}
+	return nil
 }
 
 func (c *ConfigSync) onCoreChange(event domain.StreamSpecWatchEvent) error {

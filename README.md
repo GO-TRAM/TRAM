@@ -327,6 +327,7 @@ Every `<name>.json` file in the directory describes one stream, in the same form
 - Adding, changing or deleting a file creates, updates or deletes the stream
 - Streams created or changed through the API or the Kubernetes operator are written to files (new files are readable only by the owner, mode `0600`), and deleted streams have their file removed
 - Streams without a file are deleted when the directory is synced
+- A stream that cannot be created or updated, e.g. because NATS is not reachable yet when Tram starts, is tried again without its file changing: after 1 second, then with a delay that doubles up to 30 seconds, until every stream is applied. Changing a file starts over with the shortest delay. A stream that keeps failing is logged once a minute; one that is applied after failing is logged once more. A file that is invalid for good is tried again as well, so fix or remove it
 
 ### Kubernetes Operator
 
