@@ -28,7 +28,9 @@
           "url": "nats://localhost:4222",
           "stream": "tram-stream",
           "subject": {
-            "register": ["benchmark.*"],
+            "register": [
+              "benchmark.*"
+            ],
             "logs": "'benchmark.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
             "metrics": "'benchmark.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')",
             "traces": "'benchmark.' + traces.resource_spans[0].resource.attributes.get_attr('service.name')"

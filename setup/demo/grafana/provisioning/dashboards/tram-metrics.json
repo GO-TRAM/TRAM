@@ -4,9 +4,14 @@
   "description": "Metrics that the OTLP clients send to Tram and Tram forwards to OpenObserve. Tram's metrics cel_filter stage drops every metric whose name starts with debug., so only checkout.orders arrives.",
   "editable": true,
   "refresh": "10s",
-  "time": { "from": "now-15m", "to": "now" },
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
   "schemaVersion": 39,
-  "templating": { "list": [] },
+  "templating": {
+    "list": []
+  },
   "links": [
     {
       "title": "Logs through Tram",
@@ -30,14 +35,36 @@
       "type": "timeseries",
       "title": "Orders per second",
       "description": "Rate of the counter checkout.orders, which the checkout-metrics client increments once per second.",
-      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 9 },
-      "datasource": { "type": "prometheus", "uid": "openobserve-metrics" },
-      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 }, "overrides": [] },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "openobserve-metrics"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "openobserve-metrics" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
           "expr": "sum by (service_name) (rate(checkout_orders[1m]))",
           "legendFormat": "{{service_name}}"
         }
@@ -48,14 +75,35 @@
       "type": "timeseries",
       "title": "checkout.orders",
       "description": "The cumulative counter as it arrives in OpenObserve.",
-      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 9 },
-      "datasource": { "type": "prometheus", "uid": "openobserve-metrics" },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "openobserve-metrics"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "openobserve-metrics" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
           "expr": "sum by (service_name, order_status) (checkout_orders)",
           "legendFormat": "{{service_name}} {{order_status}}"
         }
@@ -66,18 +114,40 @@
       "type": "stat",
       "title": "debug.cache.size",
       "description": "The debug-noise-metrics client sends this gauge five times per second. Tram drops it, so this panel stays empty.",
-      "gridPos": { "x": 0, "y": 9, "w": 24, "h": 5 },
-      "datasource": { "type": "prometheus", "uid": "openobserve-metrics" },
-      "fieldConfig": { "defaults": { "noValue": "Dropped by Tram" }, "overrides": [] },
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "openobserve-metrics"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Dropped by Tram"
+        },
+        "overrides": []
+      },
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "colorMode": "none",
         "graphMode": "none"
       },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "openobserve-metrics" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "openobserve-metrics"
+          },
           "expr": "debug_cache_size"
         }
       ]

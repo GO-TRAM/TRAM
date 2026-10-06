@@ -35,7 +35,9 @@
           "url": "nats://localhost:4222",
           "stream": "tram-stream",
           "subject": {
-            "register": ["benchmark.team-0.*"],
+            "register": [
+              "benchmark.team-0.*"
+            ],
             "logs": "'benchmark.team-0.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
             "metrics": "'benchmark.team-0.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')",
             "traces": "'benchmark.team-0.' + traces.resource_spans[0].resource.attributes.get_attr('service.name')"
@@ -50,7 +52,9 @@
           "url": "nats://localhost:4222",
           "stream": "tram-stream",
           "subject": {
-            "register": ["benchmark.other.*"],
+            "register": [
+              "benchmark.other.*"
+            ],
             "logs": "'benchmark.other.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
             "metrics": "'benchmark.other.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')",
             "traces": "'benchmark.other.' + traces.resource_spans[0].resource.attributes.get_attr('service.name')"

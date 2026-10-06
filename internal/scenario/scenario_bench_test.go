@@ -167,7 +167,8 @@ func (e *env) natsSink(name, from string) domain.SinkSpec {
 		"url":       e.natsURL,
 		"stream":    stream,
 		"size":      float64(256 << 20),
-		"retention": "1m",
+		"retention": "interest",
+		"max_age":   "4h",
 		"subject": map[string]any{
 			"register": []any{stream + ".>"},
 			"logs": fmt.Sprintf(

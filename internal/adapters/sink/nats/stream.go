@@ -76,7 +76,7 @@ func applyStream(ctx context.Context, js jetstream.JetStream, spec *Spec, logger
 }
 
 func configFromSpec(spec *Spec) (jetstream.StreamConfig, error) {
-	retention, err := retentionPolicyFromSpec(spec)
+	retention, _, err := retentionPolicyFromSpec(spec)
 	if err != nil {
 		return jetstream.StreamConfig{}, err
 	}
@@ -116,8 +116,17 @@ func (u streamUpdate) changed() bool {
 	return len(u.subjects) > 0 || u.limitsChanged
 }
 
+// applyLimit records that a limit of the spec is applied; replaced describes
+// the different, previously set limit it replaces, if any.
+func applyLimit(u *streamUpdate, replaced string) {
+	u.limitsChanged = true
+	if replaced != "" {
+		u.replacedLimits = append(u.replacedLimits, replaced)
+	}
+}
+
 func mergeStreamConfig(existing jetstream.StreamConfig, spec *Spec) (jetstream.StreamConfig, streamUpdate, error) {
-	retention, err := retentionPolicyFromSpec(spec)
+	retention, retentionSet, err := retentionPolicyFromSpec(spec)
 	if err != nil {
 		return existing, streamUpdate{}, err
 	}
@@ -138,57 +147,52 @@ func mergeStreamConfig(existing jetstream.StreamConfig, spec *Spec) (jetstream.S
 	}
 
 	if maxAge != 0 && merged.MaxAge != maxAge {
-		if merged.MaxAge > 0 {
-			update.replacedLimits = append(update.replacedLimits,
-				fmt.Sprintf("max_age %s -> %s", merged.MaxAge, maxAge))
-		}
+		applyLimit(&update, replacedIf(merged.MaxAge > 0, "max_age %s -> %s", merged.MaxAge, maxAge))
 		merged.MaxAge = maxAge
-		update.limitsChanged = true
 	}
-
-	if retention != 0 && merged.Retention != retention {
-		if merged.Retention > 0 {
-			update.replacedLimits = append(update.replacedLimits,
-				fmt.Sprintf("retention %s -> %s", strings.ToLower(merged.Retention.String()), strings.ToLower(retention.String())))
-		}
+	if retentionSet && merged.Retention != retention {
+		applyLimit(&update, replacedIf(merged.Retention != jetstream.LimitsPolicy, "retention %s -> %s",
+			strings.ToLower(merged.Retention.String()), strings.ToLower(retention.String())))
 		merged.Retention = retention
-		update.limitsChanged = true
 	}
-
 	if spec.Size != 0 && merged.MaxBytes != spec.Size {
-		if merged.MaxBytes > 0 {
-			update.replacedLimits = append(update.replacedLimits,
-				fmt.Sprintf("size %d -> %d", merged.MaxBytes, spec.Size))
-		}
+		applyLimit(&update, replacedIf(merged.MaxBytes > 0, "size %d -> %d", merged.MaxBytes, spec.Size))
 		merged.MaxBytes = spec.Size
-		update.limitsChanged = true
 	}
-
 	if compression, ok := compressionFromSpec(spec); ok && merged.Compression != compression {
-		if merged.Compression != jetstream.NoCompression {
-			update.replacedLimits = append(update.replacedLimits, fmt.Sprintf("compression %s -> %s",
-				strings.ToLower(merged.Compression.String()), spec.Compression))
-		}
+		applyLimit(&update, replacedIf(merged.Compression != jetstream.NoCompression, "compression %s -> %s",
+			strings.ToLower(merged.Compression.String()), spec.Compression))
 		merged.Compression = compression
-		update.limitsChanged = true
 	}
 
 	return merged, update, nil
 }
 
-func retentionPolicyFromSpec(spec *Spec) (jetstream.RetentionPolicy, error) {
-	if spec.Retention == "" {
-		return jetstream.LimitsPolicy, nil
+// replacedIf describes a replaced limit if the stream had one set before.
+func replacedIf(wasSet bool, format string, args ...any) string {
+	if !wasSet {
+		return ""
 	}
+	return fmt.Sprintf(format, args...)
+}
+
+// retentionPolicyFromSpec returns the retention policy of the spec and whether
+// it sets one. LimitsPolicy is the zero value, so it cannot tell by itself.
+func retentionPolicyFromSpec(spec *Spec) (jetstream.RetentionPolicy, bool, error) {
 	switch spec.Retention {
+	case "":
+		return jetstream.LimitsPolicy, false, nil
 	case "limits":
-		return jetstream.LimitsPolicy, nil
+		return jetstream.LimitsPolicy, true, nil
 	case "interest":
-		return jetstream.InterestPolicy, nil
+		return jetstream.InterestPolicy, true, nil
 	case "workqueue":
-		return jetstream.WorkQueuePolicy, nil
+		return jetstream.WorkQueuePolicy, true, nil
 	default:
-		return 0, fmt.Errorf("invalid retention policy: %q (must be 'limits', 'interest', or 'workqueue')", spec.Retention)
+		return 0, false, fmt.Errorf(
+			"invalid retention policy: %q (must be 'limits', 'interest', or 'workqueue')",
+			spec.Retention,
+		)
 	}
 }
 

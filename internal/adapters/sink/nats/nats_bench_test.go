@@ -25,10 +25,10 @@ func BenchmarkNotify(b *testing.B) {
 
 	for _, shape := range shapes {
 		sink, err := natssink.New(domain.SinkSpec{Name: "nats", From: "in", Spec: map[string]any{
-			"url":       url,
-			"stream":    "bench",
-			"size":      float64(256 << 20),
-			"max_age":   "1m",
+			"url":     url,
+			"stream":  "bench",
+			"size":    float64(256 << 20),
+			"max_age": "1m",
 			"subject": map[string]any{
 				"register": []any{"bench.>"},
 				"logs":     "'bench.' + logs.resource_logs[0].scope_logs[0].log_records[0].attributes.get_attr('team')",

@@ -129,7 +129,10 @@ func TestNATS(t *testing.T) {
 		spec := n.sinkSpec(out, map[string]any{
 			"logs": fmt.Sprintf("'%s.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')", out),
 		})
-		spec["retention"] = "4h"
+		// An interest stream drops messages nobody consumes yet, so they could
+		// not be read back here.
+		spec["retention"] = "limits"
+		spec["max_age"] = "4h"
 		spec["size"] = float64(1 << 30)
 		spec["compression"] = "s2"
 		p := newPipeline(t, nil, []domain.SinkSpec{{Name: "out", Type: "nats", From: "in", Spec: spec}})
@@ -145,6 +148,7 @@ func TestNATS(t *testing.T) {
 		require.NoError(t, err)
 		config := stream.CachedInfo().Config
 		assert.Equal(t, jetstream.S2Compression, config.Compression)
+		assert.Equal(t, jetstream.LimitsPolicy, config.Retention)
 		assert.Equal(t, 4*time.Hour, config.MaxAge)
 		assert.Equal(t, int64(1<<30), config.MaxBytes)
 	})

@@ -177,7 +177,12 @@ func TestMergeStreamConfig(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, update.Changed)
 		assert.Equal(t, jetstream.InterestPolicy, merged.Retention)
-		assert.Equal(t, []string(nil), update.ReplacedLimits, "setting retention policy from default does not replace an existing limit")
+		assert.Equal(
+			t,
+			[]string(nil),
+			update.ReplacedLimits,
+			"setting retention policy from default does not replace an existing limit",
+		)
 		assert.Equal(t, 1*time.Hour, merged.MaxAge, "MaxAge is kept from existing config")
 	})
 
@@ -219,5 +224,32 @@ func TestMergeStreamConfig(t *testing.T) {
 		assert.True(t, update.Changed)
 		assert.Equal(t, jetstream.WorkQueuePolicy, merged.Retention)
 		assert.Equal(t, []string{"retention interest -> workqueue"}, update.ReplacedLimits)
+	})
+
+	// LimitsPolicy is the zero value of the policy, so it must still count as
+	// set when the spec names it.
+	t.Run("limits retention replaces another policy", func(t *testing.T) {
+		t.Parallel()
+
+		in := existing()
+		in.Retention = jetstream.InterestPolicy
+		s := spec("logs.>")
+		s.Retention = "limits"
+		merged, update, err := natssink.MergeStreamConfig(in, s)
+		require.NoError(t, err)
+		assert.True(t, update.Changed)
+		assert.Equal(t, jetstream.LimitsPolicy, merged.Retention)
+		assert.Equal(t, []string{"retention interest -> limits"}, update.ReplacedLimits)
+	})
+
+	t.Run("a spec without retention keeps the stream's", func(t *testing.T) {
+		t.Parallel()
+
+		in := existing()
+		in.Retention = jetstream.InterestPolicy
+		merged, update, err := natssink.MergeStreamConfig(in, spec("logs.>"))
+		require.NoError(t, err)
+		assert.False(t, update.Changed)
+		assert.Equal(t, jetstream.InterestPolicy, merged.Retention)
 	})
 }
