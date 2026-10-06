@@ -5,6 +5,7 @@ type Spec struct {
 	Stream      string      `json:"stream"      validate:"required"`
 	Subject     SubjectSpec `json:"subject"     validate:"required"`
 	Retention   string      `json:"retention"`
+	MaxAge      string      `json:"max_age"`
 	Size        int64       `json:"size"`
 	Compression string      `json:"compression" validate:"omitempty,oneof=none s2"`
 }

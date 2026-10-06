@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/cel-go/cel"
@@ -41,6 +42,16 @@ const (
 	spanVariable   = "span"
 
 	getAttrArguments = 2
+
+	// Without it, a publish whose acknowledgement is lost, e.g. while NATS
+	// restarts, would wait forever when the source's context has no deadline.
+	publishAckTimeout = 10 * time.Second
+
+	// Bounds the messages a sink has in flight. NATS stores the messages of a
+	// stream one after another and buffers what it has not stored yet, so
+	// without a bound a fast sink can make it run out of memory. A sink at the
+	// bound waits instead, which slows its source down.
+	maxPendingPublishes = 256
 )
 
 type NATS struct {
@@ -75,7 +86,9 @@ func New(sink domain.SinkSpec, validator *validator.Validate, logger *slog.Logge
 		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
 	}
 
-	js, err := jetstream.New(nc)
+	js, err := jetstream.New(nc,
+		jetstream.WithPublishAsyncTimeout(publishAckTimeout),
+		jetstream.WithPublishAsyncMaxPending(maxPendingPublishes))
 	if err != nil {
 		nc.Close()
 		return nil, fmt.Errorf("failed to initialize JetStream: %w", err)
@@ -201,22 +214,48 @@ func (n *NATS) Notify(ctx context.Context, event *domain.Event) error {
 		return fmt.Errorf("%w: could not resolve subject: %w", domain.ErrEventRejected, err)
 	}
 
-	for _, m := range messages {
+	msgs := make([]*nats.Msg, len(messages))
+	for i, m := range messages {
 		signal, data, marshalErr := m.event.MarshalOTLPData()
 		if marshalErr != nil {
 			return fmt.Errorf("failed to marshal event: %w", marshalErr)
 		}
-		msg := &nats.Msg{
+		msgs[i] = &nats.Msg{
 			Subject: m.subject,
 			Data:    data,
 			Header:  nats.Header{SignalHeader: []string{string(signal)}},
 		}
-		if _, err = n.jetstream.PublishMsg(ctx, msg); err != nil {
-			return fmt.Errorf("failed to publish event: %w", err)
+	}
+	if err = n.publish(ctx, msgs); err != nil {
+		return fmt.Errorf("failed to publish event: %w", err)
+	}
+	return nil
+}
+
+// An event resolves to one message per subject, which with many subjects is
+// one per record. Publishing them one after another would wait for every
+// acknowledgement in turn, so all are sent first and acknowledged together.
+func (n *NATS) publish(ctx context.Context, msgs []*nats.Msg) error {
+	acks := make([]jetstream.PubAckFuture, 0, len(msgs))
+	var err error
+	for _, msg := range msgs {
+		ack, publishErr := n.jetstream.PublishMsgAsync(msg, jetstream.WithStallWait(publishAckTimeout))
+		if publishErr != nil {
+			err = publishErr
+			break
+		}
+		acks = append(acks, ack)
+	}
+	for _, ack := range acks {
+		select {
+		case <-ack.Ok():
+		case ackErr := <-ack.Err():
+			err = errors.Join(err, ackErr)
+		case <-ctx.Done():
+			return errors.Join(err, ctx.Err())
 		}
 	}
-
-	return nil
+	return err
 }
 
 func (n *NATS) Stop() error {

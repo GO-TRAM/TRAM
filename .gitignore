@@ -22,3 +22,5 @@ coverage.out
 .task/
 
 .claude/
+
+setup/tlmr-loadtest

@@ -213,9 +213,9 @@ Fixed costs per event, independent of its size. They dominate when events are sm
 
 ## Tuning
 
-- **Batch before the NATS sink.** The sink waits for JetStream to acknowledge every message. With small events that round trip dominates; batching spreads it over many records. Compare `otlp-nats` with 1 and with 1,000 records per event
+- **Batch before the NATS sink.** The sink waits for JetStream to acknowledge the messages of an event. With small events that round trip dominates; batching spreads it over many records. Compare `otlp-nats` with 1 and with 1,000 records per event
 - **Batching needs concurrent callers.** Each caller of a `batch` stage waits for its batch to be delivered. With a single caller, batches never fill and every event waits for `timeout`; see `otlp-batch-nats` with 1 caller
-- **Keep the number of subjects per event low.** The NATS sink publishes one message per subject and waits for each acknowledgement
+- **Keep the number of subjects per event low.** The NATS sink publishes one message per subject. It sends them all at once and waits for their acknowledgements together, so many subjects cost little time, but every message still costs CPU on Tram and the NATS server
 - **Give a NATS source enough workers.** `workers` is the number of messages processed at the same time, so a `batch` stage after the source holds at most that many messages
 - **Prefer resource-level CEL expressions.** They are evaluated once per resource instead of once per record when used in `cel_validator`; per record, CEL costs about as much as decoding the record
 

@@ -1,7 +1,6 @@
 package nats
 
 import (
-	"context"
 	"errors"
 	"log/slog"
 
@@ -24,8 +23,18 @@ type noConnection struct {
 	jetstream.JetStream
 }
 
-func (noConnection) PublishMsg(context.Context, *nats.Msg, ...jetstream.PublishOpt) (*jetstream.PubAck, error) {
+func (noConnection) PublishMsgAsync(*nats.Msg, ...jetstream.PublishOpt) (jetstream.PubAckFuture, error) {
 	return nil, errNoConnection
+}
+
+// NewWithJetStream builds a sink that publishes through js.
+func NewWithJetStream(spec map[string]any, validator *validator.Validate, js jetstream.JetStream) (*NATS, error) {
+	n, err := NewWithoutConnection(spec, validator)
+	if err != nil {
+		return nil, err
+	}
+	n.jetstream = js
+	return n, nil
 }
 
 func NewWithoutConnection(spec map[string]any, validator *validator.Validate) (*NATS, error) {
