@@ -24,3 +24,6 @@ coverage.out
 .claude/
 
 setup/tlmr-loadtest
+
+# Load generator, kept locally only
+/tools/loadgen/
