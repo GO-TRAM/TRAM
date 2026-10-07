@@ -38,6 +38,9 @@ const captureType = "capture"
 type captureSink struct {
 	name, from string
 	fail       string
+	
+	hold     chan struct{}
+	released sync.Once
 
 	mu     sync.Mutex
 	events []*domain.Event
@@ -47,7 +50,14 @@ func (s *captureSink) Name() string { return s.name }
 func (s *captureSink) From() string { return s.from }
 func (s *captureSink) Stop() error  { return nil }
 
+func (s *captureSink) release() {
+	s.released.Do(func() { close(s.hold) })
+}
+
 func (s *captureSink) Notify(_ context.Context, e *domain.Event) error {
+	if s.hold != nil {
+		<-s.hold
+	}
 	switch s.fail {
 	case "temporary":
 		return errors.New("sink unavailable")
@@ -79,6 +89,9 @@ func (f *captureFactory) New(spec domain.SinkSpec) (domain.Sink, error) {
 	}
 	fail, _ := spec.Spec["fail"].(string)
 	s := &captureSink{name: spec.Name, from: spec.From, fail: fail}
+	if hold, _ := spec.Spec["hold"].(bool); hold {
+		s.hold = make(chan struct{})
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.sinks[spec.Name] = s

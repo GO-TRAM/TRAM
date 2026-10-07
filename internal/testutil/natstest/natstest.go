@@ -6,6 +6,7 @@ import (
 
 	"github.com/testcontainers/testcontainers-go"
 	tcnats "github.com/testcontainers/testcontainers-go/modules/nats"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 const Image = "nats:2.11"
@@ -27,7 +28,10 @@ func StartServer(tb testing.TB) Server {
 	ctx := context.Background()
 	skipWithoutContainerRuntime(ctx, tb)
 
-	container, err := tcnats.Run(ctx, Image, testcontainers.WithCmd("-js", "-m", "8222"))
+
+	container, err := tcnats.Run(ctx, Image,
+		testcontainers.WithCmd("-js", "-m", "8222"),
+		testcontainers.WithAdditionalWaitStrategy(wait.ForLog("Server is ready")))
 	testcontainers.CleanupContainer(tb, container)
 	if err != nil {
 		tb.Fatalf("start NATS container: %v", err)

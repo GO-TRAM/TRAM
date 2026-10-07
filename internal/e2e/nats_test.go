@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -290,25 +291,45 @@ func TestNATS(t *testing.T) {
 
 		in := n.sourceSpec(mid)
 		in.Spec["workers"] = float64(workers)
-		_ = newStream(t, in, []domain.StageSpec{batchStage(messages+1, "200ms")},
-			[]domain.SinkSpec{captureSinkSpec("received", "batch")})
+		held := captureSinkSpec("received", "in")
+		held.Spec = map[string]any{"hold": true}
+		forward := newStream(t, in, nil, []domain.SinkSpec{held})
+		received := forward.sinks.sink(t, "received")
+		
+		t.Cleanup(received.release)
 
 		var cons jetstream.Consumer
 		require.Eventually(t, func() bool {
 			cons, err = n.js.Consumer(t.Context(), mid, mid)
 			return err == nil
 		}, 10*time.Second, 5*time.Millisecond, "the source did not create its consumer")
-		var highest int
-		require.Eventually(t, func() bool {
+
+		var infoMu sync.Mutex
+		counts := func() (int, uint64) {
+			infoMu.Lock()
+			defer infoMu.Unlock()
 			info, infoErr := cons.Info(t.Context())
 			if infoErr != nil {
-				return false
+				return -1, 0
 			}
-			highest = max(highest, info.NumAckPending)
-			return info.NumAckPending == 0 && info.NumPending == 0
+			return info.NumAckPending, info.NumPending
+		}
+		require.Eventually(t, func() bool {
+			out, _ := counts()
+			return out >= workers
+		}, 10*time.Second, 5*time.Millisecond, "the workers did not all receive a message")
+		assert.Never(t, func() bool {
+			out, _ := counts()
+			return out > workers
+		}, 500*time.Millisecond, 10*time.Millisecond, "more messages were out than workers could handle")
+		_, waiting := counts()
+		assert.Equal(t, uint64(messages-workers), waiting, "the other messages wait in the stream")
+
+		received.release()
+		require.Eventually(t, func() bool {
+			out, left := counts()
+			return out == 0 && left == 0
 		}, 20*time.Second, 5*time.Millisecond, "the messages were not acknowledged")
-		assert.Positive(t, highest)
-		assert.LessOrEqual(t, highest, workers, "more messages were out than workers could handle")
 	})
 
 	t.Run("stopping an idle source is fast", func(t *testing.T) {
