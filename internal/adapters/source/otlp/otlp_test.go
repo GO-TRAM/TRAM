@@ -92,18 +92,18 @@ func TestHandleLogs(t *testing.T) {
 			contentType:  "text/plain",
 			expectStatus: http.StatusUnsupportedMediaType,
 		},
-		{name: "malformed", body: []byte{0xff, 0xff, 0xff}, expectStatus: http.StatusBadRequest},
+		{name: "malformed", body: []byte{0xff, 0xff, 0xff}, expectStatus: http.StatusUnprocessableEntity},
 		{
 			name:         "malformed JSON",
 			body:         []byte(`{"resourceLogs": [`),
 			contentType:  "application/json",
-			expectStatus: http.StatusBadRequest,
+			expectStatus: http.StatusUnprocessableEntity,
 		},
 		{
 			name:         "JSON trace ID that is not hex",
 			body:         []byte(`{"resourceLogs":[{"scopeLogs":[{"logRecords":[{"traceId":"not hex"}]}]}]}`),
 			contentType:  "application/json",
-			expectStatus: http.StatusBadRequest,
+			expectStatus: http.StatusUnprocessableEntity,
 		},
 		{name: "too large", body: make([]byte, otlp.MaxBodyBytes+1), expectStatus: http.StatusRequestEntityTooLarge},
 		{
@@ -124,7 +124,7 @@ func TestHandleLogs(t *testing.T) {
 			name:            "malformed gzip",
 			body:            valid,
 			contentEncoding: "gzip",
-			expectStatus:    http.StatusBadRequest,
+			expectStatus:    http.StatusUnprocessableEntity,
 		},
 		{
 			name:            "unsupported content encoding",
@@ -136,7 +136,7 @@ func TestHandleLogs(t *testing.T) {
 			name:          "rejected",
 			body:          valid,
 			subscriberErr: domain.ErrEventRejected,
-			expectStatus:  http.StatusBadRequest,
+			expectStatus:  http.StatusUnprocessableEntity,
 			expectEvents:  1,
 		},
 		{
@@ -166,6 +166,12 @@ func TestHandleLogs(t *testing.T) {
 
 			assert.Equal(t, c.expectStatus, w.Code)
 			assert.Len(t, rec.events, c.expectEvents)
+
+			retryAfter := ""
+			if c.expectStatus == http.StatusServiceUnavailable {
+				retryAfter = "5"
+			}
+			assert.Equal(t, retryAfter, w.Header().Get("Retry-After"), "only retriable responses say when to retry")
 		})
 	}
 }

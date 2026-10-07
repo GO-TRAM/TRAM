@@ -52,6 +52,7 @@ Receives OpenTelemetry Protocol data over HTTP (OTLP/HTTP). OTLP over gRPC is no
 |-------|------|----------|---------|-------------|
 | `http_port` | int | Yes | - | Port to listen on, on all network interfaces |
 | `delivery_timeout` | string | No | `"8s"` | Maximum time to pass a request on to the stages and sinks, as a Go duration. A request that takes longer is cancelled and answered with `503`, which clients retry |
+| `retry_after` | string | No | `"5s"` | How long clients should wait before retrying a `503`, as a Go duration. Sent as the `Retry-After` header in whole seconds, rounded up |
 
 **Example:**
 
@@ -69,7 +70,8 @@ Receives OpenTelemetry Protocol data over HTTP (OTLP/HTTP). OTLP over gRPC is no
 - Accepts `POST` requests on `/v1/logs`, `/v1/metrics` and `/v1/traces` with a protobuf (`application/x-protobuf`) or JSON (`application/json`) body. Requests without a content type are read as protobuf
 - Bodies may be compressed with `Content-Encoding: gzip`
 - Each request becomes one event and is passed on as a whole
-- Responses: `200` with an empty response message in the request's encoding once all sinks have accepted the data, `400` for a malformed body or data rejected by a stage (e.g. `cel_validator` with `on_mismatch: reject`), `413` for bodies larger than 20 MiB (also after decompression), `415` for other content types or encodings, `503` if passing the data on failed or took longer than `delivery_timeout`, which OTLP clients retry
+- Responses: `200` with an empty response message in the request's encoding once all sinks have accepted the data, `422` for a body that cannot be read or parsed and for data rejected by a stage or sink (e.g. `cel_validator` with `on_mismatch: reject`), `413` for bodies larger than 20 MiB (also after decompression), `415` for other content types or encodings, `503` with a `Retry-After` header if passing the data on failed or took longer than `delivery_timeout`. Only the `503` is retried by OTLP clients: it is the only answer the request itself did not cause
+- A rejection is answered with `422` wherever it comes from, including a sink whose destination refuses the data permanently, e.g. an [OTLP Sink](#otlp-sink) whose destination answers `401`, `403` or `404` because of its own configuration. The client then drops data it did not cause to be refused
 - The default `delivery_timeout` is below the 10s that OpenTelemetry SDK exporters wait by default, so they get the `503` before they give up. `batch` and `delay` stages have to leave time for it, see [Hold Times](#hold-times). Raise it for pipelines that take longer, e.g. with a `delay` stage or slow sinks, and for clients that wait longer, like the OpenTelemetry Collector (30s by default). A batch that is already being sent when the timeout expires is still awaited, since it holds data of other requests too
 - A request may take up to 1 minute to send, which leaves time for large bodies on slow connections
 - The port is opened when the stream is created, so a port that is already in use fails the stream creation
@@ -217,7 +219,7 @@ Keep only spans of one service:
 **Behavior Notes:**
 - Kept records are passed on in their original resource and scope; nothing is copied, and containers without remaining records are removed. If no record is kept, nothing is passed on
 - When splitting into branches, write the last branch as the negation of the others, so every record ends up in exactly one branch
-- An expression that fails for a record, e.g. by accessing a missing list index, rejects the whole event. The OTLP source answers with HTTP 400, the NATS source terminates the message instead of redelivering it
+- An expression that fails for a record, e.g. by accessing a missing list index, rejects the whole event. The OTLP source answers with HTTP 422, the NATS source terminates the message instead of redelivering it
 - Place a batch stage before the filters to merge many small requests first; each branch then receives one filtered batch
 
 ### CEL Validator Stage
@@ -242,7 +244,7 @@ Checks each incoming event as a whole with Common Expression Language (CEL) expr
 
 **On Mismatch Behavior:**
 - `drop` - Removes all data of the signal type whose expression returned false. Other signal types of the event are still passed on; if nothing is left, nothing is passed on
-- `reject` - Rejects the whole event with an error. The OTLP source answers with HTTP 400, the NATS source terminates the message instead of redelivering it
+- `reject` - Rejects the whole event with an error. The OTLP source answers with HTTP 422, the NATS source terminates the message instead of redelivering it
 
 **Example:** reject log deliveries in which a resource has no `service.name`:
 
@@ -278,7 +280,7 @@ Reject trace deliveries that contain a span without a valid trace ID:
 
 **Behavior Notes:**
 - The decision applies to the whole event. An expression like `log_records.exists(record, record.severity_text == 'ERROR')` passes on a delivery with one ERROR and many INFO records in full, including the INFO records
-- An expression that fails for an event, e.g. by accessing a missing list index, rejects the whole event regardless of `on_mismatch`. The OTLP source answers with HTTP 400, the NATS source terminates the message instead of redelivering it
+- An expression that fails for an event, e.g. by accessing a missing list index, rejects the whole event regardless of `on_mismatch`. The OTLP source answers with HTTP 422, the NATS source terminates the message instead of redelivering it
 - Place validators with `on_mismatch: reject` before a batch stage, so one invalid delivery does not reject the deliveries batched with it
 
 ### Batch Stage
@@ -458,7 +460,7 @@ Sends OpenTelemetry Protocol data via HTTP to an OTLP-compatible endpoint. Sends
 - Each signal type of an event is sent as a separate HTTP request to its endpoint. An event can hold several signal types, e.g. after a batch stage; if one request fails, the source retries the whole event, so the others may be sent twice
 - Uses protobuf encoding (`application/x-protobuf` content type) as required by OTLP/HTTP
 - The sink handles URL construction properly, so both `"http://host:4318"` and `"http://host:4318/"` work correctly
-- Non-2xx answers fail the delivery. Client errors that refuse the data itself (4xx except 408 and 429) reject the event, so the OTLP source answers with 400 and the NATS source terminates the message. Other errors, including 408, 429 and 5xx, can be retried by the source: the OTLP source answers with 503, the NATS source redelivers the message
+- Non-2xx answers fail the delivery. Client errors that refuse the data itself (4xx except 408 and 429) reject the event, so the OTLP source answers with 422 and the NATS source terminates the message. Other errors, including 408, 429 and 5xx, can be retried by the source: the OTLP source answers with 503, the NATS source redelivers the message
 - Proxy settings are taken from the `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` environment variables
 - Connection pooling is used for better performance with multiple requests
 - Timeout applies to the entire request lifecycle, including connection establishment and reading the response
@@ -553,7 +555,7 @@ Signals without an expression are not published by this sink.
 - Records are grouped by their resolved subject and published as one OTLP message per subject and signal type, so different signal types may share a subject. Each message has a `Tram-Signal` header with the signal type, which the [NATS Source](#nats-source) needs to decode it
 - Records keep their resource and scope. If all records of a signal type resolve to the same subject, the payload is published unchanged. Resources that appear in several entries of an event, e.g. after a `batch` stage, stay separate entries in the message, which OTLP allows
 - The `register` subjects configure the stream, while the CEL expressions determine the subject of each record. Records whose subject is not covered by `register` cannot be published
-- An event is rejected if a subject expression fails for one of its records, or resolves to an invalid subject: one with an empty token, whitespace or a wildcard. `get_attr` returns `""` for a missing attribute, so `'logs.' + ...get_attr('team')` gives the invalid `logs.` for records without it. The OTLP source answers with HTTP 400, the NATS source terminates the message instead of redelivering it
+- An event is rejected if a subject expression fails for one of its records, or resolves to an invalid subject: one with an empty token, whitespace or a wildcard. `get_attr` returns `""` for a missing attribute, so `'logs.' + ...get_attr('team')` gives the invalid `logs.` for records without it. The OTLP source answers with HTTP 422, the NATS source terminates the message instead of redelivering it
 - If a CEL expression fails to evaluate or returns a non-string value, the whole event is dropped with an error log and nothing of it is published
 - If publishing fails, the error is reported back to the source, e.g. the NATS source redelivers the message
 

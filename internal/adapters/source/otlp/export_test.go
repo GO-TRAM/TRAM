@@ -13,7 +13,16 @@ const (
 )
 
 func NewWithoutListener(src *base.Source[Spec], deliveryTimeout time.Duration) *OTLP {
-	return &OTLP{Source: src, deliveryTimeout: deliveryTimeout, responseWriteTimeout: responseWriteTimeout}
+	return &OTLP{
+		Source:               src,
+		deliveryTimeout:      deliveryTimeout,
+		responseWriteTimeout: responseWriteTimeout,
+		retryAfter:           retryAfterHeader(defaultRetryAfter),
+	}
+}
+
+func RetryAfter(o *OTLP) string {
+	return o.retryAfter
 }
 
 func SetResponseWriteTimeout(o *OTLP, timeout time.Duration) {

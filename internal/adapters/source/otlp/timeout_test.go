@@ -142,3 +142,41 @@ func TestNewDeliveryTimeout(t *testing.T) {
 		})
 	}
 }
+
+func TestNewRetryAfter(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name       string
+		retryAfter string
+		expected   string
+		expectErr  bool
+	}{
+		{name: "default", retryAfter: "", expected: "5"},
+		{name: "whole seconds", retryAfter: "30s", expected: "30"},
+		{name: "fraction is rounded up", retryAfter: "1500ms", expected: "2"},
+		{name: "below a second is rounded up", retryAfter: "100ms", expected: "1"},
+		{name: "invalid", retryAfter: "soon", expectErr: true},
+		{name: "zero", retryAfter: "0s", expectErr: true},
+		{name: "negative", retryAfter: "-1s", expectErr: true},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			spec := map[string]any{}
+			if c.retryAfter != "" {
+				spec["retry_after"] = c.retryAfter
+			}
+			o, err := newOTLP(t, spec)
+			if c.expectErr {
+				assert.ErrorContains(t, err, "invalid retry_after")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, c.expected, otlp.RetryAfter(o))
+			assert.NoError(t, o.Stop())
+		})
+	}
+}

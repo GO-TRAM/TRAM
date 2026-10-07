@@ -167,7 +167,7 @@ Tram is designed to be easily extensible. Each component is a package in `intern
 Rules all components follow:
 
 - **Events are read-only.** One event is passed to all branches concurrently. To change data, build a new event, e.g. with `domain.FilterLogs`, `FilterMetrics` and `FilterSpans`, which share unchanged records instead of copying them
-- **`Notify` returns the delivery result.** Return an error wrapping `domain.ErrEventRejected` when retrying the same data cannot succeed; sources then reject it (OTLP: HTTP 400, NATS: terminate). Any other error is treated as temporary (OTLP: HTTP 500, NATS: redelivery)
+- **`Notify` returns the delivery result.** Return an error wrapping `domain.ErrEventRejected` when retrying the same data cannot succeed; sources then reject it (OTLP: HTTP 422, NATS: terminate). Any other error is treated as temporary (OTLP: HTTP 503, NATS: redelivery)
 - **`Notify` may block** while it delivers the event downstream, or when waiting is its documented purpose (`batch`, `delay`). It has to return when `ctx` is done
 - **Lifecycle:** `New` may acquire resources such as connections. `Stop` is called exactly once and must release them; it may be called without `Run`, e.g. when building the stream failed. The core stops the source first, waits for its `Run` to return, and then stops stages and sinks from the root down
 - **Updates:** when an update changes only stages or sinks, the source keeps running. The core builds the new stages and sinks, switches the source over with `SetSubscribers`, which waits until no event is delivered to the old ones anymore, and then stops the old stages and sinks. Stages and sinks therefore have to be independent of a particular source instance

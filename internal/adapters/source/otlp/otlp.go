@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,6 +38,8 @@ const (
 
 	defaultDeliveryTimeout = 8 * time.Second
 	responseWriteTimeout   = 10 * time.Second
+
+	defaultRetryAfter = 5 * time.Second
 )
 
 const (
@@ -59,6 +62,8 @@ type OTLP struct {
 
 	deliveryTimeout      time.Duration
 	responseWriteTimeout time.Duration
+	// retryAfter is the Retry-After header of retriable responses.
+	retryAfter string
 }
 
 func New(source domain.SourceSpec, validator *validator.Validate, logger *slog.Logger) (*OTLP, error) {
@@ -67,15 +72,13 @@ func New(source domain.SourceSpec, validator *validator.Validate, logger *slog.L
 		return nil, err
 	}
 
-	deliveryTimeout := defaultDeliveryTimeout
-	if raw := base.Spec().DeliveryTimeout; raw != "" {
-		deliveryTimeout, err = time.ParseDuration(raw)
-		if err != nil {
-			return nil, fmt.Errorf("invalid delivery_timeout: %w", err)
-		}
-		if deliveryTimeout <= 0 {
-			return nil, fmt.Errorf("invalid delivery_timeout: %s is not positive", raw)
-		}
+	deliveryTimeout, err := positiveDuration("delivery_timeout", base.Spec().DeliveryTimeout, defaultDeliveryTimeout)
+	if err != nil {
+		return nil, err
+	}
+	retryAfter, err := positiveDuration("retry_after", base.Spec().RetryAfter, defaultRetryAfter)
+	if err != nil {
+		return nil, err
 	}
 
 	var lc net.ListenConfig
@@ -90,6 +93,7 @@ func New(source domain.SourceSpec, validator *validator.Validate, logger *slog.L
 		listener:             listener,
 		deliveryTimeout:      deliveryTimeout,
 		responseWriteTimeout: responseWriteTimeout,
+		retryAfter:           retryAfterHeader(retryAfter),
 	}
 
 	mux := http.NewServeMux()
@@ -109,6 +113,26 @@ func New(source domain.SourceSpec, validator *validator.Validate, logger *slog.L
 	}
 
 	return o, nil
+}
+
+func positiveDuration(field, raw string, fallback time.Duration) (time.Duration, error) {
+	if raw == "" {
+		return fallback, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s: %w", field, err)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("invalid %s: %s is not positive", field, raw)
+	}
+	return d, nil
+}
+
+// retryAfterHeader formats d as the whole seconds Retry-After holds. A delay
+// below a second is rounded up, so a client is never told to retry at once.
+func retryAfterHeader(d time.Duration) string {
+	return strconv.FormatInt(int64((d+time.Second-1)/time.Second), 10)
 }
 
 func (o *OTLP) DeliveryTimeout() time.Duration { return o.deliveryTimeout }
@@ -145,6 +169,11 @@ func (o *OTLP) handle(w http.ResponseWriter, r *http.Request, msg proto.Message,
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(o.responseWriteTimeout))
 
 	if status != http.StatusOK {
+		if status == http.StatusServiceUnavailable {
+			// OTLP clients wait this long before retrying, instead of using
+			// their own backoff.
+			w.Header().Set("Retry-After", o.retryAfter)
+		}
 		http.Error(w, message, status)
 		return
 	}
@@ -175,17 +204,19 @@ func (o *OTLP) receive(
 		case errors.Is(err, errUnsupportedEncoding):
 			return "", http.StatusUnsupportedMediaType, "Unsupported content encoding"
 		default:
-			return "", http.StatusBadRequest, "Error reading request body"
+			return "", http.StatusUnprocessableEntity, "Error reading request body"
 		}
 	}
 
+	// Only failures the request did not cause are retriable. A request that
+	// was answered with 422 would be answered the same way again.
 	if contentType == contentTypeJSON {
 		err = unmarshalJSON(body, msg)
 	} else {
 		err = proto.Unmarshal(body, msg)
 	}
 	if err != nil {
-		return "", http.StatusBadRequest, "Error parsing request body"
+		return "", http.StatusUnprocessableEntity, "Error parsing request body"
 	}
 	event.Request = request
 
@@ -193,7 +224,7 @@ func (o *OTLP) receive(
 	defer cancel()
 	if err = o.NotifySubscribers(ctx, event); err != nil {
 		if errors.Is(err, domain.ErrEventRejected) {
-			return "", http.StatusBadRequest, "Event rejected"
+			return "", http.StatusUnprocessableEntity, "Event rejected"
 		}
 		// OTLP clients retry on 503, but drop the data on 500.
 		return "", http.StatusServiceUnavailable, "Error notifying subscribers"

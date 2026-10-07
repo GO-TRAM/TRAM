@@ -176,7 +176,7 @@ func TestDeliveryResultReachesClient(t *testing.T) {
 			}}},
 			sink:     captureSinkSpec("out", "validate"),
 			payload:  request("unknown", rec{"r1", "A"}),
-			expected: http.StatusBadRequest,
+			expected: http.StatusUnprocessableEntity,
 		},
 		{
 			name: "permanent sink error",
@@ -187,7 +187,7 @@ func TestDeliveryResultReachesClient(t *testing.T) {
 				Spec: map[string]any{"fail": "permanent"},
 			},
 			payload:  request("shop", rec{"r1", "A"}),
-			expected: http.StatusBadRequest,
+			expected: http.StatusUnprocessableEntity,
 		},
 		{
 			name: "temporary sink error",

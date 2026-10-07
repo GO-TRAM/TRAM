@@ -55,7 +55,7 @@ These examples demonstrate using the OTLP sink in Tram for various use cases.
 #### [`otlp_with_validation.json`](otlp_with_validation.json)
 **Purpose**: OTLP forwarding with CEL validation.
 - Validates that all resources have `service.name` attribute
-- Rejects invalid data with HTTP 400
+- Rejects invalid data with HTTP 422
 - Protects downstream systems from malformed data
 - **Kubernetes version**: [../k8s/otlp_with_validation.yaml](../k8s/otlp_with_validation.yaml)
 
