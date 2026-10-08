@@ -173,13 +173,41 @@ func hasID(attrs, id string) string {
 	return fmt.Sprintf("%s.exists(a, a.key == '%s' && a.value.string_value == '%s')", attrs, tenantAttr, id)
 }
 
-// dataPoints is the attributes of a metric's data point. The generator sends
-// gauges with one data point each, where the resource ID is a data point
-// attribute.
-const dataPoints = "metric.gauge.data_points[0].attributes"
+// valuePattern matches the log types and visibilities. They are part of the
+// subjects, so a dot, whitespace or a wildcard would make a subject invalid,
+// which the NATS sink only finds after the batch, or would add a token no
+// consumer expects.
+const valuePattern = "^[A-Za-z0-9_-]+$"
 
-func hasNonEmpty(attrs, key string) string {
-	return fmt.Sprintf("%s.exists(a, a.key == '%s' && a.value.string_value != '')", attrs, key)
+func hasValue(attrs, key string) string {
+	return fmt.Sprintf("%s.exists(a, a.key == '%s' && a.value.string_value.matches('%s'))", attrs, key, valuePattern)
+}
+
+// dataPointFields are the fields of a metric that hold its data points, one
+// per metric type. All but the one of the metric's type are empty.
+func dataPointFields() []string {
+	return []string{"gauge", "sum", "histogram", "exponential_histogram", "summary"}
+}
+
+// allDataPoints is a condition on every data point dp of the metric m, of any
+// type.
+func allDataPoints(condition string) string {
+	checks := make([]string, len(dataPointFields()))
+	for i, field := range dataPointFields() {
+		checks[i] = fmt.Sprintf("m.%s.data_points.all(dp, %s)", field, condition)
+	}
+	return strings.Join(checks, " && ")
+}
+
+// hasDataPoints is the condition that the metric m has data points. The
+// subjects are resolved from them, so a metric without any would fail its
+// subject only after the batch.
+func hasDataPoints() string {
+	sizes := make([]string, len(dataPointFields()))
+	for i, field := range dataPointFields() {
+		sizes[i] = fmt.Sprintf("size(m.%s.data_points)", field)
+	}
+	return strings.Join(sizes, " + ") + " > 0"
 }
 
 // uuidPattern matches a UUID in canonical form: lowercase hex in 8-4-4-4-12
@@ -197,15 +225,17 @@ func otlpToNATS(size int64, maxAge, compression string) obj {
 		"stages": []obj{
 			{"name": "validate-attributes", "type": "cel_validator", "from": "otlp", "spec": obj{
 				"logs": "logs.resource_logs.all(r, r.scope_logs.all(s, s.log_records.all(record, " +
-					hasNonEmpty("record.attributes", logTypeAttr) + " && " +
+					hasValue("record.attributes", logTypeAttr) + " && " +
 					hasUUID("record.attributes", tenantAttr) + ")))",
 				"traces": "traces.resource_spans.all(r, r.scope_spans.all(s, s.spans.all(span, " +
-					hasNonEmpty("span.attributes", visibilityAttr) + " && " +
+					hasValue("span.attributes", visibilityAttr) + " && " +
 					hasUUID("span.attributes", tenantAttr) + ")))",
 				"metrics": "metrics.resource_metrics.all(r, r.scope_metrics.all(s, s.metrics.all(m, " +
-					"m.gauge.data_points.size() > 0 && m.gauge.data_points.all(dp, " +
-					hasNonEmpty("dp.attributes", visibilityAttr) + " && " +
-					hasUUID("dp.attributes", tenantAttr) + "))))",
+					hasDataPoints() + " && " +
+					allDataPoints(
+						hasValue("dp.attributes", visibilityAttr)+" && "+hasUUID("dp.attributes", tenantAttr),
+					) +
+					")))",
 				"on_mismatch": "reject",
 			}},
 			batch("batch", "validate-attributes", 1000, "200ms"),
@@ -218,8 +248,10 @@ func otlpToNATS(size int64, maxAge, compression string) obj {
 					"record.attributes.get_attr('" + tenantAttr + "')",
 				"traces": "'traces.' + span.attributes.get_attr('" + visibilityAttr + "') + '.' + " +
 					"span.attributes.get_attr('" + tenantAttr + "')",
-				"metrics": "'metrics.' + " + dataPoints + ".get_attr('" + visibilityAttr + "') + '.' + " +
-					dataPoints + ".get_attr('" + tenantAttr + "')",
+				// Per data point: a metric can hold data points of several
+				// tenants.
+				"metrics": "'metrics.' + datapoint.attributes.get_attr('" + visibilityAttr + "') + '.' + " +
+					"datapoint.attributes.get_attr('" + tenantAttr + "')",
 			},
 			"retention": "limits", "max_age": maxAge, "size": size, "compression": compression,
 		}}},
@@ -240,7 +272,7 @@ func link(id, router string, size int64, maxAge, compression string) obj {
 					id,
 				) + ")))",
 				"metrics": "metrics.resource_metrics.all(r, r.scope_metrics.all(s, s.metrics.all(m, " +
-					"m.gauge.data_points.all(dp, " + hasID("dp.attributes", id) + "))))",
+					allDataPoints(hasID("dp.attributes", id)) + ")))",
 				"on_mismatch": "reject",
 			}},
 			batch(id+"-batch", id+"-validate", 500, "200ms"),
@@ -442,18 +474,7 @@ func build(rng *rand.Rand, texts []string, records, ids, idsPerRequest int, sh s
 			}},
 		}}
 	case kind < sh.traces+sh.metrics:
-		metrics := make([]*metricspb.Metric, records)
-		for i := range metrics {
-			metrics[i] = &metricspb.Metric{Name: "external_egress", Unit: "By", Data: &metricspb.Metric_Gauge{
-				Gauge: &metricspb.Gauge{DataPoints: []*metricspb.NumberDataPoint{{
-					Value: &metricspb.NumberDataPoint_AsDouble{AsDouble: rng.Float64() * 1e6},
-					Attributes: []*commonpb.KeyValue{
-						str(tenantAttr, chosen[i%len(chosen)]),
-						str(visibilityAttr, "PUBLIC"),
-					},
-				}}},
-			}}
-		}
+		metrics := []*metricspb.Metric{metric(rng, records, chosen)}
 		return template{path: "/v1/metrics", records: records, msg: &colmetricspb.ExportMetricsServiceRequest{
 			ResourceMetrics: []*metricspb.ResourceMetrics{{
 				Resource: resource, ScopeMetrics: []*metricspb.ScopeMetrics{{Scope: scope, Metrics: metrics}},
@@ -543,13 +564,82 @@ func stampSpans(m *coltracepb.ExportTraceServiceRequest, now uint64) {
 	}
 }
 
+// metric builds a metric of a random type with points data points, which
+// belong to the tenants ids in turn, like a producer that reports one metric
+// for several tenants. The NATS sink then splits it per tenant.
+func metric(rng *rand.Rand, points int, ids []string) *metricspb.Metric {
+	attrs := func(i int) []*commonpb.KeyValue {
+		return []*commonpb.KeyValue{str(tenantAttr, ids[i%len(ids)]), str(visibilityAttr, "PUBLIC")}
+	}
+	cumulative := metricspb.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE
+
+	switch rng.IntN(len(dataPointFields())) {
+	case 0:
+		dps := make([]*metricspb.NumberDataPoint, points)
+		for i := range dps {
+			dps[i] = &metricspb.NumberDataPoint{
+				Value: &metricspb.NumberDataPoint_AsDouble{AsDouble: rng.Float64() * 1e6}, Attributes: attrs(i),
+			}
+		}
+		return &metricspb.Metric{Name: "external_egress", Unit: "By", Data: &metricspb.Metric_Gauge{
+			Gauge: &metricspb.Gauge{DataPoints: dps},
+		}}
+	case 1:
+		dps := make([]*metricspb.NumberDataPoint, points)
+		for i := range dps {
+			dps[i] = &metricspb.NumberDataPoint{
+				Value: &metricspb.NumberDataPoint_AsInt{AsInt: rng.Int64N(1e6)}, Attributes: attrs(i),
+			}
+		}
+		return &metricspb.Metric{Name: "requests", Unit: "{request}", Data: &metricspb.Metric_Sum{Sum: &metricspb.Sum{
+			DataPoints: dps, AggregationTemporality: cumulative, IsMonotonic: true,
+		}}}
+	case 2:
+		dps := make([]*metricspb.HistogramDataPoint, points)
+		for i := range dps {
+			dps[i] = &metricspb.HistogramDataPoint{
+				Count: 4, Sum: new(rng.Float64() * 4), ExplicitBounds: []float64{0.1, 1},
+				BucketCounts: []uint64{1, 2, 1}, Attributes: attrs(i),
+			}
+		}
+		return &metricspb.Metric{Name: "request_duration", Unit: "s", Data: &metricspb.Metric_Histogram{
+			Histogram: &metricspb.Histogram{DataPoints: dps, AggregationTemporality: cumulative},
+		}}
+	case 3:
+		dps := make([]*metricspb.ExponentialHistogramDataPoint, points)
+		for i := range dps {
+			dps[i] = &metricspb.ExponentialHistogramDataPoint{
+				Count: 3, Scale: 2, Positive: &metricspb.ExponentialHistogramDataPoint_Buckets{
+					BucketCounts: []uint64{1, 2},
+				}, Attributes: attrs(i),
+			}
+		}
+		return &metricspb.Metric{Name: "payload_size", Unit: "By", Data: &metricspb.Metric_ExponentialHistogram{
+			ExponentialHistogram: &metricspb.ExponentialHistogram{DataPoints: dps, AggregationTemporality: cumulative},
+		}}
+	default:
+		dps := make([]*metricspb.SummaryDataPoint, points)
+		for i := range dps {
+			dps[i] = &metricspb.SummaryDataPoint{
+				Count: 2, Sum: rng.Float64() * 2, QuantileValues: []*metricspb.SummaryDataPoint_ValueAtQuantile{
+					{Quantile: 0.5, Value: 0.4}, {Quantile: 0.99, Value: 1.2},
+				}, Attributes: attrs(i),
+			}
+		}
+		return &metricspb.Metric{Name: "latency", Unit: "s", Data: &metricspb.Metric_Summary{
+			Summary: &metricspb.Summary{DataPoints: dps},
+		}}
+	}
+}
+
+// stampMetrics sets the time of every data point to now, and the start of the
+// cumulative ones to an hour earlier.
 func stampMetrics(m *colmetricspb.ExportMetricsServiceRequest, now uint64) {
+	start := now - uint64(time.Hour)
 	for _, rm := range m.GetResourceMetrics() {
 		for _, sm := range rm.GetScopeMetrics() {
 			for _, metric := range sm.GetMetrics() {
-				for _, dp := range metric.GetGauge().GetDataPoints() {
-					dp.TimeUnixNano = now
-				}
+				stampMetric(metric, start, now)
 			}
 		}
 	}
@@ -752,4 +842,22 @@ func receive(ctx context.Context, args []string) error {
 		return err
 	}
 	return nil
+}
+
+func stampMetric(metric *metricspb.Metric, start, now uint64) {
+	for _, dp := range metric.GetGauge().GetDataPoints() {
+		dp.TimeUnixNano = now
+	}
+	for _, dp := range metric.GetSum().GetDataPoints() {
+		dp.StartTimeUnixNano, dp.TimeUnixNano = start, now
+	}
+	for _, dp := range metric.GetHistogram().GetDataPoints() {
+		dp.StartTimeUnixNano, dp.TimeUnixNano = start, now
+	}
+	for _, dp := range metric.GetExponentialHistogram().GetDataPoints() {
+		dp.StartTimeUnixNano, dp.TimeUnixNano = start, now
+	}
+	for _, dp := range metric.GetSummary().GetDataPoints() {
+		dp.StartTimeUnixNano, dp.TimeUnixNano = start, now
+	}
 }
