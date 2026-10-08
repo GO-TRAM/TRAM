@@ -38,8 +38,9 @@ const (
 	scopeVariable    = "scope"
 	recordVariable   = "record"
 
-	metricVariable = "metric"
-	spanVariable   = "span"
+	metricVariable    = "metric"
+	dataPointVariable = "datapoint"
+	spanVariable      = "span"
 
 	getAttrArguments = 2
 
@@ -156,6 +157,8 @@ func compileSubjects(subject SubjectSpec) (subjects, error) {
 		cel.Variable(resourceVariable, cel.ObjectType("opentelemetry.proto.resource.v1.Resource")),
 		cel.Variable(scopeVariable, cel.ObjectType("opentelemetry.proto.common.v1.InstrumentationScope")),
 		cel.Variable(metricVariable, cel.ObjectType("opentelemetry.proto.metrics.v1.Metric")),
+		// Its type depends on the metric's type.
+		cel.Variable(dataPointVariable, cel.DynType),
 	)
 	if err != nil {
 		return subjects{}, errors.Join(ErrCELInvalidMetricsExpression, err)

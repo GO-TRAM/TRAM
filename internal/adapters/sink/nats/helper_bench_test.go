@@ -37,6 +37,26 @@ func newGroupingSink(b testing.TB, logsSubject string) *natssink.NATS {
 	return sink
 }
 
+func BenchmarkGroupMetricsBySubjects(b *testing.B) {
+	sink := newSink(b, map[string]any{
+		"metrics": "'metrics.' + metric.gauge.data_points[0].attributes.get_attr('team')",
+	})
+
+	for _, shape := range groupingShapes() {
+		event := &domain.Event{Metrics: otlpgen.Metrics(shape)}
+
+		b.Run(shape.String(), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := natssink.GroupEventsBySubjects(sink, event); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.ReportMetric(float64(shape.Records*b.N)/b.Elapsed().Seconds(), "records/s")
+		})
+	}
+}
+
 func BenchmarkGroupEventsBySubjects(b *testing.B) {
 	sink := newGroupingSink(
 		b,

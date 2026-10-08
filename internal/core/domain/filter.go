@@ -152,57 +152,93 @@ func FilterMetrics(data *metricspb.MetricsData, keep MetricFilter) (*metricspb.M
 func filterDataPoints(m *metricspb.Metric, keep func(proto.Message) (bool, error)) (*metricspb.Metric, error) {
 	switch data := m.GetData().(type) {
 	case *metricspb.Metric_Gauge:
-		dps, unchanged, err := pruneDataPoints(data.Gauge.GetDataPoints(), keep)
-		if err != nil || unchanged || len(dps) == 0 {
-			return keepIf(m)(unchanged, err)
-		}
+		return filterTyped(m, data.Gauge.GetDataPoints(), keep, gaugeOf(m))
+	case *metricspb.Metric_Sum:
+		return filterTyped(m, data.Sum.GetDataPoints(), keep, sumOf(m, data.Sum))
+	case *metricspb.Metric_Histogram:
+		return filterTyped(m, data.Histogram.GetDataPoints(), keep, histogramOf(m, data.Histogram))
+	case *metricspb.Metric_ExponentialHistogram:
+		return filterTyped(m, data.ExponentialHistogram.GetDataPoints(), keep,
+			exponentialHistogramOf(m, data.ExponentialHistogram))
+	case *metricspb.Metric_Summary:
+		return filterTyped(m, data.Summary.GetDataPoints(), keep, summaryOf(m))
+	}
+	return m, nil
+}
+
+func filterTyped[T interface {
+	comparable
+	proto.Message
+}](m *metricspb.Metric, dataPoints []T, keep func(proto.Message) (bool, error), build func([]T) *metricspb.Metric) (
+	*metricspb.Metric, error,
+) {
+	dps, unchanged, err := prune(dataPoints, func(dp T) (T, error) {
+		return keepIf(dp)(keep(dp))
+	})
+	if err != nil || unchanged || len(dps) == 0 {
+		return keepIf(m)(unchanged, err)
+	}
+	return build(dps), nil
+}
+
+// The ...Of functions return a builder for copies of m that hold other data
+// points of m's type. A copy keeps m's name, description, unit and metadata,
+// and the fields of its data type, like a sum's temporality.
+
+func gaugeOf(m *metricspb.Metric) func([]*metricspb.NumberDataPoint) *metricspb.Metric {
+	return func(dps []*metricspb.NumberDataPoint) *metricspb.Metric {
 		out := withoutData(m)
 		out.Data = &metricspb.Metric_Gauge{Gauge: &metricspb.Gauge{DataPoints: dps}}
-		return out, nil
-	case *metricspb.Metric_Sum:
-		dps, unchanged, err := pruneDataPoints(data.Sum.GetDataPoints(), keep)
-		if err != nil || unchanged || len(dps) == 0 {
-			return keepIf(m)(unchanged, err)
-		}
+		return out
+	}
+}
+
+func sumOf(m *metricspb.Metric, sum *metricspb.Sum) func([]*metricspb.NumberDataPoint) *metricspb.Metric {
+	return func(dps []*metricspb.NumberDataPoint) *metricspb.Metric {
 		out := withoutData(m)
 		out.Data = &metricspb.Metric_Sum{Sum: &metricspb.Sum{
 			DataPoints:             dps,
-			AggregationTemporality: data.Sum.GetAggregationTemporality(),
-			IsMonotonic:            data.Sum.GetIsMonotonic(),
+			AggregationTemporality: sum.GetAggregationTemporality(),
+			IsMonotonic:            sum.GetIsMonotonic(),
 		}}
-		return out, nil
-	case *metricspb.Metric_Histogram:
-		dps, unchanged, err := pruneDataPoints(data.Histogram.GetDataPoints(), keep)
-		if err != nil || unchanged || len(dps) == 0 {
-			return keepIf(m)(unchanged, err)
-		}
+		return out
+	}
+}
+
+func histogramOf(
+	m *metricspb.Metric,
+	histogram *metricspb.Histogram,
+) func([]*metricspb.HistogramDataPoint) *metricspb.Metric {
+	return func(dps []*metricspb.HistogramDataPoint) *metricspb.Metric {
 		out := withoutData(m)
 		out.Data = &metricspb.Metric_Histogram{Histogram: &metricspb.Histogram{
 			DataPoints:             dps,
-			AggregationTemporality: data.Histogram.GetAggregationTemporality(),
+			AggregationTemporality: histogram.GetAggregationTemporality(),
 		}}
-		return out, nil
-	case *metricspb.Metric_ExponentialHistogram:
-		dps, unchanged, err := pruneDataPoints(data.ExponentialHistogram.GetDataPoints(), keep)
-		if err != nil || unchanged || len(dps) == 0 {
-			return keepIf(m)(unchanged, err)
-		}
+		return out
+	}
+}
+
+func exponentialHistogramOf(
+	m *metricspb.Metric,
+	histogram *metricspb.ExponentialHistogram,
+) func([]*metricspb.ExponentialHistogramDataPoint) *metricspb.Metric {
+	return func(dps []*metricspb.ExponentialHistogramDataPoint) *metricspb.Metric {
 		out := withoutData(m)
 		out.Data = &metricspb.Metric_ExponentialHistogram{ExponentialHistogram: &metricspb.ExponentialHistogram{
 			DataPoints:             dps,
-			AggregationTemporality: data.ExponentialHistogram.GetAggregationTemporality(),
+			AggregationTemporality: histogram.GetAggregationTemporality(),
 		}}
-		return out, nil
-	case *metricspb.Metric_Summary:
-		dps, unchanged, err := pruneDataPoints(data.Summary.GetDataPoints(), keep)
-		if err != nil || unchanged || len(dps) == 0 {
-			return keepIf(m)(unchanged, err)
-		}
+		return out
+	}
+}
+
+func summaryOf(m *metricspb.Metric) func([]*metricspb.SummaryDataPoint) *metricspb.Metric {
+	return func(dps []*metricspb.SummaryDataPoint) *metricspb.Metric {
 		out := withoutData(m)
 		out.Data = &metricspb.Metric_Summary{Summary: &metricspb.Summary{DataPoints: dps}}
-		return out, nil
+		return out
 	}
-	return m, nil
 }
 
 func withoutData(m *metricspb.Metric) *metricspb.Metric {
@@ -212,15 +248,6 @@ func withoutData(m *metricspb.Metric) *metricspb.Metric {
 		Unit:        m.GetUnit(),
 		Metadata:    m.GetMetadata(),
 	}
-}
-
-func pruneDataPoints[T interface {
-	comparable
-	proto.Message
-}](dataPoints []T, keep func(proto.Message) (bool, error)) ([]T, bool, error) {
-	return prune(dataPoints, func(dp T) (T, error) {
-		return keepIf(dp)(keep(dp))
-	})
 }
 
 func keepIf[T any](v T) func(bool, error) (T, error) {

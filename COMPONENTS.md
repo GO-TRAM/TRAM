@@ -504,9 +504,18 @@ Publishes OTLP-encoded events to NATS JetStream. Uses dynamic subject mapping wi
 Signals without an expression are not published by this sink.
 
 **CEL Expression Context:**
-- Each expression is evaluated once per log record, metric and span. It receives a payload of its signal type (`logs`, `metrics` or `traces`) that contains only that one entry with its resource and scope, so `[0]` indexes address it, e.g. `logs.resource_logs[0].scope_logs[0].log_records[0]`
-- Metrics are routed per metric, not per data point: all data points of a metric go to the same subject
-- The custom function `get_attr(key)` on an attribute list returns the string value of an attribute, or `""` if it is missing, e.g. `logs.resource_logs[0].resource.attributes.get_attr('service.name')`
+
+| Expression | Variables |
+|------------|-----------|
+| `logs` | `logs` (payload), `resource` (Resource), `scope` (InstrumentationScope), `record` (LogRecord) |
+| `metrics` | `metrics` (payload), `resource`, `scope`, `metric` (Metric), `datapoint` (the data point; its type depends on the metric type) |
+| `traces` | `traces` (payload), `resource`, `scope`, `span` (Span) |
+
+- Each expression is evaluated once per log record, metric data point and span. The payload variable holds only the current log record, metric or span with its resource and scope, so `[0]` indexes address it, e.g. `logs.resource_logs[0].scope_logs[0].log_records[0]`. For metrics it holds the whole metric with all its data points
+- `resource` and `scope` are empty messages when the payload has none. Field names follow the OTLP protobuf definitions, e.g. `record.severity_text`, `datapoint.attributes`
+- Metrics are routed per data point: a metric whose data points resolve to different subjects is split into one metric per subject, each with the metric's name, description, unit, metadata and type-specific fields like a sum's temporality. A metric whose data points all resolve to the same subject is published as it is, so an expression that does not use `datapoint`, e.g. `metric.gauge.data_points[0].attributes.get_attr('team')`, keeps every metric whole
+- A metric without data points is evaluated once without `datapoint`; an expression that reads it fails for that metric and rejects the event
+- The custom function `get_attr(key)` on an attribute list returns the string value of an attribute, or `""` if it is missing, e.g. `logs.resource_logs[0].resource.attributes.get_attr('service.name')` or `datapoint.attributes.get_attr('tenant.id')`
 - Must return a string that will be used as the NATS subject
 
 **Example:**

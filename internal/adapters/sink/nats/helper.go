@@ -7,6 +7,7 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/interpreter"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
+	"google.golang.org/protobuf/proto"
 
 	"codeberg.org/eljoth/tram/internal/core/domain"
 
@@ -53,7 +54,7 @@ func (n *NATS) groupEventsBySubjects(event *domain.Event) ([]message, error) {
 	}
 
 	if event.Metrics != nil && n.Spec().Subject.Metrics != "" {
-		metrics, err := group(n.metrics, metricsStructure(), event.Metrics)
+		metrics, err := groupMetrics(n.metrics, event.Metrics)
 		if err != nil {
 			return nil, fmt.Errorf("metrics: %w", err)
 		}
@@ -183,11 +184,31 @@ func tracesStructure() structure[*tracespb.TracesData, *tracespb.ResourceSpans, 
 
 func group[D any, R, S, E comparable](program cel.Program, st structure[D, R, S, E], data D) ([]message, error) {
 	subjects, err := resolveSubjects(program, st, data)
-	if err != nil || len(subjects) == 0 {
+	if err != nil {
 		return nil, err
 	}
+	return groupBySubjects(st, data, subjects), nil
+}
+
+// groupMetrics resolves a subject per data point. A metric whose data points
+// resolve to different subjects is split into one metric per subject before
+// grouping.
+func groupMetrics(program cel.Program, data *metricspb.MetricsData) ([]message, error) {
+	parts, subjects, err := splitMetrics(program, data)
+	if err != nil {
+		return nil, err
+	}
+	return groupBySubjects(metricsStructure(), parts, subjects), nil
+}
+
+// groupBySubjects groups the entries of data, in order, by subjects, which
+// holds one subject per entry.
+func groupBySubjects[D any, R, S, E comparable](st structure[D, R, S, E], data D, subjects []string) []message {
+	if len(subjects) == 0 {
+		return nil
+	}
 	if allEqual(subjects) {
-		return []message{{subject: subjects[0], event: st.event(data)}}, nil
+		return []message{{subject: subjects[0], event: st.event(data)}}
 	}
 
 	var order []string
@@ -212,7 +233,71 @@ func group[D any, R, S, E comparable](program cel.Program, st structure[D, R, S,
 	for j, subject := range order {
 		messages[j] = message{subject: subject, event: st.event(groups[subject].data)}
 	}
-	return messages, nil
+	return messages
+}
+
+// splitMetrics resolves the subject of every data point and returns the
+// metrics with one subject each: data itself if no metric has data points
+// with different subjects, or else a copy of its structure in which such
+// metrics are split. subjects holds one subject per metric of the result.
+func splitMetrics(program cel.Program, data *metricspb.MetricsData) (*metricspb.MetricsData, []string, error) {
+	st := metricsStructure()
+	vars := &activation{name: st.variable}
+	subject := func(dataPoint proto.Message) (string, error) {
+		vars.dataPoint = dataPoint
+		return evalSubject(program, vars)
+	}
+
+	var parts []domain.MetricPart
+	var counts []int // parts per metric
+	err := walk(st, data, vars, func(m *metricspb.Metric) error {
+		before := len(parts)
+		var err error
+		parts, err = domain.AppendMetricParts(parts, m, subject)
+		counts = append(counts, len(parts)-before)
+		return err
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	subjects := make([]string, len(parts))
+	for i, part := range parts {
+		subjects[i] = part.Key
+	}
+	if len(parts) == len(counts) {
+		// Every metric is one part, so none was split.
+		return data, subjects, nil
+	}
+	return rebuildMetrics(st, data, parts, counts), subjects, nil
+}
+
+// rebuildMetrics copies the structure of data, with the metrics replaced by
+// their parts. counts holds the number of parts of each metric.
+func rebuildMetrics(
+	st structure[*metricspb.MetricsData, *metricspb.ResourceMetrics, *metricspb.ScopeMetrics, *metricspb.Metric],
+	data *metricspb.MetricsData,
+	parts []domain.MetricPart,
+	counts []int,
+) *metricspb.MetricsData {
+	out := st.newPayload()
+	metric, part := 0, 0
+	for _, rm := range data.GetResourceMetrics() {
+		resource := st.newResource(rm)
+		st.appendResource(out, resource)
+		for _, sm := range rm.GetScopeMetrics() {
+			scope := st.newScope(sm)
+			st.appendScope(resource, scope)
+			for range sm.GetMetrics() {
+				for range counts[metric] {
+					st.appendEntry(scope, parts[part].Metric)
+					part++
+				}
+				metric++
+			}
+		}
+	}
+	return out
 }
 
 func resolveSubjects[D any, R, S, E comparable](
@@ -220,9 +305,23 @@ func resolveSubjects[D any, R, S, E comparable](
 	st structure[D, R, S, E],
 	data D,
 ) ([]string, error) {
-	emptyResource, emptyScope := &resourcepb.Resource{}, &commonpb.InstrumentationScope{}
 	vars := &activation{name: st.variable}
 	var subjects []string
+	err := walk(st, data, vars, func(E) error {
+		subject, err := evalSubject(program, vars)
+		subjects = append(subjects, subject)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return subjects, nil
+}
+
+// walk calls visit for every entry of data, with vars set to the entry, its
+// resource and scope, and a payload holding only the entry.
+func walk[D any, R, S, E comparable](st structure[D, R, S, E], data D, vars *activation, visit func(E) error) error {
+	emptyResource, emptyScope := &resourcepb.Resource{}, &commonpb.InstrumentationScope{}
 	for _, r := range st.resources(data) {
 		resource := st.resource(r)
 		if resource == nil {
@@ -248,15 +347,13 @@ func resolveSubjects[D any, R, S, E comparable](
 				case tracesVariable:
 					vars.span = e
 				}
-				subject, err := evalSubject(program, vars)
-				if err != nil {
-					return nil, err
+				if err := visit(e); err != nil {
+					return err
 				}
-				subjects = append(subjects, subject)
 			}
 		}
 	}
-	return subjects, nil
+	return nil
 }
 
 type subjectGroup[D any, R, S, E comparable] struct {
@@ -323,14 +420,15 @@ func allEqual(subjects []string) bool {
 }
 
 type activation struct {
-	name     string
-	value    any
-	resource any
-	scope    any
-	entry    any
-	record   any
-	metric   any
-	span     any
+	name      string
+	value     any
+	resource  any
+	scope     any
+	entry     any
+	record    any
+	metric    any
+	dataPoint proto.Message
+	span      any
 }
 
 func (a *activation) ResolveName(name string) (any, bool) {
@@ -346,6 +444,9 @@ func (a *activation) ResolveName(name string) (any, bool) {
 		return a.record, true
 	case metricVariable:
 		return a.metric, true
+	case dataPointVariable:
+		// Absent for a metric without data points, so reading it fails.
+		return a.dataPoint, a.dataPoint != nil
 	case spanVariable:
 		return a.span, true
 	}
