@@ -28,7 +28,6 @@ func StartServer(tb testing.TB) Server {
 	ctx := context.Background()
 	skipWithoutContainerRuntime(ctx, tb)
 
-
 	container, err := tcnats.Run(ctx, Image,
 		testcontainers.WithCmd("-js", "-m", "8222"),
 		testcontainers.WithAdditionalWaitStrategy(wait.ForLog("Server is ready")))

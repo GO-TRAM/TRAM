@@ -295,7 +295,7 @@ func TestNATS(t *testing.T) {
 		held.Spec = map[string]any{"hold": true}
 		forward := newStream(t, in, nil, []domain.SinkSpec{held})
 		received := forward.sinks.sink(t, "received")
-		
+
 		t.Cleanup(received.release)
 
 		var cons jetstream.Consumer

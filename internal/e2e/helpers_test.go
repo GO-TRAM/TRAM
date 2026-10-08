@@ -38,7 +38,7 @@ const captureType = "capture"
 type captureSink struct {
 	name, from string
 	fail       string
-	
+
 	hold     chan struct{}
 	released sync.Once
 
