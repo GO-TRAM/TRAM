@@ -2,11 +2,14 @@ package celvalidator_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
+	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 
 	"codeberg.org/eljoth/tram/internal/adapters/stage/celvalidator"
@@ -22,6 +25,30 @@ func (c *captureSubscriber) Stop() error  { return nil }
 func (c *captureSubscriber) Notify(_ context.Context, e *domain.Event) error {
 	c.events = append(c.events, e)
 	return nil
+}
+
+const (
+	tenantUUID = "logs.resource_logs.all(r, r.scope_logs.all(s, s.log_records.all(record, " +
+		"record.attributes.exists(a, a.key == 'tenant.id' && " +
+		"a.value.string_value.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')))))"
+
+	validUUID = "82b58687-a6b4-1fb0-8ea7-a73ab9a57970"
+)
+
+// withTenants returns one log record per ID, with the ID as tenant.id, or
+// without the attribute for an empty ID.
+func withTenants(ids ...string) *logspb.LogsData {
+	logs := otlpgen.Logs(otlpgen.Shape{Records: len(ids), Resources: 1, Teams: 1})
+	for i, record := range logs.GetResourceLogs()[0].GetScopeLogs()[0].GetLogRecords() {
+		if ids[i] == "" {
+			continue
+		}
+		record.Attributes = append(record.Attributes, &commonpb.KeyValue{
+			Key:   "tenant.id",
+			Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: ids[i]}},
+		})
+	}
+	return logs
 }
 
 func TestDocumentedBehavior(t *testing.T) {
@@ -96,6 +123,31 @@ func TestDocumentedBehavior(t *testing.T) {
 				"on_mismatch": "reject",
 			},
 			event:        &domain.Event{Traces: invalidTraceID},
+			expectReject: true,
+		},
+		{
+			name:          "tenant.id UUID: accepted",
+			spec:          map[string]any{"logs": tenantUUID, "on_mismatch": "reject"},
+			event:         &domain.Event{Logs: withTenants(validUUID, "00000000-0000-0000-0000-000000000000")},
+			expectRecords: 2,
+		},
+		{
+			name:         "tenant.id UUID: uppercase rejected",
+			spec:         map[string]any{"logs": tenantUUID, "on_mismatch": "reject"},
+			event:        &domain.Event{Logs: withTenants(validUUID, strings.ToUpper(validUUID))},
+			expectReject: true,
+		},
+		{
+			name:         "tenant.id UUID: missing attribute rejected",
+			spec:         map[string]any{"logs": tenantUUID, "on_mismatch": "reject"},
+			event:        &domain.Event{Logs: withTenants(validUUID, "")},
+			expectReject: true,
+		},
+		{
+			// Without ^ and $, matches would find the UUID inside the value.
+			name:         "tenant.id UUID: anchors reject a UUID inside a longer value",
+			spec:         map[string]any{"logs": tenantUUID, "on_mismatch": "reject"},
+			event:        &domain.Event{Logs: withTenants(validUUID, "x."+validUUID)},
 			expectReject: true,
 		},
 		{

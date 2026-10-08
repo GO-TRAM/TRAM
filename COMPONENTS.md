@@ -70,7 +70,8 @@ Receives OpenTelemetry Protocol data over HTTP (OTLP/HTTP). OTLP over gRPC is no
 - Accepts `POST` requests on `/v1/logs`, `/v1/metrics` and `/v1/traces` with a protobuf (`application/x-protobuf`) or JSON (`application/json`) body. Requests without a content type are read as protobuf
 - Bodies may be compressed with `Content-Encoding: gzip`
 - Each request becomes one event and is passed on as a whole
-- Responses: `200` with an empty response message in the request's encoding once all sinks have accepted the data, `422` for a body that cannot be read or parsed and for data rejected by a stage or sink (e.g. `cel_validator` with `on_mismatch: reject`), `413` for bodies larger than 20 MiB (also after decompression), `415` for other content types or encodings, `503` with a `Retry-After` header if passing the data on failed or took longer than `delivery_timeout`. Only the `503` is retried by OTLP clients: it is the only answer the request itself did not cause
+- A request in which a key appears twice in the same key-value list is refused with `422`: the attributes of a resource, scope, log record, span, span event, span link, data point or exemplar, a metric's metadata, and key-value lists nested in values or log bodies. OTLP requires unique keys; with a key twice, a stage could check one value while a sink routes by the other. The same key in different lists, e.g. on the resource and on a record, is allowed
+- Responses: `200` with an empty response message in the request's encoding once all sinks have accepted the data, `422` for a body that cannot be read or parsed, contains a duplicate key, or holds data rejected by a stage or sink (e.g. `cel_validator` with `on_mismatch: reject`), `413` for bodies larger than 20 MiB (also after decompression), `415` for other content types or encodings, `503` with a `Retry-After` header if passing the data on failed or took longer than `delivery_timeout`. Only the `503` is retried by OTLP clients: it is the only answer the request itself did not cause
 - A rejection is answered with `422` wherever it comes from, including a sink whose destination refuses the data permanently, e.g. an [OTLP Sink](#otlp-sink) whose destination answers `401`, `403` or `404` because of its own configuration. The client then drops data it did not cause to be refused
 - The default `delivery_timeout` is below the 10s that OpenTelemetry SDK exporters wait by default, so they get the `503` before they give up. `batch` and `delay` stages have to leave time for it, see [Hold Times](#hold-times). Raise it for pipelines that take longer, e.g. with a `delay` stage or slow sinks, and for clients that wait longer, like the OpenTelemetry Collector (30s by default). A batch that is already being sent when the timeout expires is still awaited, since it holds data of other requests too
 - A request may take up to 1 minute to send, which leaves time for large bodies on slow connections
@@ -274,6 +275,14 @@ Reject trace deliveries that contain a span without a valid trace ID:
 ```json
 {
   "traces": "traces.resource_spans.all(r, r.scope_spans.all(s, s.spans.all(span, size(span.trace_id) == 16)))",
+  "on_mismatch": "reject"
+}
+```
+
+Reject log deliveries that contain a record whose `tenant.id` is not a lowercase UUID. `matches` takes an RE2 regular expression and finds it anywhere in the value, so anchor it with `^` and `$`. Checking a value that a [NATS Sink](#nats-sink) puts into its subjects keeps out dots, whitespace and wildcards, which would make the subject invalid or change its meaning:
+```json
+{
+  "logs": "logs.resource_logs.all(r, r.scope_logs.all(s, s.log_records.all(record, record.attributes.exists(a, a.key == 'tenant.id' && a.value.string_value.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')))))",
   "on_mismatch": "reject"
 }
 ```
@@ -567,6 +576,7 @@ Signals without an expression are not published by this sink.
 - **Component Type vs Name:** The `type` field in configuration refers to the component implementation type (e.g., `generator`, `cel_validator`), while the `name` field is a user-defined identifier for the component instance within a stream.
 - **Connections:** The `from` field in stages and sinks specifies which component they receive data from.
 - **Tree Structure:** Pipelines form a tree with the source as root, stages as intermediate nodes, and sinks as leaves.
+- **Delivery Guarantee:** Delivery is at-least-once, and Tram does not deduplicate. A sink can receive the same data again, e.g. when a client retries after a `503` although some sinks had already accepted the data, when a NATS message is redelivered after one branch of its stream failed, or when a publish succeeded but its acknowledgement was lost. Deduplicate at the destination where duplicates matter.
 
 ### Hold Times
 

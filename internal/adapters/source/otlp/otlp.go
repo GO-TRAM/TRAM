@@ -218,6 +218,9 @@ func (o *OTLP) receive(
 	if err != nil {
 		return "", http.StatusUnprocessableEntity, "Error parsing request body"
 	}
+	if key, duplicate := duplicateKey(event); duplicate {
+		return "", http.StatusUnprocessableEntity, fmt.Sprintf("Attribute key %q appears more than once", key)
+	}
 	event.Request = request
 
 	ctx, cancel := context.WithTimeout(r.Context(), o.deliveryTimeout)

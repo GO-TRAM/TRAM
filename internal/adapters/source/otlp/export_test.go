@@ -5,12 +5,18 @@ import (
 	"time"
 
 	"codeberg.org/eljoth/tram/internal/adapters/source/base"
+	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 const (
 	MaxBodyBytes           = maxBodyBytes
 	DefaultDeliveryTimeout = defaultDeliveryTimeout
+	MaxPairwiseKeys        = maxPairwiseKeys
 )
+
+func DuplicateKey(event *domain.Event) (string, bool) {
+	return duplicateKey(event)
+}
 
 func NewWithoutListener(src *base.Source[Spec], deliveryTimeout time.Duration) *OTLP {
 	return &OTLP{
