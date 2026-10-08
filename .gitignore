@@ -25,3 +25,4 @@ coverage.out
 
 setup/tenant-routing-loadtest
 
+tools/loadgen/
