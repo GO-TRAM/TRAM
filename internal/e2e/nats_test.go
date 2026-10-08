@@ -179,6 +179,11 @@ func TestNATS(t *testing.T) {
 		assert.ElementsMatch(t, []string{"shop/e2e/r1", "shop/e2e/r3", "cart/e2e/k2"}, arrived(received.received()))
 	})
 
+	t.Run("routing by record attribute", func(t *testing.T) {
+		t.Parallel()
+		testRoutingByRecordAttribute(t, n)
+	})
+
 	t.Run("signal types survive the round trip", func(t *testing.T) {
 		t.Parallel()
 
