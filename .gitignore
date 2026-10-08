@@ -1,7 +1,7 @@
 # Build output
 /tram
 /benchreport
-/setup/tlmr-demo
+/setup/tenant-routing-demo
 # Local cluster credentials
 kubeconfig
 
@@ -23,7 +23,5 @@ coverage.out
 
 .claude/
 
-setup/tlmr-loadtest
+setup/tenant-routing-loadtest
 
-# Load generator, kept locally only
-/tools/loadgen/
