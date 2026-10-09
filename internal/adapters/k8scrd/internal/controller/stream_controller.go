@@ -88,9 +88,12 @@ func (r *StreamReconciler) setActive(ctx context.Context, stream *tramv1.Stream,
 	if stream.Status.Active == active {
 		return nil
 	}
+
+	patch := client.MergeFrom(stream.DeepCopy())
 	stream.Status.Active = active
-	if err := r.Status().Update(ctx, stream); err != nil {
-		return fmt.Errorf("update status: %w", err)
+
+	if err := r.Status().Patch(ctx, stream, patch); err != nil {
+		return fmt.Errorf("patch status: %w", err)
 	}
 	return nil
 }
