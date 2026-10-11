@@ -24,5 +24,5 @@ coverage.out
 .claude/
 
 setup/tenant-routing-loadtest
-
+setup/tenant-routing-k8s
 tools/loadgen/
