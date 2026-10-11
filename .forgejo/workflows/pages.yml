@@ -1,6 +1,6 @@
 # Builds the documentation in docs/ with MkDocs and publishes it to the root
-# of the pages branch, which Codeberg Pages serves at
-# https://eljoth.codeberg.page/tram/.
+# of the pages branch, which Codeberg Pages serves at https://gotram.dev/
+# through a webhook of the repository.
 name: Pages
 
 on:

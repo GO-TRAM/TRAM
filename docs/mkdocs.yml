@@ -1,6 +1,6 @@
 site_name: Tram
 site_description: A lightweight, extensible pipeline framework for logs, metrics and traces
-site_url: https://eljoth.codeberg.page/tram/
+site_url: https://gotram.dev/
 repo_url: https://codeberg.org/eljoth/tram
 repo_name: eljoth/tram
 edit_uri: ""
