@@ -1,0 +1,67 @@
+# Builds the documentation in docs/ with MkDocs and publishes it to the root
+# of the pages branch, which Codeberg Pages serves at
+# https://eljoth.codeberg.page/tram/.
+name: Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - docs/**
+      - README.md
+      - COMPONENTS.md
+      - BENCHMARK.md
+      - CONTRIBUTING.md
+      - internal/adapters/k8scrd/README.md
+      - .forgejo/workflows/pages.yml
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: codeberg-small
+    # Has git and Python, so the job needs neither Node.js nor actions.
+    container:
+      image: python:3.13
+    env:
+      # A secret PAGES_TOKEN (access token with write access to the repository)
+      # takes precedence, in case the automatic token may not push.
+      TOKEN: ${{ secrets.PAGES_TOKEN || forgejo.token }}
+    steps:
+      - name: Check out main
+        run: |
+          git clone --depth 1 --branch "${FORGEJO_REF_NAME}" \
+            "https://token:${TOKEN}@${FORGEJO_SERVER_URL#https://}/${FORGEJO_REPOSITORY}.git" src
+          git -C src checkout --quiet "${FORGEJO_SHA}"
+
+      - name: Build site
+        working-directory: src
+        run: |
+          pip install --quiet --root-user-action=ignore -r docs/requirements.txt
+          mkdocs build --strict -f docs/mkdocs.yml
+
+      - name: Push to pages branch
+        run: |
+          remote="https://token:${TOKEN}@${FORGEJO_SERVER_URL#https://}/${FORGEJO_REPOSITORY}.git"
+          if git clone --quiet --depth 1 --branch pages "$remote" pages; then
+            find pages -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          else
+            git init --quiet --initial-branch pages pages
+            git -C pages remote add origin "$remote"
+          fi
+          cp -r src/site/. pages/
+
+          cd pages
+          git config user.name "Forgejo Actions"
+          git config user.email "actions@noreply.codeberg.org"
+          git add --all
+          if git diff --cached --quiet; then
+            echo "Site unchanged, nothing to publish"
+            exit 0
+          fi
+          git commit --quiet -m "Publish documentation from ${FORGEJO_SHA}"
+          git push origin pages

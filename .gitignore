@@ -26,3 +26,7 @@ coverage.out
 setup/tenant-routing-loadtest
 setup/tenant-routing-k8s
 tools/loadgen/
+
+# Documentation site built by mkdocs
+/site
+__pycache__/

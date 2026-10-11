@@ -1,0 +1,121 @@
+/* The yellow of the Tram logo on Space Cadet. */
+:root {
+  --tram-yellow: #fdd100;
+  --tram-amber: #fbbb09;
+  --tram-slate: #283044;
+  --tram-slate-light: #3b4662;
+
+  --md-primary-fg-color: var(--tram-slate);
+  --md-primary-fg-color--light: var(--tram-slate-light);
+  --md-primary-fg-color--dark: #1d2333;
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: #ffffffb3;
+}
+
+[data-md-color-scheme="default"] {
+  --md-accent-fg-color: #c58f00;
+  --md-typeset-a-color: #3a5a99;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-hue: 224;
+  --md-accent-fg-color: var(--tram-yellow);
+  --md-typeset-a-color: var(--tram-amber);
+}
+
+/* A yellow stripe under the header, like the bumper of the tram. */
+.md-header {
+  border-bottom: 0.2rem solid var(--tram-yellow);
+}
+
+.md-tabs__link--active,
+.md-tabs__item--active .md-tabs__link {
+  color: var(--tram-yellow);
+}
+
+.md-typeset .md-button--primary {
+  background-color: var(--tram-yellow);
+  border-color: var(--tram-yellow);
+  color: var(--tram-slate);
+}
+
+.md-typeset .md-button--primary:hover,
+.md-typeset .md-button--primary:focus {
+  background-color: var(--tram-amber);
+  border-color: var(--tram-amber);
+  color: var(--tram-slate);
+}
+
+/* The diagrams are black on transparent, so give them a light card. */
+.md-typeset img[src$=".webp"] {
+  display: block;
+  margin: 1rem auto;
+  padding: 0.8rem;
+  border-radius: 0.4rem;
+  background-color: #ffffff;
+  box-shadow: var(--md-shadow-z1);
+}
+
+/* Start page */
+.tram-hero {
+  display: flex;
+  align-items: center;
+  gap: 2.5rem;
+  margin: 1rem 0 2.5rem;
+}
+
+.tram-hero__logo {
+  flex: 0 0 9rem;
+  width: 9rem;
+}
+
+.md-typeset .tram-hero h1 {
+  margin-bottom: 0.4rem;
+  font-size: 2.6rem;
+}
+
+.tram-hero__tagline {
+  font-size: 1.1rem;
+  color: var(--md-default-fg-color--light);
+}
+
+@media screen and (max-width: 44.9375em) {
+  .tram-hero {
+    flex-direction: column;
+    text-align: center;
+    gap: 1rem;
+  }
+}
+
+.md-typeset .grid.cards > ul > li:hover {
+  border-color: var(--tram-amber);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .md-button:not(.md-button--primary) {
+  color: var(--tram-yellow);
+  border-color: var(--tram-yellow);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .md-button:not(.md-button--primary):hover {
+  background-color: var(--tram-yellow);
+  color: var(--tram-slate);
+}
+
+/* Bolder headings than the light default of Material. */
+.md-typeset h1 {
+  font-weight: 700;
+  color: var(--md-default-fg-color);
+}
+
+.md-typeset h2 {
+  font-weight: 600;
+}
+
+.md-typeset .mermaid {
+  text-align: center;
+}
+
+/* Keep names like tram_node_records_total in the first column on one line. */
+.md-typeset table:not([class]) td:first-child code {
+  white-space: nowrap;
+}
