@@ -76,6 +76,7 @@ linters:
     - gocyclo # computes and checks the cyclomatic complexity of functions
     - godoclint # checks Golang's documentation practice
     - godot # checks if comments end in a period
+    - goheader # checks is file header matches to pattern
     - gomoddirectives # manages the use of 'replace', 'retract', and 'excludes' directives in go.mod
     - goprintffuncname # checks that printf-like functions are named with f at the end
     - gosec # inspects source code for security problems
@@ -131,7 +132,6 @@ linters:
     #- exhaustruct_v5 # [highly recommend to enable] checks if all structure fields are initialized
     #- ginkgolinter # [if you use ginkgo/gomega] enforces standards of using ginkgo and gomega
     #- godox # detects usage of FIXME, TODO and other keywords inside comments
-    #- goheader # checks is file header matches to pattern
     #- inamedparam # [great idea, but too strict, need to ignore a lot of cases by default] reports interfaces with unnamed method parameters
     #- interfacebloat # checks the number of methods inside an interface
     #- ireturn # accept interfaces, return concrete types
@@ -328,6 +328,15 @@ linters:
         # Require proper doc links to standard library declarations where applicable.
         # https://github.com/godoc-lint/godoc-lint?tab=readme-ov-file#require-stdlib-doclink
         - require-stdlib-doclink
+
+    goheader:
+      # Expected license header (MPL-2.0) of every source file, see CONTRIBUTING.md.
+      # The template is matched against the first comment block of each file.
+      template: |-
+        This Source Code Form is subject to the terms of the Mozilla Public
+        License, v. 2.0. If a copy of the MPL was not distributed with this
+        file, You can obtain one at https://mozilla.org/MPL/2.0/.
+        SPDX-License-Identifier: MPL-2.0
 
     govet:
       # Enable all analyzers.

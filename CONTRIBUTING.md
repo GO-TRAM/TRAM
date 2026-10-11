@@ -519,6 +519,7 @@ var _ domain.Sink = (*Webhook)(nil)
 4. **Proper commit messages**: Follow [Conventional Commits](https://www.conventionalcommits.org/)
 5. **Updated documentation**: Update relevant docs for any API changes
 6. **Tests**: Add tests for new functionality
+7. **Signed-off commits**: Sign off your commits (`git commit --signoff`) to accept the [Contributor License Agreement](CLA.md)
 
 ### Commit Message Format
 
@@ -734,4 +735,29 @@ We're happy to help you get started with contributing!
 
 ## 📜 License
 
-By contributing to Tram, you agree that your contributions will be licensed under the same [MIT License](LICENSE) as the project.
+Tram is licensed under the [Mozilla Public License 2.0](LICENSE) (MPL-2.0). In short:
+
+- You may use, modify, and distribute Tram, including in commercial and proprietary products.
+- If you distribute a modified version of Tram's source files, your modifications to those files must be made available under the MPL-2.0.
+- You may combine Tram with your own code — including proprietary code — in a larger work without having to open your own code (MPL-2.0, Section 3.3 "Larger Work").
+
+### Licensing your contributions (inbound = outbound)
+
+By contributing to Tram, you agree that:
+
+1. Your contributions are licensed to everyone under the same [MPL-2.0](LICENSE) as the project.
+2. You accept the [Contributor License Agreement (CLA)](CLA.md), which additionally grants the maintainer the right to relicense your contributions — for example for commercial licenses and premium features built on Tram. You accept the CLA by signing off your commits (`git commit --signoff`) or by stating "I have read and agree to the Tram CLA" in your pull request.
+3. Submitting a contribution does not oblige the maintainer to accept or merge it.
+
+### File headers
+
+New source files must carry the MPL-2.0 header:
+
+```go
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+// SPDX-License-Identifier: MPL-2.0
+```
+
+The header is enforced by the `goheader` linter (`task lint`). Generated files (marked `Code generated ... DO NOT EDIT`) are exempt.

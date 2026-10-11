@@ -362,4 +362,4 @@ Tram has no authentication or authorization of its own. Whoever can create a str
 
 ## 📜 License
 
-Tram is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+Tram is licensed under the **Mozilla Public License 2.0** - see the [LICENSE](LICENSE) file for details.
