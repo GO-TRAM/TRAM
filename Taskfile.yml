@@ -12,14 +12,24 @@ vars:
   # Podman if installed, Docker otherwise; set CONTAINER_TOOL=docker to choose.
   CONTAINER_TOOL:
     sh: command -v podman >/dev/null 2>&1 && echo podman || echo docker
-  # The Podman socket inside the Podman machine, where Testcontainers' Ryuk
-  # container mounts it from. For a rootless machine, set it to
-  # /run/user/<uid>/podman/podman.sock.
-  PODMAN_SOCKET: /run/podman/podman.sock
+  # The socket of the Podman service, as Podman reports it: the rootless or
+  # rootful socket on Linux, the socket inside the machine on macOS and
+  # Windows. Testcontainers' Ryuk container mounts it from there; the default
+  # /var/run/docker.sock is often missing or points to an inactive socket.
+  PODMAN_SOCKET:
+    sh: >-
+      podman info --format '{{`{{.Host.RemoteSocket.Path}}`}}' 2>/dev/null
+      || echo /run/podman/podman.sock
+  # Whether Podman runs in a machine. Only a local service is reachable at
+  # PODMAN_SOCKET; for a machine, Testcontainers finds the forwarded socket.
+  PODMAN_REMOTE:
+    sh: podman info --format '{{`{{.Host.ServiceIsRemote}}`}}' 2>/dev/null || echo true
   # Testcontainers needs this setup with Podman; with Docker it works as is.
-  # The socket override must not be set at all for Docker, even empty.
+  # The socket override must not be set at all for Docker, even empty. A
+  # DOCKER_HOST already set is kept.
   TESTCONTAINERS_ENV: >-
-    {{if eq .CONTAINER_TOOL "podman"}}TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE={{.PODMAN_SOCKET}}
+    {{if eq .CONTAINER_TOOL "podman"}}{{if eq .PODMAN_REMOTE "false"}}DOCKER_HOST="${DOCKER_HOST:-unix://{{.PODMAN_SOCKET}}}"
+    {{end}}TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE={{.PODMAN_SOCKET}}
     TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED=true{{end}}
 
   # Tool versions installed by `task tools`, matching the generated code.
@@ -123,12 +133,12 @@ tasks:
   test:unit:
     desc: Run the unit tests of all packages, without the end-to-end tests
     cmds:
-      - go test -race {{.CLI_ARGS}} $(go list ./... | grep -v /internal/e2e)
+      - '{{.TESTCONTAINERS_ENV}} go test -race {{.CLI_ARGS}} $(go list ./... | grep -v /internal/e2e)'
 
   test:e2e:
     desc: Run the end-to-end pipeline tests that need no containers
     cmds:
-      - go test -race -skip '^TestNATS$' {{.CLI_ARGS}} ./internal/e2e/
+      - "{{.TESTCONTAINERS_ENV}} go test -race -skip '^TestNATS$' {{.CLI_ARGS}} ./internal/e2e/"
 
   test:containers:
     desc: Run the end-to-end tests against NATS in a container (Testcontainers; needs Docker or Podman)
@@ -136,8 +146,8 @@ tasks:
       Runs the tests that start a NATS server with Testcontainers. Unlike in
       `task test`, they fail instead of being skipped if no container runtime
       is running. Results are never cached, since they depend on the
-      container. With Podman, the socket of the Podman machine is used; see
-      PODMAN_SOCKET for rootless machines.
+      container. With Podman, the socket Podman reports is used; see
+      PODMAN_SOCKET.
     preconditions:
       - sh: '{{.CONTAINER_TOOL}} info >/dev/null 2>&1'
         msg: '{{.CONTAINER_TOOL}} is not running; start it first (e.g. `podman machine start`)'

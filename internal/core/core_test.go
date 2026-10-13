@@ -202,9 +202,9 @@ func (f stageFactory) New(spec domain.StageSpec) (domain.Stage, error) {
 	}
 	f.reg.create(spec.Name)
 	return &fakeStage{
-		fakeSink: fakeSink{reg: f.reg, name: spec.Name, from: spec.From},
-		forward:  spec.Type == forwardingType,
-		hold:     hold,
+		reg: f.reg, name: spec.Name, from: spec.From,
+		forward: spec.Type == forwardingType,
+		hold:    hold,
 	}, nil
 }
 

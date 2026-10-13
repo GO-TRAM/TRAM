@@ -18,7 +18,6 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -84,7 +83,7 @@ func (c *cluster) adminKubeconfig(t *testing.T) string {
 
 func (c *cluster) newNamespace(t *testing.T) string {
 	t.Helper()
-	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{GenerateName: "tram-test-"}}
+	ns := &corev1.Namespace{GenerateName: "tram-test-"}
 	require.NoError(t, c.admin.Create(t.Context(), ns))
 	return ns.Name
 }
@@ -92,7 +91,7 @@ func (c *cluster) newNamespace(t *testing.T) string {
 func (c *cluster) createStream(t *testing.T, namespace, name string, labels map[string]string) {
 	t.Helper()
 	stream := &tramv1.Stream{
-		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name, Labels: labels},
+		Namespace: namespace, Name: name, Labels: labels,
 		Spec: tramv1.StreamSpec{
 			Source: tramv1.Spec{
 				Name: "in",
@@ -259,9 +258,9 @@ func TestOperatorNeedsOnlyRoleBindingInWatchedNamespace(t *testing.T) {
 	ns := c.newNamespace(t)
 	const user = "tram-operator"
 	require.NoError(t, c.admin.Create(t.Context(), &rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: "tram"},
-		RoleRef:    rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: role.Name},
-		Subjects:   []rbacv1.Subject{{APIGroup: rbacv1.GroupName, Kind: rbacv1.UserKind, Name: user}},
+		Namespace: ns, Name: "tram",
+		RoleRef:  rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: role.Name},
+		Subjects: []rbacv1.Subject{{APIGroup: rbacv1.GroupName, Kind: rbacv1.UserKind, Name: user}},
 	}))
 	c.createStream(t, ns, "s", nil)
 

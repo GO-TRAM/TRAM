@@ -1,6 +1,6 @@
 module codeberg.org/eljoth/tram
 
-go 1.26.4
+go 1.27.2
 
 tool (
 	github.com/bufbuild/buf/cmd/buf

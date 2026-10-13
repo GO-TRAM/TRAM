@@ -11,7 +11,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -55,7 +54,7 @@ func (c *fakeCore) Watch(context.Context, chan domain.StreamSpecWatchEvent) erro
 
 func newStream(namespace string) *tramv1.Stream {
 	return &tramv1.Stream{
-		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "s"},
+		Namespace: namespace, Name: "s",
 		Spec: tramv1.StreamSpec{
 			Source: tramv1.Spec{
 				Name: "in",
@@ -87,7 +86,7 @@ func newReconciler(t *testing.T, objs ...*tramv1.Stream) (*controller.StreamReco
 }
 
 func request(namespace string) ctrl.Request {
-	return ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: "s"}}
+	return ctrl.Request{Namespace: namespace, Name: "s"}
 }
 
 func TestReconcileUpsertsOnlyOnChange(t *testing.T) {
