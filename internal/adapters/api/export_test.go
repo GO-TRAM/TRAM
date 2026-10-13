@@ -5,6 +5,19 @@
 
 package api
 
+import (
+	"codeberg.org/eljoth/tram/internal/core/domain"
+	v1 "codeberg.org/eljoth/tram/pkg/gen/go/api/proto/stream/v1"
+)
+
 func ToStatus(err error) error {
 	return toStatus(err)
+}
+
+func PBStreamToStreamSpec(stream *v1.Stream) domain.StreamSpec {
+	return pbStreamToStreamSpec(stream)
+}
+
+func StreamSpecToPBStream(spec domain.StreamSpec) *v1.Stream {
+	return streamSpecToPBStream(spec)
 }

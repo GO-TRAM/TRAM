@@ -115,7 +115,12 @@ func newRecordCounter(
 	}
 }
 
+// count does nothing for the zero recordCounter, the one of nodes whose stream
+// leaves out their records.
 func (c *recordCounter) count(ctx context.Context, event *domain.Event) {
+	if c.counter == nil {
+		return
+	}
 	logs, dataPoints, spans := event.RecordCounts()
 	c.add(ctx, logs, c.logs)
 	c.add(ctx, dataPoints, c.dataPoints)
@@ -128,26 +133,44 @@ func (c *recordCounter) add(ctx context.Context, records int, signal []metric.Ad
 	}
 }
 
-func (m *metrics) output(stream string, node *domain.Node) recordCounter {
-	return newRecordCounter(m.recordsOut, nodeAttributes(stream, node))
+func (m *metrics) output(spec domain.StreamSpec, node *domain.Node) recordCounter {
+	if !spec.Metrics.Records.Enabled(node.Kind) {
+		return recordCounter{}
+	}
+	return newRecordCounter(m.recordsOut, nodeAttributes(spec.Name, node))
 }
 
-func (m *metrics) instrument(stream string, node *domain.Node, subscriber domain.Subscriber) domain.Subscriber {
-	with := nodeAttributes(stream, node)
-	record := func(outcome string) []metric.RecordOption {
-		return []metric.RecordOption{with("outcome", outcome)}
+// instrument returns the subscriber unchanged if its stream leaves out every
+// metric of the node.
+func (m *metrics) instrument(
+	spec domain.StreamSpec,
+	node *domain.Node,
+	subscriber domain.Subscriber,
+) domain.Subscriber {
+	records := spec.Metrics.Records.Enabled(node.Kind)
+	duration := spec.Metrics.Duration.Enabled(node.Kind)
+	requests := node.Kind == domain.KindSource && spec.Metrics.RequestSizeEnabled()
+	if !records && !duration && !requests {
+		return subscriber
 	}
-	s := &instrumentedSubscriber{
-		Subscriber: subscriber,
-		records:    newRecordCounter(m.records, with),
-		duration:   m.duration,
-		ok:         record(outcomeOK),
-		rejected:   record(outcomeRejected),
-		cancelled:  record(outcomeCancelled),
-		failed:     record(outcomeError),
+
+	with := nodeAttributes(spec.Name, node)
+	s := &instrumentedSubscriber{Subscriber: subscriber}
+	if records {
+		s.records = newRecordCounter(m.records, with)
 	}
-	if node.Kind == domain.KindSource {
-		s.requests = newRequestSizes(m.requestSize, stream, node)
+	if duration {
+		record := func(outcome string) []metric.RecordOption {
+			return []metric.RecordOption{with("outcome", outcome)}
+		}
+		s.duration = m.duration
+		s.ok = record(outcomeOK)
+		s.rejected = record(outcomeRejected)
+		s.cancelled = record(outcomeCancelled)
+		s.failed = record(outcomeError)
+	}
+	if requests {
+		s.requests = newRequestSizes(m.requestSize, spec.Name, node)
 	}
 	return s
 }
@@ -194,7 +217,8 @@ func (r *requestSizes) record(ctx context.Context, request *domain.Request) {
 type instrumentedSubscriber struct {
 	domain.Subscriber
 
-	records                         recordCounter
+	records recordCounter
+	// duration is nil if the stream leaves out the duration of the node.
 	duration                        metric.Float64Histogram
 	ok, rejected, cancelled, failed []metric.RecordOption
 	// requests is set for sources only.
@@ -205,6 +229,9 @@ func (s *instrumentedSubscriber) Notify(ctx context.Context, event *domain.Event
 	s.records.count(ctx, event)
 	if s.requests != nil && event.Request != nil {
 		s.requests.record(ctx, event.Request)
+	}
+	if s.duration == nil {
+		return s.Subscriber.Notify(ctx, event)
 	}
 
 	start := time.Now()

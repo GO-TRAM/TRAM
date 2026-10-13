@@ -31,11 +31,32 @@ message Sink {
   google.protobuf.Struct spec = 4;
 }
 
+// Enables a metric per kind of node. Unset fields keep their defaults.
+message NodeMetrics {
+  // Defaults to true.
+  optional bool source = 1;
+  // Defaults to false.
+  optional bool stages = 2;
+  // Defaults to true.
+  optional bool sinks = 3;
+}
+
+// Chooses the metrics a stream records. Unset fields keep their defaults.
+message Metrics {
+  // tram.node.records and tram.node.records.out.
+  NodeMetrics records = 1;
+  // tram.node.duration.
+  NodeMetrics duration = 2;
+  // tram.source.request.size. Defaults to true.
+  optional bool request_size = 3;
+}
+
 message Stream {
   string name = 1 [(buf.validate.field).string.min_len = 1];
   Source source = 2;
   repeated Stage stages = 3;
   repeated Sink sinks = 4 [(buf.validate.field).repeated.min_items = 1];
+  Metrics metrics = 5;
 }
 
 //------------------------------------------------------------------------------

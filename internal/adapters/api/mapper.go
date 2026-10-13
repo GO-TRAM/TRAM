@@ -15,11 +15,31 @@ import (
 func pbStreamToStreamSpec(req *v1.Stream) domain.StreamSpec {
 	source := pbSourceToSourceSpec(req.GetSource())
 	return domain.StreamSpec{
-		Name:   req.GetName(),
-		Source: source,
-		Stages: mmap(req.GetStages(), pbStageToStageSpec),
-		Sinks:  mmap(req.GetSinks(), pbSinkToSinkSpec),
+		Name:    req.GetName(),
+		Source:  source,
+		Stages:  mmap(req.GetStages(), pbStageToStageSpec),
+		Sinks:   mmap(req.GetSinks(), pbSinkToSinkSpec),
+		Metrics: pbMetricsToMetricsSpec(req.GetMetrics()),
 	}
+}
+
+// The optional fields are pointers, so an unset field keeps its default.
+func pbMetricsToMetricsSpec(req *v1.Metrics) domain.MetricsSpec {
+	if req == nil {
+		return domain.MetricsSpec{}
+	}
+	return domain.MetricsSpec{
+		Records:     pbNodeMetricsToNodeMetrics(req.GetRecords()),
+		Duration:    pbNodeMetricsToNodeMetrics(req.GetDuration()),
+		RequestSize: req.RequestSize,
+	}
+}
+
+func pbNodeMetricsToNodeMetrics(req *v1.NodeMetrics) domain.NodeMetrics {
+	if req == nil {
+		return domain.NodeMetrics{}
+	}
+	return domain.NodeMetrics{Source: req.Source, Stages: req.Stages, Sinks: req.Sinks}
 }
 
 func pbSourceToSourceSpec(req *v1.Source) domain.SourceSpec {
@@ -50,11 +70,29 @@ func pbSinkToSinkSpec(req *v1.Sink) domain.SinkSpec {
 
 func streamSpecToPBStream(spec domain.StreamSpec) *v1.Stream {
 	return &v1.Stream{
-		Name:   spec.Name,
-		Source: sourceSpecToPBSource(spec.Source),
-		Stages: mmap(spec.Stages, stageSpecToPBStage),
-		Sinks:  mmap(spec.Sinks, sinkSpecToPBSink),
+		Name:    spec.Name,
+		Source:  sourceSpecToPBSource(spec.Source),
+		Stages:  mmap(spec.Stages, stageSpecToPBStage),
+		Sinks:   mmap(spec.Sinks, sinkSpecToPBSink),
+		Metrics: metricsSpecToPBMetrics(spec.Metrics),
 	}
+}
+
+// Unset settings stay unset, so responses show what the stream sets.
+func metricsSpecToPBMetrics(spec domain.MetricsSpec) *v1.Metrics {
+	records := nodeMetricsToPBNodeMetrics(spec.Records)
+	duration := nodeMetricsToPBNodeMetrics(spec.Duration)
+	if records == nil && duration == nil && spec.RequestSize == nil {
+		return nil
+	}
+	return &v1.Metrics{Records: records, Duration: duration, RequestSize: spec.RequestSize}
+}
+
+func nodeMetricsToPBNodeMetrics(spec domain.NodeMetrics) *v1.NodeMetrics {
+	if spec.Source == nil && spec.Stages == nil && spec.Sinks == nil {
+		return nil
+	}
+	return &v1.NodeMetrics{Source: spec.Source, Stages: spec.Stages, Sinks: spec.Sinks}
 }
 
 func sourceSpecToPBSource(spec domain.SourceSpec) *v1.Source {

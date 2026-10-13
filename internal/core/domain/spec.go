@@ -59,10 +59,11 @@ type SinkSpec struct {
 	Spec map[string]any
 }
 type StreamSpec struct {
-	Name   string
-	Source SourceSpec
-	Stages []StageSpec
-	Sinks  []SinkSpec
+	Name    string
+	Source  SourceSpec
+	Stages  []StageSpec
+	Sinks   []SinkSpec
+	Metrics MetricsSpec
 }
 
 func (s SourceSpec) Equal(o SourceSpec) bool {
@@ -81,7 +82,8 @@ func (s StreamSpec) Equal(o StreamSpec) bool {
 	return s.Name == o.Name &&
 		s.Source.Equal(o.Source) &&
 		equalByName(s.Stages, o.Stages, func(stage StageSpec) string { return stage.Name }, StageSpec.Equal) &&
-		equalByName(s.Sinks, o.Sinks, func(sink SinkSpec) string { return sink.Name }, SinkSpec.Equal)
+		equalByName(s.Sinks, o.Sinks, func(sink SinkSpec) string { return sink.Name }, SinkSpec.Equal) &&
+		s.Metrics.Equal(o.Metrics)
 }
 
 func equalByName[T any](a, b []T, name func(T) string, equal func(T, T) bool) bool {

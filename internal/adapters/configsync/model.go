@@ -29,10 +29,62 @@ type SinkSpec struct {
 	Spec map[string]any `json:"spec"`
 }
 type StreamSpec struct {
-	Name   string      `json:"name"`
-	Source SourceSpec  `json:"source"`
-	Stages []StageSpec `json:"stages"`
-	Sinks  []SinkSpec  `json:"sinks"`
+	Name    string       `json:"name"`
+	Source  SourceSpec   `json:"source"`
+	Stages  []StageSpec  `json:"stages"`
+	Sinks   []SinkSpec   `json:"sinks"`
+	Metrics *MetricsSpec `json:"metrics,omitempty"`
+}
+
+// MetricsSpec and NodeMetricsSpec mirror domain.MetricsSpec; unset fields keep
+// the defaults and are left out of written files.
+type MetricsSpec struct {
+	Records     *NodeMetricsSpec `json:"records,omitempty"`
+	Duration    *NodeMetricsSpec `json:"duration,omitempty"`
+	RequestSize *bool            `json:"request_size,omitempty"`
+}
+
+type NodeMetricsSpec struct {
+	Source *bool `json:"source,omitempty"`
+	Stages *bool `json:"stages,omitempty"`
+	Sinks  *bool `json:"sinks,omitempty"`
+}
+
+func (m *MetricsSpec) asDomain() domain.MetricsSpec {
+	if m == nil {
+		return domain.MetricsSpec{}
+	}
+	return domain.MetricsSpec{
+		Records:     m.Records.asDomain(),
+		Duration:    m.Duration.asDomain(),
+		RequestSize: m.RequestSize,
+	}
+}
+
+func (n *NodeMetricsSpec) asDomain() domain.NodeMetrics {
+	if n == nil {
+		return domain.NodeMetrics{}
+	}
+	return domain.NodeMetrics{Source: n.Source, Stages: n.Stages, Sinks: n.Sinks}
+}
+
+func metricsFromDomain(m domain.MetricsSpec) *MetricsSpec {
+	spec := &MetricsSpec{
+		Records:     nodeMetricsFromDomain(m.Records),
+		Duration:    nodeMetricsFromDomain(m.Duration),
+		RequestSize: m.RequestSize,
+	}
+	if spec.Records == nil && spec.Duration == nil && spec.RequestSize == nil {
+		return nil
+	}
+	return spec
+}
+
+func nodeMetricsFromDomain(n domain.NodeMetrics) *NodeMetricsSpec {
+	if n.Source == nil && n.Stages == nil && n.Sinks == nil {
+		return nil
+	}
+	return &NodeMetricsSpec{Source: n.Source, Stages: n.Stages, Sinks: n.Sinks}
 }
 
 type Stream struct {
@@ -71,8 +123,9 @@ func (s *Stream) AsDomain() *domain.StreamSpec {
 			Type: s.Stream.Source.Type,
 			Spec: s.Stream.Source.Spec,
 		},
-		Stages: stages,
-		Sinks:  sinks,
+		Stages:  stages,
+		Sinks:   sinks,
+		Metrics: s.Stream.Metrics.asDomain(),
 	}
 }
 
@@ -105,8 +158,9 @@ func StreamFromDomain(spec domain.StreamSpec) *Stream {
 				Type: spec.Source.Type,
 				Spec: spec.Source.Spec,
 			},
-			Stages: stages,
-			Sinks:  sinks,
+			Stages:  stages,
+			Sinks:   sinks,
+			Metrics: metricsFromDomain(spec.Metrics),
 		},
 	}
 }

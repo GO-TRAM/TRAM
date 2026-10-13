@@ -60,7 +60,7 @@ A `PUT` to an existing stream changes as little as possible:
 | Change | Effect |
 |--------|--------|
 | None | Nothing happens; the running stream is kept |
-| Stages or sinks only | The new stages and sinks are created, events still in flight finish in the old ones, and the source switches over. The source keeps running, e.g. an OTLP source keeps its port open, and no event is lost |
+| Stages, sinks or `metrics` only | The new stages and sinks are created, events still in flight finish in the old ones, and the source switches over. The source keeps running, e.g. an OTLP source keeps its port open, and no event is lost |
 | Source | The stream is stopped and created again. An OTLP source closes its port in between, so clients briefly cannot connect |
 
 If an update fails, e.g. because of an invalid component spec, the request returns an error and the previous version of the stream keeps running. Delete and create a stream to restart it completely.
@@ -69,7 +69,7 @@ If the source of a stream stops on its own, e.g. because its NATS stream does no
 
 ### Metrics
 
-`GET /metrics` on the HTTP API serves Tram's metrics in the Prometheus format, for Prometheus or any other scraper. Every source, stage and sink of every stream is measured, whatever its type:
+`GET /metrics` on the HTTP API serves Tram's metrics in the Prometheus format, for Prometheus or any other scraper. By default the source and the sinks of every stream are measured, whatever their type, and the stages are not; see [Choosing the metrics of a stream](#choosing-the-metrics-of-a-stream):
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
@@ -84,7 +84,9 @@ For a source, the records are what it accepted and passed on, each counted once 
 
 Events pass through a stream synchronously, so the duration of a source or stage includes the stages and sinks below it, and for a `batch` stage the time an event waits for its batch to be flushed. The duration of a source is the time its client waits for Tram. Only the duration of a sink is its own.
 
-A stage's input minus its output is what it dropped, so the share each stage drops is:
+So the time a stream's stages take, including the wait of a `batch` stage, is the duration of its source minus that of its sinks, without measuring the stages themselves.
+
+A stage's input minus its output is what it dropped, so the share each stage drops, for streams that measure the records of their stages, is:
 
 ```promql
 1 - sum by (stream, node) (rate(tram_node_records_out_total{kind="stage"}[5m]))
@@ -102,6 +104,27 @@ sum by (stream, body) (rate(tram_source_request_size_bytes_sum[5m]))
 ```
 
 A stage that drops every record of a signal, such as a `cel_filter` with `"false"` for it, has no output series for that signal, so drop the `signal` label or use `or vector(0)` when comparing per signal.
+
+#### Choosing the metrics of a stream
+
+Every node is a series of its own per metric, so many streams with several stages each add up to many series. The optional `metrics` field of a stream turns each metric on or off per kind of node; fields left out keep their defaults:
+
+| Field | Metrics | Defaults |
+|-------|---------|----------|
+| `records` | `tram_node_records_total` and `tram_node_records_out_total` | `source: true`, `stages: false`, `sinks: true` |
+| `duration` | `tram_node_duration_seconds` | `source: true`, `stages: false`, `sinks: true` |
+| `request_size` | `tram_source_request_size_bytes` | `true` |
+
+To see what each stage of a stream drops and how long it takes:
+
+```json
+"metrics": {
+  "records": {"stages": true},
+  "duration": {"stages": true}
+}
+```
+
+The field is part of the stream in the API, in the files of the file sync and in the `Stream` resource of the Kubernetes operator (`spec.metrics`). Changing it rewires the stream's stages and sinks but keeps its source running. Series of a node that stops being measured stay at their last value until Tram restarts.
 
 ---
 

@@ -51,6 +51,35 @@ type StreamSpec struct {
 	Source Spec           `json:"source"`
 	Stages []ReceiverSpec `json:"stages,omitempty"`
 	Sinks  []ReceiverSpec `json:"sinks"`
+	// Metrics chooses the metrics the stream records; unset fields keep their
+	// defaults.
+	// +optional
+	Metrics *MetricsSpec `json:"metrics,omitempty"`
+}
+
+type MetricsSpec struct {
+	// Records covers tram.node.records and tram.node.records.out.
+	// +optional
+	Records *NodeMetricsSpec `json:"records,omitempty"`
+	// Duration covers tram.node.duration.
+	// +optional
+	Duration *NodeMetricsSpec `json:"duration,omitempty"`
+	// RequestSize covers tram.source.request.size. Defaults to true.
+	// +optional
+	RequestSize *bool `json:"request_size,omitempty"`
+}
+
+// NodeMetricsSpec enables a metric per kind of node.
+type NodeMetricsSpec struct {
+	// Defaults to true.
+	// +optional
+	Source *bool `json:"source,omitempty"`
+	// Defaults to false.
+	// +optional
+	Stages *bool `json:"stages,omitempty"`
+	// Defaults to true.
+	// +optional
+	Sinks *bool `json:"sinks,omitempty"`
 }
 
 type StreamStatus struct {

@@ -150,11 +150,30 @@ func toDomain(name string, s tramv1.Stream) (*domain.StreamSpec, error) {
 	}
 
 	return &domain.StreamSpec{
-		Name:   name,
-		Source: source,
-		Stages: stages,
-		Sinks:  sinks,
+		Name:    name,
+		Source:  source,
+		Stages:  stages,
+		Sinks:   sinks,
+		Metrics: metricsToDomain(s.Spec.Metrics),
 	}, nil
+}
+
+func metricsToDomain(m *tramv1.MetricsSpec) domain.MetricsSpec {
+	if m == nil {
+		return domain.MetricsSpec{}
+	}
+	return domain.MetricsSpec{
+		Records:     nodeMetricsToDomain(m.Records),
+		Duration:    nodeMetricsToDomain(m.Duration),
+		RequestSize: m.RequestSize,
+	}
+}
+
+func nodeMetricsToDomain(n *tramv1.NodeMetricsSpec) domain.NodeMetrics {
+	if n == nil {
+		return domain.NodeMetrics{}
+	}
+	return domain.NodeMetrics{Source: n.Source, Stages: n.Stages, Sinks: n.Sinks}
 }
 
 func specToMap(raw *runtime.RawExtension) (map[string]any, error) {

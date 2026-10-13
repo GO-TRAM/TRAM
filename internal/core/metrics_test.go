@@ -151,13 +151,43 @@ func TestMetricsRecordOutcome(t *testing.T) {
 	}
 }
 
-func TestMetricsCoverStages(t *testing.T) {
+func stagedSpec(metrics domain.MetricsSpec) domain.StreamSpec {
+	spec := streamSpec(1, domain.SinkSpec{Name: "sink", Type: "fake", From: "stage"})
+	spec.Stages = []domain.StageSpec{{Name: "stage", Type: forwardingType, From: "source"}}
+	spec.Metrics = metrics
+	return spec
+}
+
+func TestMetricsLeaveOutStagesByDefault(t *testing.T) {
 	t.Parallel()
 
 	c, reg, reader := newMeteredCore(t)
-	spec := streamSpec(1, domain.SinkSpec{Name: "sink", Type: "fake", From: "stage"})
-	spec.Stages = []domain.StageSpec{{Name: "stage", Type: "fake", From: "source"}}
-	_, err := c.UpsertStream(t.Context(), spec)
+	_, err := c.UpsertStream(t.Context(), stagedSpec(domain.MetricsSpec{}))
+	require.NoError(t, err)
+
+	require.NoError(t, deliver(t, reg, logs(1)))
+
+	assert.Equal(t, map[attribute.Distinct]int64{
+		attrs("source", "source", signal(domain.SignalLogs)): 1,
+		attrs("sink", "sink", signal(domain.SignalLogs)):     1,
+	}, collect(t, reader, "tram.node.records"))
+	assert.Equal(t, map[attribute.Distinct]int64{
+		attrs("source", "source", signal(domain.SignalLogs)): 1,
+	}, collect(t, reader, "tram.node.records.out"))
+	assert.Equal(t, map[attribute.Distinct]int64{
+		attrs("source", "source", outcome("ok")): 1,
+		attrs("sink", "sink", outcome("ok")):     1,
+	}, collect(t, reader, "tram.node.duration"))
+}
+
+func TestMetricsCoverStagesWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	c, reg, reader := newMeteredCore(t)
+	_, err := c.UpsertStream(t.Context(), stagedSpec(domain.MetricsSpec{
+		Records:  domain.NodeMetrics{Stages: new(true)},
+		Duration: domain.NodeMetrics{Stages: new(true)},
+	}))
 	require.NoError(t, err)
 
 	require.NoError(t, deliver(t, reg, logs(1)))
@@ -165,7 +195,55 @@ func TestMetricsCoverStages(t *testing.T) {
 	assert.Equal(t, map[attribute.Distinct]int64{
 		attrs("source", "source", signal(domain.SignalLogs)): 1,
 		attrs("stage", "stage", signal(domain.SignalLogs)):   1,
+		attrs("sink", "sink", signal(domain.SignalLogs)):     1,
 	}, collect(t, reader, "tram.node.records"))
+	assert.Equal(t, map[attribute.Distinct]int64{
+		attrs("source", "source", outcome("ok")): 1,
+		attrs("stage", "stage", outcome("ok")):   1,
+		attrs("sink", "sink", outcome("ok")):     1,
+	}, collect(t, reader, "tram.node.duration"))
+}
+
+func TestMetricsLeaveOutDisabledMetrics(t *testing.T) {
+	t.Parallel()
+
+	c, reg, reader := newMeteredCore(t)
+	_, err := c.UpsertStream(t.Context(), stagedSpec(domain.MetricsSpec{
+		Records:     domain.NodeMetrics{Source: new(false)},
+		Duration:    domain.NodeMetrics{Sinks: new(false)},
+		RequestSize: new(false),
+	}))
+	require.NoError(t, err)
+
+	event := logs(1)
+	event.Request = &domain.Request{Encoding: "gzip", WireBytes: 100, DecodedBytes: 500}
+	require.NoError(t, deliver(t, reg, event))
+
+	assert.Equal(t, map[attribute.Distinct]int64{
+		attrs("sink", "sink", signal(domain.SignalLogs)): 1,
+	}, collect(t, reader, "tram.node.records"))
+	assert.Empty(t, collect(t, reader, "tram.node.records.out"), "records.out follows records")
+	assert.Equal(t, map[attribute.Distinct]int64{
+		attrs("source", "source", outcome("ok")): 1,
+	}, collect(t, reader, "tram.node.duration"))
+	assert.Empty(t, requestSizes(t, reader))
+}
+
+func TestMetricsFollowChangedSettings(t *testing.T) {
+	t.Parallel()
+
+	c, reg, reader := newMeteredCore(t)
+	_, err := c.UpsertStream(t.Context(), stagedSpec(domain.MetricsSpec{}))
+	require.NoError(t, err)
+
+	_, err = c.UpsertStream(t.Context(), stagedSpec(domain.MetricsSpec{Records: domain.NodeMetrics{Stages: new(true)}}))
+	require.NoError(t, err)
+	require.Equal(t, 1, reg.sourceCount(), "a change of the metrics keeps the source running")
+
+	require.NoError(t, deliver(t, reg, logs(1)))
+
+	assert.Contains(t, collect(t, reader, "tram.node.records"),
+		attrs("stage", "stage", signal(domain.SignalLogs)), "the stage records once enabled")
 }
 
 func TestMetricsSurviveReplacedReceivers(t *testing.T) {
@@ -200,6 +278,7 @@ func TestMetricsCountRecordsOut(t *testing.T) {
 		{Name: "forward", Type: forwardingType, From: "source"},
 		{Name: "swallow", Type: "fake", From: "source"},
 	}
+	spec.Metrics.Records.Stages = new(true)
 	_, err := c.UpsertStream(t.Context(), spec)
 	require.NoError(t, err)
 

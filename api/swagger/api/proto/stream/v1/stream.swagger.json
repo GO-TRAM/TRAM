@@ -158,6 +158,9 @@
                 "type": "object",
                 "$ref": "#/definitions/v1Sink"
               }
+            },
+            "metrics": {
+              "$ref": "#/definitions/v1Metrics"
             }
           }
         }
@@ -222,6 +225,42 @@
           "description": "All streams, ordered by name."
         }
       }
+    },
+    "v1Metrics": {
+      "type": "object",
+      "properties": {
+        "records": {
+          "$ref": "#/definitions/v1NodeMetrics",
+          "description": "tram.node.records and tram.node.records.out."
+        },
+        "duration": {
+          "$ref": "#/definitions/v1NodeMetrics",
+          "description": "tram.node.duration."
+        },
+        "requestSize": {
+          "type": "boolean",
+          "description": "tram.source.request.size. Defaults to true."
+        }
+      },
+      "description": "Chooses the metrics a stream records. Unset fields keep their defaults."
+    },
+    "v1NodeMetrics": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "boolean",
+          "description": "Defaults to true."
+        },
+        "stages": {
+          "type": "boolean",
+          "description": "Defaults to false."
+        },
+        "sinks": {
+          "type": "boolean",
+          "description": "Defaults to true."
+        }
+      },
+      "description": "Enables a metric per kind of node. Unset fields keep their defaults."
     },
     "v1PutStreamResponse": {
       "type": "object",
@@ -301,6 +340,9 @@
             "type": "object",
             "$ref": "#/definitions/v1Sink"
           }
+        },
+        "metrics": {
+          "$ref": "#/definitions/v1Metrics"
         }
       }
     }

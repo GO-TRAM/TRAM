@@ -145,4 +145,25 @@ func TestToDomainKeepsSpecTypes(t *testing.T) {
 	assert.Equal(t, "default.s", spec.Name)
 	assert.Equal(t, map[string]any{"http_port": float64(4318)}, spec.Source.Spec)
 	assert.Equal(t, map[string]any{"subject": map[string]any{"register": []any{"a.>"}}}, spec.Sinks[0].Spec)
+	assert.Equal(t, domain.MetricsSpec{}, spec.Metrics, "a stream without metrics keeps the defaults")
+}
+
+func TestToDomainMapsMetrics(t *testing.T) {
+	t.Parallel()
+
+	stream := newStream("default")
+	stream.Spec.Metrics = &tramv1.MetricsSpec{
+		Records:     &tramv1.NodeMetricsSpec{Stages: new(true)},
+		Duration:    &tramv1.NodeMetricsSpec{Source: new(false), Sinks: new(true)},
+		RequestSize: new(false),
+	}
+
+	spec, err := controller.ToDomain("default.s", *stream)
+	require.NoError(t, err)
+
+	assert.Equal(t, domain.MetricsSpec{
+		Records:     domain.NodeMetrics{Stages: new(true)},
+		Duration:    domain.NodeMetrics{Source: new(false), Sinks: new(true)},
+		RequestSize: new(false),
+	}, spec.Metrics)
 }

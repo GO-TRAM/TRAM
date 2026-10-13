@@ -44,6 +44,42 @@ spec:
             type: object
           spec:
             properties:
+              metrics:
+                description: |-
+                  Metrics chooses the metrics the stream records; unset fields keep their
+                  defaults.
+                properties:
+                  duration:
+                    description: Duration covers tram.node.duration.
+                    properties:
+                      sinks:
+                        description: Defaults to true.
+                        type: boolean
+                      source:
+                        description: Defaults to true.
+                        type: boolean
+                      stages:
+                        description: Defaults to false.
+                        type: boolean
+                    type: object
+                  records:
+                    description: Records covers tram.node.records and tram.node.records.out.
+                    properties:
+                      sinks:
+                        description: Defaults to true.
+                        type: boolean
+                      source:
+                        description: Defaults to true.
+                        type: boolean
+                      stages:
+                        description: Defaults to false.
+                        type: boolean
+                    type: object
+                  request_size:
+                    description: RequestSize covers tram.source.request.size. Defaults
+                      to true.
+                    type: boolean
+                type: object
               sinks:
                 items:
                   properties:

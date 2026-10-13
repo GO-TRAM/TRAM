@@ -151,7 +151,7 @@ func (c *Core) subscriber(tree *domain.Tree, node *domain.Node) (domain.Subscrib
 	if err != nil {
 		return nil, err
 	}
-	return c.metrics.instrument(tree.Spec.Name, node, subscriber), nil
+	return c.metrics.instrument(tree.Spec, node, subscriber), nil
 }
 
 func (c *Core) fanoutOf(tree *domain.Tree, node *domain.Node) (*fanout, error) {
@@ -163,7 +163,7 @@ func (c *Core) fanoutOf(tree *domain.Tree, node *domain.Node) (*fanout, error) {
 		}
 		children = append(children, subscriber)
 	}
-	return &fanout{name: node.Name, children: children, out: c.metrics.output(tree.Spec.Name, node)}, nil
+	return &fanout{name: node.Name, children: children, out: c.metrics.output(tree.Spec, node)}, nil
 }
 
 func (c *Core) sourceSubscriber(tree *domain.Tree) (domain.Subscriber, error) {
@@ -172,7 +172,7 @@ func (c *Core) sourceSubscriber(tree *domain.Tree) (domain.Subscriber, error) {
 	if err != nil {
 		return nil, err
 	}
-	return c.metrics.instrument(tree.Spec.Name, root, f), nil
+	return c.metrics.instrument(tree.Spec, root, f), nil
 }
 
 func (c *Core) replaceReceivers(old *stream, tree *domain.Tree) error {

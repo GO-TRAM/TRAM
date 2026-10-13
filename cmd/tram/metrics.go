@@ -37,6 +37,11 @@ func setupMetrics() (http.Handler, func(context.Context) error, error) {
 		sdkmetric.WithReader(exporter),
 		sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter),
 		sdkmetric.WithResource(resource.NewSchemaless(attribute.String("service.name", "tram"))),
+		// Every node of every stream is an attribute set of its own, so the
+		// SDK default of 2000 merged the nodes of a few hundred streams into one
+		// overflow series. The streams' metrics settings bound the series
+		// instead.
+		sdkmetric.WithCardinalityLimit(0),
 	)
 	otel.SetMeterProvider(provider)
 
