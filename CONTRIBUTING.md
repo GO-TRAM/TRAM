@@ -659,11 +659,13 @@ Benchmarks cover the per-event hot path:
 
 [BENCHMARK.md](BENCHMARK.md) presents these results. After performance-relevant changes, regenerate it with `task bench:report` (see the page for details); add new scenarios to `internal/scenario` and new components to the lists in `tools/benchreport`.
 
-Benchmarks marked "container" start a NATS server with [Testcontainers](https://golang.testcontainers.org/) via `internal/testutil/natstest`. They need Docker or Podman and are skipped if neither is running. With Podman on macOS, point Testcontainers to the socket inside the Podman VM; the tasks do this for you when Podman is installed (for a rootless machine, set `PODMAN_SOCKET=/run/user/<uid>/podman/podman.sock`):
+Benchmarks marked "container" start a NATS server with [Testcontainers](https://golang.testcontainers.org/) via `internal/testutil/natstest`. They need Docker or Podman and are skipped if neither is running. With Podman, Testcontainers needs the socket of the Podman service; the tasks set it up from `podman info` when Podman is installed. To run `go test` directly, set the same:
 
 ```bash
-export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/run/podman/podman.sock
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=$(podman info --format '{{.Host.RemoteSocket.Path}}')
 export TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED=true
+# Podman on Linux only, not in a Podman machine on macOS or Windows:
+export DOCKER_HOST=unix://$TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE
 ```
 
 Build payloads with `internal/testutil/otlpgen` and use `otlpgen.Shapes` so results are comparable across benchmarks. Use `b.Loop()`, call `b.ReportAllocs()`, and report `records/s` for payload-dependent benchmarks.
