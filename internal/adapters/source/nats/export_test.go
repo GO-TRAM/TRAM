@@ -32,6 +32,12 @@ func Consume(ctx context.Context, n *NATS, cons jetstream.Consumer, workers int)
 	n.consume(ctx, cons, workers)
 }
 
-func CancelFetching(n *NATS) {
+func CancelReceiving(n *NATS) {
 	n.cancel()
+}
+
+// StopContext lets fake iterators end Next when the source stops, as
+// jetstream.NextContext does.
+func StopContext(n *NATS) context.Context {
+	return n.stop
 }

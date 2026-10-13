@@ -281,7 +281,7 @@ func TestNATS(t *testing.T) {
 		}, 10*time.Second, 10*time.Millisecond, "the messages were not acknowledged")
 	})
 
-	t.Run("no fetched message waits for a worker", func(t *testing.T) {
+	t.Run("at most workers messages are buffered", func(t *testing.T) {
 		t.Parallel()
 
 		const messages, workers = 200, 20
@@ -328,12 +328,14 @@ func TestNATS(t *testing.T) {
 			out, _ := counts()
 			return out >= workers
 		}, 10*time.Second, 5*time.Millisecond, "the workers did not all receive a message")
+		// Besides the messages being handled, the source buffers at most one
+		// more per worker.
 		assert.Never(t, func() bool {
 			out, _ := counts()
-			return out > workers
-		}, 500*time.Millisecond, 10*time.Millisecond, "more messages were out than workers could handle")
+			return out > 2*workers
+		}, 500*time.Millisecond, 10*time.Millisecond, "more messages were out than workers and buffer hold")
 		_, waiting := counts()
-		assert.Equal(t, uint64(messages-workers), waiting, "the other messages wait in the stream")
+		assert.GreaterOrEqual(t, waiting, uint64(messages-2*workers), "the other messages wait in the stream")
 
 		received.release()
 		require.Eventually(t, func() bool {

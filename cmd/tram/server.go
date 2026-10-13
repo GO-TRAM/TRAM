@@ -34,6 +34,7 @@ type serverOptions struct {
 	watchNamespaces   []string
 	streamSelector    string
 	enableFileSync    bool
+	pprofEndpoint     string
 }
 
 func newServerCmd(logger *slog.Logger) *cobra.Command {
@@ -58,6 +59,8 @@ func newServerCmd(logger *slog.Logger) *cobra.Command {
 		"Namespaces whose Stream resources the operator runs, comma-separated (default all)")
 	flags.StringVar(&opts.streamSelector, "stream-selector", "",
 		"Label selector for the Stream resources the operator runs, e.g. tram.io/validation=true")
+	flags.StringVar(&opts.pprofEndpoint, "pprof-endpoint", "",
+		"Endpoint serving the Go profiles under /debug/pprof/, e.g. localhost:6060 (default disabled)")
 	return cmd
 }
 
@@ -88,6 +91,12 @@ func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (er
 	}
 
 	eg, driversCtx := errgroup.WithContext(ctx)
+
+	if opts.pprofEndpoint != "" {
+		eg.Go(func() error {
+			return runPprof(driversCtx, opts.pprofEndpoint, logger)
+		})
+	}
 
 	if opts.enableFileSync {
 		eg.Go(func() error {

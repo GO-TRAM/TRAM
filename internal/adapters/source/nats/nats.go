@@ -30,11 +30,9 @@ const (
 )
 
 const (
-	fetchTimeout = 5 * time.Second
-
-	minFetchRetryDelay = 100 * time.Millisecond
-	maxFetchRetryDelay = 5 * time.Second
-	fetchRetryGrowth   = 2
+	minRetryDelay = 100 * time.Millisecond
+	maxRetryDelay = 5 * time.Second
+	retryGrowth   = 2
 )
 
 type NATS struct {
@@ -117,27 +115,26 @@ func (n *NATS) Run(ctx context.Context) error {
 	return nil
 }
 
-// Only as many messages are fetched as slots are free, so no fetched message
-// waits for a worker while its ack wait runs. Deliveries use ctx, not the stop
-// context, so messages being handled when the source stops are still acked.
+// Messages are pulled continuously instead of one fetch after another, which
+// keeps NATS from handling a new pull request for every few messages. Deliveries
+// use ctx, not the stop context, so messages being handled when the source
+// stops are still acked.
 func (n *NATS) consume(ctx context.Context, cons jetstream.Consumer, workers int) {
 	defer n.wg.Wait()
 
 	slots := make(chan struct{}, workers)
 	var delay time.Duration
 	for {
-		free := n.acquire(slots)
-		if free == 0 {
+		received, err := n.receive(ctx, cons, slots, workers)
+		if n.stop.Err() != nil {
 			return
 		}
-		err := n.fetch(ctx, cons, slots, free)
-		if err == nil || n.stop.Err() != nil {
+		if received {
 			delay = 0
-			continue
 		}
 
-		delay = min(max(fetchRetryGrowth*delay, minFetchRetryDelay), maxFetchRetryDelay)
-		n.logger.ErrorContext(ctx, "Could not fetch messages, retrying",
+		delay = min(max(retryGrowth*delay, minRetryDelay), maxRetryDelay)
+		n.logger.ErrorContext(ctx, "Could not receive messages, retrying",
 			slog.String("source", n.Name()), slog.Duration("delay", delay), slog.Any("error", err))
 
 		timer := time.NewTimer(delay)
@@ -149,58 +146,62 @@ func (n *NATS) consume(ctx context.Context, cons jetstream.Consumer, workers int
 	}
 }
 
-func (n *NATS) acquire(slots chan struct{}) int {
-	// With a slot free, select would pick at random between it and a stop
-	// that already happened, and fetch again.
-	if n.stop.Err() != nil {
-		return 0
-	}
-	select {
-	case slots <- struct{}{}:
-	case <-n.stop.Done():
-		return 0
-	}
-	free := 1
-	for {
-		select {
-		case slots <- struct{}{}:
-			free++
-		default:
-			return free
-		}
-	}
-}
-
-func release(slots chan struct{}, count int) {
-	for range count {
-		<-slots
-	}
-}
-
-func (n *NATS) fetch(ctx context.Context, cons jetstream.Consumer, slots chan struct{}, free int) error {
-	fetchCtx, cancel := context.WithTimeout(n.stop, fetchTimeout)
-	defer cancel()
-
-	msgs, err := cons.Fetch(free, jetstream.FetchContext(fetchCtx))
+// The client buffers at most as many messages as there are workers, so a
+// buffered message waits for at most one round of handling while its ack wait
+// runs. A message is only taken from the buffer once a worker is free. Returns
+// whether any message was received before the iterator ended.
+func (n *NATS) receive(
+	ctx context.Context,
+	cons jetstream.Consumer,
+	slots chan struct{},
+	workers int,
+) (bool, error) {
+	it, err := cons.Messages(jetstream.PullMaxMessages(workers))
 	if err != nil {
-		release(slots, free)
-		return err
+		return false, err
 	}
-	received := 0
-	for msg := range msgs.Messages() {
-		received++
+	// Messages still buffered are not acked and are redelivered after their
+	// ack wait.
+	defer it.Stop()
+
+	received := false
+	for n.acquire(slots) {
+		msg, nextErr := it.Next(jetstream.NextContext(n.stop))
+		if nextErr != nil {
+			<-slots
+			if n.stop.Err() != nil {
+				return received, nil
+			}
+			// The iterator pulls again by itself after missed heartbeats, e.g.
+			// while NATS is unreachable. Every other error ends it.
+			if errors.Is(nextErr, jetstream.ErrNoHeartbeat) {
+				n.logger.WarnContext(ctx, "Missed heartbeats from NATS",
+					slog.String("source", n.Name()), slog.Any("error", nextErr))
+				continue
+			}
+			return received, nextErr
+		}
+		received = true
 		n.wg.Go(func() {
-			defer release(slots, 1)
+			defer func() { <-slots }()
 			n.handle(ctx, msg)
 		})
 	}
-	release(slots, free-received)
+	return received, nil
+}
 
-	err = msgs.Error()
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-		return nil
+func (n *NATS) acquire(slots chan struct{}) bool {
+	// With a slot free, select would pick at random between it and a stop
+	// that already happened, and receive again.
+	if n.stop.Err() != nil {
+		return false
 	}
-	return err
+	select {
+	case slots <- struct{}{}:
+		return true
+	case <-n.stop.Done():
+		return false
+	}
 }
 
 func (n *NATS) handle(ctx context.Context, msg jetstream.Msg) {
