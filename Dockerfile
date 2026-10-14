@@ -4,7 +4,7 @@
 #
 #   task image:build
 
-ARG GO_VERSION=1.26
+ARG GO_VERSION=1.27
 
 FROM docker.io/library/golang:${GO_VERSION} AS build
 WORKDIR /src

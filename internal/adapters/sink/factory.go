@@ -13,6 +13,7 @@ import (
 
 	"codeberg.org/eljoth/tram/internal/adapters/sink/debug"
 	"codeberg.org/eljoth/tram/internal/adapters/sink/nats"
+	"codeberg.org/eljoth/tram/internal/adapters/sink/noop"
 	"codeberg.org/eljoth/tram/internal/adapters/sink/otlp"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
@@ -31,6 +32,8 @@ func NewFactory(logger *slog.Logger) *Factory {
 
 func (f *Factory) New(spec domain.SinkSpec) (domain.Sink, error) {
 	switch spec.Type {
+	case noop.Type:
+		return noop.New(spec, f.validator, f.logger)
 	case debug.Type:
 		return debug.New(spec, f.validator, f.logger)
 	case nats.Type:
