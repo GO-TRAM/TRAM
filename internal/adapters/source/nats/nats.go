@@ -27,6 +27,11 @@ const (
 	SignalHeader = "Tram-Signal"
 
 	redeliveryDelay = 5 * time.Second
+
+	// NATS' default for a consumer's max ack pending.
+	defaultMaxAckPending = 1000
+	// A worker's message being handled and one buffered for it.
+	unackedPerWorker = 2
 )
 
 const (
@@ -96,23 +101,33 @@ func (n *NATS) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to get stream %s: %w", n.Spec().Stream, err)
 	}
 
-	cons, err := stream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
-		Durable:       n.Spec().Durable,
-		AckPolicy:     jetstream.AckExplicitPolicy,
-		DeliverPolicy: jetstream.DeliverAllPolicy,
-		FilterSubject: n.Spec().Subject,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create consumer: %w", err)
-	}
-
 	workers := uint(1)
 	if n.Spec().Workers > 0 {
 		workers = n.Spec().Workers
 	}
 
+	cons, err := stream.CreateOrUpdateConsumer(ctx, consumerConfig(n.Spec(), int(workers)))
+	if err != nil {
+		return fmt.Errorf("failed to create consumer: %w", err)
+	}
+
 	n.consume(ctx, cons, int(workers))
 	return nil
+}
+
+// A source has up to twice its workers in messages unacknowledged: those being
+// handled and as many buffered. NATS stops delivering at the consumer's max ack
+// pending, 1,000 by default, so with more than 500 workers some of them would
+// stay idle. It is only raised, since messages waiting for redelivery also
+// count towards it.
+func consumerConfig(spec *Spec, workers int) jetstream.ConsumerConfig {
+	return jetstream.ConsumerConfig{
+		Durable:       spec.Durable,
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		DeliverPolicy: jetstream.DeliverAllPolicy,
+		FilterSubject: spec.Subject,
+		MaxAckPending: max(unackedPerWorker*workers, defaultMaxAckPending),
+	}
 }
 
 // Messages are pulled continuously instead of one fetch after another, which

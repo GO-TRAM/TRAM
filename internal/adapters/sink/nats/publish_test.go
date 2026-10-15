@@ -41,6 +41,8 @@ type fakeJetStream struct {
 
 	want   int
 	ackErr error
+	// failAt makes the publish of the failAt-th message fail, if set.
+	failAt int
 
 	mu       sync.Mutex
 	inFlight []*ackFuture
@@ -51,6 +53,9 @@ func (f *fakeJetStream) PublishMsgAsync(msg *nats.Msg, _ ...jetstream.PublishOpt
 	future := &ackFuture{msg: msg, ok: make(chan *jetstream.PubAck, 1), err: make(chan error, 1)}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.failAt > 0 && len(f.subjects)+1 == f.failAt {
+		return nil, errors.New("connection closed")
+	}
 	f.subjects = append(f.subjects, msg.Subject)
 	f.inFlight = append(f.inFlight, future)
 	if len(f.inFlight) == f.want {
@@ -110,6 +115,20 @@ func TestNotifyFailsIfAnAcknowledgementFails(t *testing.T) {
 	err := sink.Notify(t.Context(), event)
 	require.ErrorContains(t, err, "storage full")
 	assert.NotErrorIs(t, err, domain.ErrEventRejected, "a failed publish is retried, not rejected")
+}
+
+// Messages are encoded and sent one at a time, so a failed publish stops the
+// rest from being encoded at all; those already sent are still awaited.
+func TestNotifyStopsAtAFailedPublish(t *testing.T) {
+	t.Parallel()
+
+	js := &fakeJetStream{want: 2, failAt: 3}
+	sink := teamSink(t, js)
+	event := &domain.Event{Logs: otlpgen.Logs(otlpgen.Shape{Records: 5, Resources: 1, Teams: 5})}
+
+	err := sink.Notify(t.Context(), event)
+	require.ErrorContains(t, err, "connection closed")
+	assert.Len(t, js.subjects, 2, "messages after the failed one were published")
 }
 
 func TestNotifyStopsWaitingWhenTheContextIsDone(t *testing.T) {

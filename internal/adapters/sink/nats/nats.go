@@ -221,20 +221,7 @@ func (n *NATS) Notify(ctx context.Context, event *domain.Event) error {
 			slog.String("sink", n.Name()), slog.Any("error", err))
 		return fmt.Errorf("%w: could not resolve subject: %w", domain.ErrEventRejected, err)
 	}
-
-	msgs := make([]*nats.Msg, len(messages))
-	for i, m := range messages {
-		signal, data, marshalErr := m.event.MarshalOTLPData()
-		if marshalErr != nil {
-			return fmt.Errorf("failed to marshal event: %w", marshalErr)
-		}
-		msgs[i] = &nats.Msg{
-			Subject: m.subject,
-			Data:    data,
-			Header:  nats.Header{SignalHeader: []string{string(signal)}},
-		}
-	}
-	if err = n.publish(ctx, msgs); err != nil {
+	if err = n.publish(ctx, messages); err != nil {
 		return fmt.Errorf("failed to publish event: %w", err)
 	}
 	return nil
@@ -243,11 +230,23 @@ func (n *NATS) Notify(ctx context.Context, event *domain.Event) error {
 // An event resolves to one message per subject, which with many subjects is
 // one per record. Publishing them one after another would wait for every
 // acknowledgement in turn, so all are sent first and acknowledged together.
-func (n *NATS) publish(ctx context.Context, msgs []*nats.Msg) error {
-	acks := make([]jetstream.PubAckFuture, 0, len(msgs))
+// Each message is sent as soon as it is encoded: NATS stores the first ones
+// while the rest are still being encoded, and only the async publish window of
+// encoded messages is held at once instead of the whole event a second time.
+func (n *NATS) publish(ctx context.Context, messages []message) error {
+	acks := make([]jetstream.PubAckFuture, 0, len(messages))
 	var err error
-	for _, msg := range msgs {
-		ack, publishErr := n.jetstream.PublishMsgAsync(msg, jetstream.WithStallWait(publishAckTimeout))
+	for _, m := range messages {
+		signal, data, marshalErr := m.event.MarshalOTLPData()
+		if marshalErr != nil {
+			err = fmt.Errorf("failed to marshal event: %w", marshalErr)
+			break
+		}
+		ack, publishErr := n.jetstream.PublishMsgAsync(&nats.Msg{
+			Subject: m.subject,
+			Data:    data,
+			Header:  nats.Header{SignalHeader: []string{string(signal)}},
+		}, jetstream.WithStallWait(publishAckTimeout))
 		if publishErr != nil {
 			err = publishErr
 			break

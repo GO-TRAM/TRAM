@@ -14,11 +14,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"codeberg.org/eljoth/tram/internal/adapters/source/base"
 	natssource "codeberg.org/eljoth/tram/internal/adapters/source/nats"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
@@ -168,6 +170,44 @@ func runConsume(t *testing.T, cons *fakeConsumer, d time.Duration) string {
 		t.Fatal("the source did not stop")
 	}
 	return logs.String()
+}
+
+func TestConsumerConfigLetsAllWorkersAndTheBufferBeUnacknowledged(t *testing.T) {
+	t.Parallel()
+
+	spec := &natssource.Spec{Durable: "splitter", Subject: "ingress.*.*"}
+	cases := []struct {
+		workers int
+		want    int
+	}{
+		{workers: 1, want: 1000},
+		{workers: 500, want: 1000},
+		{workers: 1500, want: 3000},
+	}
+	for _, c := range cases {
+		config := natssource.ConsumerConfig(spec, c.workers)
+		assert.Equal(t, c.want, config.MaxAckPending, "%d workers", c.workers)
+		assert.Equal(t, "splitter", config.Durable)
+		assert.Equal(t, "ingress.*.*", config.FilterSubject)
+		assert.Equal(t, jetstream.AckExplicitPolicy, config.AckPolicy)
+	}
+}
+
+func TestSpecAllowsUpToTenThousandWorkers(t *testing.T) {
+	t.Parallel()
+
+	spec := func(workers float64) map[string]any {
+		return map[string]any{
+			"url":     "nats://localhost:4222",
+			"stream":  "ingress",
+			"subject": "ingress.>",
+			"workers": workers,
+		}
+	}
+	_, err := base.New[natssource.Spec]("splitter", spec(10000), validator.New())
+	require.NoError(t, err)
+	_, err = base.New[natssource.Spec]("splitter", spec(10001), validator.New())
+	require.Error(t, err)
 }
 
 func TestConsumeBacksOffAfterFailures(t *testing.T) {

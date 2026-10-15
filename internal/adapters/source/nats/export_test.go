@@ -32,6 +32,10 @@ func Consume(ctx context.Context, n *NATS, cons jetstream.Consumer, workers int)
 	n.consume(ctx, cons, workers)
 }
 
+func ConsumerConfig(spec *Spec, workers int) jetstream.ConsumerConfig {
+	return consumerConfig(spec, workers)
+}
+
 func CancelReceiving(n *NATS) {
 	n.cancel()
 }

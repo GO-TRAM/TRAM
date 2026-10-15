@@ -91,7 +91,7 @@ Consumes events from a NATS JetStream stream that were published by Tram's [NATS
 | `stream` | string | Yes | - | JetStream stream to consume from. It must exist when the Tram stream is created; otherwise the source logs an error and stays idle until the Tram stream is updated |
 | `subject` | string | Yes | - | Subject filter of the consumer; wildcards like `logs.*` are allowed |
 | `durable` | string | No | - | Name of a durable consumer. Without it, a temporary consumer is created |
-| `workers` | int | No | `1` | Number of messages processed concurrently (1-1000) |
+| `workers` | int | No | `1` | Number of messages processed concurrently (1-10000) |
 
 **Example:**
 
@@ -132,7 +132,7 @@ Consumes events from a NATS JetStream stream that were published by Tram's [NATS
 - Up to `workers` messages are processed at the same time, each on its own. The source fetches only as many messages as workers are free, so no fetched message waits for a worker while its acknowledgement deadline runs
 - Messages are not processed in the order of the stream, unless `workers` is 1
 - A `batch` stage after the source holds up to `workers` messages, since every message waits for its batch to be delivered before it is acknowledged. To let batches fill up to `max_records` before their `timeout`, set `workers` to at least `max_records` divided by the records per message
-- JetStream hands out at most 1,000 unacknowledged messages per consumer by default (`MaxAckPending`), across all Tram replicas that share a durable consumer
+- The source sets the consumer's `MaxAckPending`, the unacknowledged messages JetStream hands out, to twice `workers` and at least 1,000, the JetStream default. The limit applies across all Tram replicas that share a durable consumer
 - Stopping or updating the source interrupts waiting for new messages right away; it only waits for messages that are being processed, which are still delivered and acknowledged
 
 ---
