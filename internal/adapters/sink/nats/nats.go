@@ -10,26 +10,18 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"reflect"
 	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/cel-go/cel"
-	"github.com/google/cel-go/common/types"
-	"github.com/google/cel-go/common/types/ref"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
 	"codeberg.org/eljoth/tram/internal/adapters/natsconn"
 	"codeberg.org/eljoth/tram/internal/adapters/natspartition"
 	"codeberg.org/eljoth/tram/internal/adapters/sink/base"
+	"codeberg.org/eljoth/tram/internal/adapters/sink/celentry"
 	"codeberg.org/eljoth/tram/internal/core/domain"
-
-	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
-	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
-	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
-	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
-	tracespb "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
 const (
@@ -41,17 +33,7 @@ const (
 	metricsVariable = "metrics"
 	tracesVariable  = "traces"
 
-	resourceVariable = "resource"
-	scopeVariable    = "scope"
-	recordVariable   = "record"
-
-	metricVariable    = "metric"
-	dataPointVariable = "datapoint"
-	spanVariable      = "span"
-
 	partitionVariable = "partition"
-
-	getAttrArguments = 2
 
 	// Without it, a publish whose acknowledgement is lost, e.g. while NATS
 	// restarts, would wait forever when the source's context has no deadline.
@@ -208,102 +190,16 @@ func compileKeys(p PartitionSpec) (subjects, error) {
 // compileSubjects compiles an expression per signal, with the variables of its
 // entries. With partitioned, the expressions can read the entry's partition.
 func compileSubjects(subject SubjectSpec, partitioned bool) (subjects, error) {
-	getAttrFunc := cel.Function("get_attr",
-		cel.MemberOverload("attributes_get_attr",
-			[]*cel.Type{
-				cel.ListType(cel.ObjectType("opentelemetry.proto.common.v1.KeyValue")),
-				cel.StringType,
-			},
-			cel.StringType,
-			cel.FunctionBinding(getAttr),
-		),
-	)
-
-	opts := []cel.EnvOption{
-		cel.TypeDescs(
-			commonpb.File_opentelemetry_proto_common_v1_common_proto,
-			resourcepb.File_opentelemetry_proto_resource_v1_resource_proto,
-			logspb.File_opentelemetry_proto_logs_v1_logs_proto,
-			metricspb.File_opentelemetry_proto_metrics_v1_metrics_proto,
-			tracespb.File_opentelemetry_proto_trace_v1_trace_proto,
-		),
-		getAttrFunc,
-	}
+	var extra []cel.EnvOption
 	if partitioned {
-		opts = append(opts, cel.Variable(partitionVariable, cel.IntType))
+		extra = append(extra, cel.Variable(partitionVariable, cel.IntType))
 	}
-	baseEnv, err := cel.NewEnv(opts...)
+	programs, err := celentry.Compile(
+		celentry.Expressions{Logs: subject.Logs, Metrics: subject.Metrics, Traces: subject.Traces}, extra...)
 	if err != nil {
-		return subjects{}, errors.Join(ErrCELEnvironmenInitialization, err)
+		return subjects{}, err
 	}
-
-	var compiled subjects
-	compiled.logs, err = initCEL(
-		baseEnv,
-		subject.Logs,
-		cel.Variable(logsVariable, cel.ObjectType("opentelemetry.proto.logs.v1.LogsData")),
-		cel.Variable(resourceVariable, cel.ObjectType("opentelemetry.proto.resource.v1.Resource")),
-		cel.Variable(scopeVariable, cel.ObjectType("opentelemetry.proto.common.v1.InstrumentationScope")),
-		cel.Variable(recordVariable, cel.ObjectType("opentelemetry.proto.logs.v1.LogRecord")),
-	)
-	if err != nil {
-		return subjects{}, errors.Join(ErrCELInvalidLogsExpression, err)
-	}
-
-	compiled.metrics, err = initCEL(
-		baseEnv,
-		subject.Metrics,
-		cel.Variable(metricsVariable, cel.ObjectType("opentelemetry.proto.metrics.v1.MetricsData")),
-		cel.Variable(resourceVariable, cel.ObjectType("opentelemetry.proto.resource.v1.Resource")),
-		cel.Variable(scopeVariable, cel.ObjectType("opentelemetry.proto.common.v1.InstrumentationScope")),
-		cel.Variable(metricVariable, cel.ObjectType("opentelemetry.proto.metrics.v1.Metric")),
-		// Its type depends on the metric's type.
-		cel.Variable(dataPointVariable, cel.DynType),
-	)
-	if err != nil {
-		return subjects{}, errors.Join(ErrCELInvalidMetricsExpression, err)
-	}
-
-	compiled.traces, err = initCEL(
-		baseEnv,
-		subject.Traces,
-		cel.Variable(tracesVariable, cel.ObjectType("opentelemetry.proto.trace.v1.TracesData")),
-		cel.Variable(resourceVariable, cel.ObjectType("opentelemetry.proto.resource.v1.Resource")),
-		cel.Variable(scopeVariable, cel.ObjectType("opentelemetry.proto.common.v1.InstrumentationScope")),
-		cel.Variable(spanVariable, cel.ObjectType("opentelemetry.proto.trace.v1.Span")),
-	)
-	if err != nil {
-		return subjects{}, errors.Join(ErrCELInvalidTracesExpression, err)
-	}
-	return compiled, nil
-}
-
-func getAttr(args ...ref.Val) ref.Val {
-	if len(args) != getAttrArguments {
-		return types.NewErr("get_attr expects exactly 2 arguments")
-	}
-
-	goList, err := args[0].ConvertToNative(reflect.TypeFor[[]*commonpb.KeyValue]())
-	if err != nil {
-		return types.NewErr("failed to convert attributes to Go slice: %v", err)
-	}
-
-	list, ok := goList.([]*commonpb.KeyValue)
-	if !ok {
-		return types.NewErr("attributes is not of type []*KeyValue")
-	}
-
-	searchKey, ok := args[1].Value().(string)
-	if !ok {
-		return types.NewErr("invalid key type")
-	}
-
-	for _, kv := range list {
-		if kv.GetKey() == searchKey {
-			return types.String(kv.GetValue().GetStringValue())
-		}
-	}
-	return types.String("")
+	return subjects{logs: programs.Logs, metrics: programs.Metrics, traces: programs.Traces}, nil
 }
 
 func (n *NATS) Notify(ctx context.Context, event *domain.Event) error {

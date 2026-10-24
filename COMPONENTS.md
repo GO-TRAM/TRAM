@@ -441,7 +441,8 @@ Sends OpenTelemetry Protocol data via HTTP to an OTLP-compatible endpoint. Sends
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `url` | string | Yes | - | OTLP HTTP endpoint URL (e.g., `"http://localhost:4318"`) |
+| `url` | string | Without `url_expression` | - | OTLP HTTP endpoint URL (e.g., `"http://localhost:4318"`) |
+| `url_expression` | object | No | - | Sends each entry to the URL a CEL expression returns, see [Routing by URL](#routing-by-url) |
 | `headers` | object | No | - | HTTP headers to send with each request |
 | `timeout` | string | No | `"10s"` | HTTP request timeout as a Go duration (e.g., `"5s"`, `"30s"`) |
 | `insecure` | boolean | No | `false` | Allow connections to servers with invalid TLS certificates |
@@ -498,6 +499,38 @@ Sends OpenTelemetry Protocol data via HTTP to an OTLP-compatible endpoint. Sends
 - Proxy settings are taken from the `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` environment variables
 - Connection pooling is used for better performance with multiple requests
 - Timeout applies to the entire request lifecycle, including connection establishment and reading the response
+- The requests of an event are sent at the same time, at most 16 at once. If one fails in a way that may go away, e.g. with 503, the event fails retriably even if another destination rejected its data, so the source retries all of it. Only if every failed request was rejected is the event rejected
+
+#### Routing by URL
+
+With `url_expression`, the sink sends each log record, metric data point and span to the URL its expression returns, e.g. to a tenant's own endpoint. It groups the entries by URL and sends one request per URL and signal type.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `logs` | string | One of `logs`, `metrics`, `traces` | - | CEL expression returning the URL of a log record |
+| `metrics` | string | One of `logs`, `metrics`, `traces` | - | CEL expression returning the URL of a metric data point |
+| `traces` | string | One of `logs`, `metrics`, `traces` | - | CEL expression returning the URL of a span |
+
+- The expressions have the same variables and `get_attr` function as the subject expressions of the [NATS Sink](#nats-sink), e.g. `record`, `resource` and `datapoint`. Metrics are split per data point the same way
+- A URL is the base URL like `url`; the sink appends `/v1/logs`, `/v1/metrics` or `/v1/traces`. It must be `http` or `https` and have a host. An expression that fails, does not return a string, or returns another URL rejects the event. `get_attr` returns `""` for a missing attribute, which is not a valid URL
+- Signals without an expression are sent to `url`. Without `url`, they are not sent
+- `headers`, `timeout` and `insecure` apply to every destination
+- The data decides where it is sent. Make sure only trusted values can reach the expression, e.g. by deriving the URL from a tenant ID that a `cel_validator` checks, rather than taking a URL from an attribute
+
+**Example with an endpoint per tenant:**
+
+```json
+{
+  "name": "tenant-otlp",
+  "type": "otlp",
+  "from": "validator",
+  "spec": {
+    "url_expression": {
+      "logs": "'https://' + record.attributes.get_attr('tenant.id') + '.otlp.example.com'"
+    }
+  }
+}
+```
 
 ### NATS Sink
 

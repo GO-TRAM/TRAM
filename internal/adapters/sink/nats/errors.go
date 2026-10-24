@@ -5,13 +5,17 @@
 
 package nats
 
-import "errors"
+import (
+	"errors"
+
+	"codeberg.org/eljoth/tram/internal/adapters/sink/celentry"
+)
 
 var (
-	ErrCELEnvironmenInitialization = errors.New("failed to initialize CEL environment")
-	ErrCELInvalidLogsExpression    = errors.New("invalid logs CEL expression")
-	ErrCELInvalidMetricsExpression = errors.New("invalid metrics CEL expression")
-	ErrCELInvalidTracesExpression  = errors.New("invalid traces CEL expression")
+	ErrCELEnvironmenInitialization = celentry.ErrEnvironment
+	ErrCELInvalidLogsExpression    = celentry.ErrInvalidLogsExpression
+	ErrCELInvalidMetricsExpression = celentry.ErrInvalidMetricsExpression
+	ErrCELInvalidTracesExpression  = celentry.ErrInvalidTracesExpression
 	ErrStorageMismatch             = errors.New("stream has a different storage, which JetStream cannot change")
 	ErrInvalidPartition            = errors.New("invalid partition configuration")
 )
