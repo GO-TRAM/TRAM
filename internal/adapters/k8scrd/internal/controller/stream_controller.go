@@ -27,11 +27,13 @@ import (
 	"errors"
 	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -46,11 +48,15 @@ type StreamReconciler struct {
 
 	Core   ports.Core
 	Scheme *runtime.Scheme
+	// Secrets reads the secrets that streams refer to, e.g. the manager's API
+	// reader, so their values are not kept in the cache. The Client without it.
+	Secrets client.Reader
 }
 
 // +kubebuilder:rbac:groups=io.tram.core,resources=streams,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=io.tram.core,resources=streams/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=io.tram.core,resources=streams/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -74,19 +80,46 @@ func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, errors.Join(r.setActive(ctx, &stream, false), reconcile.TerminalError(err))
 	}
 
+	resolved, refersToSecrets, err := resolveSecrets(ctx, r.secrets(), stream.Namespace, *desired)
+	if err != nil {
+		err = fmt.Errorf("resolve secrets: %w", err)
+		if errors.Is(err, ErrInvalidSecretRef) {
+			err = reconcile.TerminalError(err)
+		}
+		// A missing secret is retried, and creating it reconciles the stream
+		// as well.
+		return ctrl.Result{}, errors.Join(r.setActive(ctx, &stream, false), err)
+	}
+
 	current, err := r.Core.GetStream(ctx, name)
 	if err != nil && !errors.Is(err, domain.ErrStreamNotFound) {
 		return ctrl.Result{}, fmt.Errorf("get from core: %w", err)
 	}
+	changed := current == nil || !current.Equal(*desired)
 
-	if current == nil || !current.Equal(*desired) {
-		if _, err = r.Core.UpsertStream(ctx, *desired); err != nil {
-			return ctrl.Result{}, errors.Join(r.setActive(ctx, &stream, false), fmt.Errorf("upsert into core: %w", err))
-		}
+	switch {
+	case refersToSecrets:
+		// The core only sees the secret values, so it decides whether they
+		// changed; it keeps a stream whose spec and values are the same.
+		_, err = r.Core.UpsertResolvedStream(ctx, *desired, resolved)
+	case changed:
+		_, err = r.Core.UpsertStream(ctx, *desired)
+	}
+	if err != nil {
+		return ctrl.Result{}, errors.Join(r.setActive(ctx, &stream, false), fmt.Errorf("upsert into core: %w", err))
+	}
+	if changed {
 		log.Info("Upserted Stream into core", "stream", name, "generation", stream.Generation)
 	}
 
 	return ctrl.Result{}, r.setActive(ctx, &stream, true)
+}
+
+func (r *StreamReconciler) secrets() client.Reader {
+	if r.Secrets != nil {
+		return r.Secrets
+	}
+	return r.Client
 }
 
 func (r *StreamReconciler) setActive(ctx context.Context, stream *tramv1.Stream, active bool) error {
@@ -188,8 +221,40 @@ func specToMap(raw *runtime.RawExtension) (map[string]any, error) {
 }
 
 func (r *StreamReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	err := mgr.GetFieldIndexer().IndexField(context.Background(), &tramv1.Stream{}, secretIndex,
+		func(obj client.Object) []string {
+			stream, ok := obj.(*tramv1.Stream)
+			if !ok {
+				return nil
+			}
+			return secretNames(stream)
+		})
+	if err != nil {
+		return fmt.Errorf("index streams by secret: %w", err)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&tramv1.Stream{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		// Only the metadata of secrets is watched and cached, to notice
+		// changes; their values are read when a stream is reconciled.
+		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.streamsReferringTo), builder.OnlyMetadata).
 		Named("stream").
 		Complete(r)
+}
+
+// streamsReferringTo returns the Stream resources that refer to secret, so a
+// changed secret restarts their streams with the new values.
+func (r *StreamReconciler) streamsReferringTo(ctx context.Context, secret client.Object) []reconcile.Request {
+	var streams tramv1.StreamList
+	if err := r.List(ctx, &streams,
+		client.InNamespace(secret.GetNamespace()),
+		client.MatchingFields{secretIndex: secret.GetName()}); err != nil {
+		logf.FromContext(ctx).Error(err, "Could not list streams referring to secret", "secret", secret.GetName())
+		return nil
+	}
+	requests := make([]reconcile.Request, len(streams.Items))
+	for i, s := range streams.Items {
+		requests[i] = reconcile.Request{Namespace: s.Namespace, Name: s.Name}
+	}
+	return requests
 }

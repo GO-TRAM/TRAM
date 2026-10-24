@@ -37,6 +37,8 @@ type registry struct {
 	created     []string
 	stopped     []string
 	sources     []*fakeSource
+	// sinkSpecs holds the spec of every sink created, by name.
+	sinkSpecs map[string][]map[string]any
 }
 
 func (r *registry) source(i int) *fakeSource {
@@ -217,6 +219,12 @@ func (f sinkFactory) New(spec domain.SinkSpec) (domain.Sink, error) {
 		return nil, errors.New("broken sink")
 	}
 	f.reg.create(spec.Name)
+	f.reg.mu.Lock()
+	if f.reg.sinkSpecs == nil {
+		f.reg.sinkSpecs = map[string][]map[string]any{}
+	}
+	f.reg.sinkSpecs[spec.Name] = append(f.reg.sinkSpecs[spec.Name], spec.Spec)
+	f.reg.mu.Unlock()
 	sink := &fakeSink{reg: f.reg, name: spec.Name, from: spec.From}
 	switch spec.Type {
 	case rejectingType:

@@ -124,19 +124,37 @@ func (c *cluster) requireActive(t *testing.T, namespace, name string) {
 }
 
 type syncCore struct {
-	mu      sync.Mutex
-	streams map[string]domain.StreamSpec
+	mu       sync.Mutex
+	streams  map[string]domain.StreamSpec
+	resolved map[string]domain.StreamSpec
 }
 
 func newSyncCore() *syncCore {
-	return &syncCore{streams: map[string]domain.StreamSpec{}}
+	return &syncCore{streams: map[string]domain.StreamSpec{}, resolved: map[string]domain.StreamSpec{}}
 }
 
-func (c *syncCore) UpsertStream(_ context.Context, s domain.StreamSpec) (*domain.StreamSpec, error) {
+func (c *syncCore) UpsertStream(ctx context.Context, s domain.StreamSpec) (*domain.StreamSpec, error) {
+	return c.UpsertResolvedStream(ctx, s, s)
+}
+
+func (c *syncCore) UpsertResolvedStream(_ context.Context, s, resolved domain.StreamSpec) (*domain.StreamSpec, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.streams[s.Name] = s
+	c.resolved[s.Name] = resolved
 	return &s, nil
+}
+
+// resolvedSinkSpec returns the spec the core runs the first sink of a stream
+// with.
+func (c *syncCore) resolvedSinkSpec(name string) map[string]any {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	s, ok := c.resolved[name]
+	if !ok || len(s.Sinks) == 0 {
+		return nil
+	}
+	return s.Sinks[0].Spec
 }
 
 func (c *syncCore) DeleteStream(_ context.Context, name string) error {
@@ -272,4 +290,66 @@ func TestOperatorNeedsOnlyRoleBindingInWatchedNamespace(t *testing.T) {
 
 	requireStreams(t, core, ns+".s")
 	c.requireActive(t, ns, "s")
+}
+
+// The operator reads secrets with a role bound in the watched namespace only,
+// sees secrets without the stream selector's label, and applies a changed
+// secret to the streams that refer to it.
+func TestOperatorAppliesSecrets(t *testing.T) {
+	t.Parallel()
+	c := startCluster(t)
+
+	content, err := os.ReadFile(filepath.Join("config", "rbac", "role.yaml"))
+	require.NoError(t, err)
+	var role rbacv1.ClusterRole
+	require.NoError(t, yaml.Unmarshal(content, &role))
+	require.NoError(t, c.admin.Create(t.Context(), &role))
+
+	ns := c.newNamespace(t)
+	const user = "tram-operator"
+	require.NoError(t, c.admin.Create(t.Context(), &rbacv1.RoleBinding{
+		Namespace: ns, Name: "tram",
+		RoleRef:  rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: role.Name},
+		Subjects: []rbacv1.Subject{{APIGroup: rbacv1.GroupName, Kind: rbacv1.UserKind, Name: user}},
+	}))
+
+	secret := &corev1.Secret{
+		Namespace: ns, Name: "otlp-auth",
+		Data: map[string][]byte{"token": []byte("old")},
+	}
+	require.NoError(t, c.admin.Create(t.Context(), secret))
+	require.NoError(t, c.admin.Create(t.Context(), &tramv1.Stream{
+		Namespace: ns, Name: "s", Labels: map[string]string{"tram.io/validation": "true"},
+		Spec: tramv1.StreamSpec{
+			Source: tramv1.Spec{
+				Name: "in",
+				Type: "otlp",
+				Spec: &runtime.RawExtension{Raw: []byte(`{"http_port":4318}`)},
+			},
+			Sinks: []tramv1.ReceiverSpec{
+				{Name: "out", Type: "otlp", From: "in", Spec: &runtime.RawExtension{Raw: []byte(
+					`{"url":"http://o:4318","headers":{"Authorization":` +
+						`{"valueFrom":{"secretKeyRef":{"name":"otlp-auth","key":"token"}}}}}`)}},
+			},
+		},
+	}))
+
+	core := newSyncCore()
+	runOperator(t, core, k8scrd.Options{
+		Kubeconfig:     c.kubeconfig(t, envtest.User{Name: user}),
+		Namespaces:     []string{ns},
+		StreamSelector: "tram.io/validation=true",
+	})
+
+	token := func() any {
+		headers, _ := core.resolvedSinkSpec(ns + ".s")["headers"].(map[string]any)
+		return headers["Authorization"]
+	}
+	require.Eventually(t, func() bool { return token() == "old" }, eventuallyTimeout, pollInterval)
+	c.requireActive(t, ns, "s")
+
+	secret.Data["token"] = []byte("new")
+	require.NoError(t, c.admin.Update(t.Context(), secret))
+	require.Eventually(t, func() bool { return token() == "new" }, eventuallyTimeout, pollInterval,
+		"a changed secret is applied without a change to the stream")
 }

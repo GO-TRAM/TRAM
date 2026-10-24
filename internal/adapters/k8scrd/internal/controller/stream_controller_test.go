@@ -22,13 +22,19 @@ import (
 )
 
 type fakeCore struct {
-	streams map[string]domain.StreamSpec
-	upserts int
+	streams  map[string]domain.StreamSpec
+	resolved map[string]domain.StreamSpec
+	upserts  int
 }
 
-func (c *fakeCore) UpsertStream(_ context.Context, s domain.StreamSpec) (*domain.StreamSpec, error) {
+func (c *fakeCore) UpsertStream(ctx context.Context, s domain.StreamSpec) (*domain.StreamSpec, error) {
+	return c.UpsertResolvedStream(ctx, s, s)
+}
+
+func (c *fakeCore) UpsertResolvedStream(_ context.Context, s, resolved domain.StreamSpec) (*domain.StreamSpec, error) {
 	c.upserts++
 	c.streams[s.Name] = s
+	c.resolved[s.Name] = resolved
 	return &s, nil
 }
 
@@ -81,7 +87,7 @@ func newReconciler(t *testing.T, objs ...*tramv1.Stream) (*controller.StreamReco
 		builder = builder.WithObjects(obj)
 	}
 
-	core := &fakeCore{streams: map[string]domain.StreamSpec{}}
+	core := &fakeCore{streams: map[string]domain.StreamSpec{}, resolved: map[string]domain.StreamSpec{}}
 	return &controller.StreamReconciler{Client: builder.Build(), Scheme: scheme, Core: core}, core
 }
 

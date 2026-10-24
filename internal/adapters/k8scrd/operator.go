@@ -5,6 +5,7 @@
 
 //go:generate controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./..."
 //go:generate controller-gen crd paths="./..." output:crd:dir=config/crd/bases
+//go:generate controller-gen rbac:roleName=manager-role paths="./..." output:rbac:dir=config/rbac
 
 package k8scrd
 
@@ -14,12 +15,14 @@ import (
 	"log/slog"
 
 	"github.com/go-logr/logr"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -88,9 +91,10 @@ func New(core ports.Core, opts Options, logger *slog.Logger) (*Operator, error) 
 	}
 
 	if err = (&controller.StreamReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-		Core:   core,
+		Client:  mgr.GetClient(),
+		Scheme:  mgr.GetScheme(),
+		Core:    core,
+		Secrets: mgr.GetAPIReader(),
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up controller: %w", err)
 	}
@@ -123,6 +127,13 @@ func cacheOptions(opts Options) (cache.Options, error) {
 			return cache.Options{}, fmt.Errorf("%w: %w", ErrInvalidStreamSelector, err)
 		}
 		cacheOpts.DefaultLabelSelector = selector
+		// The selector chooses Stream resources, not the secrets they refer
+		// to, whose metadata is watched to notice changes.
+		cacheOpts.ByObject = map[client.Object]cache.ByObject{
+			&metav1.PartialObjectMetadata{APIVersion: "v1", Kind: "Secret"}: {
+				Label: labels.Everything(),
+			},
+		}
 	}
 
 	return cacheOpts, nil

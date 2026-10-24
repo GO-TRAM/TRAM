@@ -175,7 +175,7 @@ func (c *Core) sourceSubscriber(tree *domain.Tree) (domain.Subscriber, error) {
 	return c.metrics.instrument(tree.Spec, root, f), nil
 }
 
-func (c *Core) replaceReceivers(old *stream, tree *domain.Tree) error {
+func (c *Core) replaceReceivers(old *stream, tree *domain.Tree, spec domain.StreamSpec) error {
 	source, err := old.tree.Root().GetSource()
 	if err != nil {
 		return err
@@ -198,13 +198,14 @@ func (c *Core) replaceReceivers(old *stream, tree *domain.Tree) error {
 			slog.String("stream", tree.Spec.Name), slog.Any("error", err))
 	}
 
-	c.streams[tree.Spec.Name] = &stream{tree: tree, done: old.done}
+	c.streams[tree.Spec.Name] = &stream{tree: tree, spec: spec, done: old.done}
 	return nil
 }
 
-func (c *Core) runStream(tree *domain.Tree, restarts int) {
+func (c *Core) runStream(tree *domain.Tree, spec domain.StreamSpec, restarts int) {
 	s := &stream{
 		tree: tree,
+		spec: spec,
 		done: make(chan struct{}),
 	}
 	c.streams[tree.Spec.Name] = s
@@ -281,11 +282,11 @@ func (c *Core) restartStream(name string, done chan struct{}, restarts int) {
 		c.scheduleRestart(name, done, restarts)
 		return
 	}
-	c.runStream(tree, restarts)
+	c.runStream(tree, old.spec, restarts)
 }
 
-func (c *Core) restoreStream(spec domain.StreamSpec) {
-	tree, err := newTree(spec)
+func (c *Core) restoreStream(resolved, spec domain.StreamSpec) {
+	tree, err := newTree(resolved)
 	if err == nil {
 		err = c.buildStream(tree)
 	}
@@ -294,7 +295,7 @@ func (c *Core) restoreStream(spec domain.StreamSpec) {
 			slog.String("stream", spec.Name), slog.Any("error", err))
 		return
 	}
-	c.runStream(tree, 0)
+	c.runStream(tree, spec, 0)
 }
 
 func (c *Core) stopStream(s *stream) error {

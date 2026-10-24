@@ -13,6 +13,9 @@ import (
 
 type Core interface {
 	UpsertStream(ctx context.Context, stream domain.StreamSpec) (*domain.StreamSpec, error)
+	// UpsertResolvedStream runs resolved, which holds values like secrets that
+	// stream only refers to, and shows only stream.
+	UpsertResolvedStream(ctx context.Context, stream, resolved domain.StreamSpec) (*domain.StreamSpec, error)
 	DeleteStream(ctx context.Context, name string) error
 	GetStream(ctx context.Context, name string) (*domain.StreamSpec, error)
 	GetStreams(ctx context.Context) ([]domain.StreamSpec, error)

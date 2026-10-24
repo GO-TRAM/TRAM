@@ -10,6 +10,7 @@ api/v1/groupversion_info.go                API group io.tram.core/v1
 api/v1/stream_types.go                     Stream schema (+kubebuilder markers)
 api/v1/zz_generated.deepcopy.go            Generated (DO NOT EDIT)
 internal/controller/stream_controller.go   Reconciliation logic and RBAC markers
+internal/controller/secrets.go             Resolves secret references in component specs
 config/crd/bases/                          Generated CRD (DO NOT EDIT)
 config/rbac/role.yaml                      Generated RBAC (DO NOT EDIT)
 hack/boilerplate.go.txt                    Header for generated files
@@ -37,7 +38,8 @@ Do not use `make manifests`, `make generate` or the `kubebuilder` CLI; they are 
 
 ## Reconciliation Rules
 
-- **Idempotent:** reconciling the same resource again must not restart its stream. Compare the desired spec with `Core.GetStream` and only call `UpsertStream` when they differ, because an upsert restarts the stream
+- **Idempotent:** reconciling the same resource again must not restart its stream. Compare the desired spec with `Core.GetStream` and only call `UpsertStream` when they differ, because an upsert restarts the stream. A stream that refers to secrets is always passed on with `UpsertResolvedStream`: the core compares the resolved values too and keeps the stream if nothing changed
+- **Secrets:** resolve references only here, never in the core, so streams from the API cannot read secrets. Pass the resolved spec only as the second argument of `UpsertResolvedStream`; everything the core shows, including the file sync, gets the spec with the references. Read secret values through the API reader (`Secrets`), not the cache
 - **Trigger on spec changes only:** the controller uses `GenerationChangedPredicate`, so status writes and resyncs do not reconcile. Keep it that way
 - **Status:** only write it when it changes (`setActive`)
 - **Deletion:** when the resource is gone, delete the stream and treat `domain.ErrStreamNotFound` as success
