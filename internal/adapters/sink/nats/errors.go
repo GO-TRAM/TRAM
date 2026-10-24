@@ -13,4 +13,5 @@ var (
 	ErrCELInvalidMetricsExpression = errors.New("invalid metrics CEL expression")
 	ErrCELInvalidTracesExpression  = errors.New("invalid traces CEL expression")
 	ErrStorageMismatch             = errors.New("stream has a different storage, which JetStream cannot change")
+	ErrInvalidPartition            = errors.New("invalid partition configuration")
 )

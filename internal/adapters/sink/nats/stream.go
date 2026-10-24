@@ -10,51 +10,116 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go/jetstream"
+
+	"codeberg.org/eljoth/tram/internal/adapters/natspartition"
 )
 
 const streamSetUpAttempts = 3
 
 var errSubjectsOverwritten = errors.New("subjects were removed by a concurrent update of the stream")
 
-func setUpStream(
+// target is a JetStream stream the sink publishes to: the stream of the spec,
+// or with partitioning that of one partition.
+type target struct {
+	name     string
+	subjects []string
+	// metadata marks the stream as one partition. Nil without partitioning.
+	metadata  map[string]string
+	partition int
+	count     int
+}
+
+func targetsOf(spec *Spec) []target {
+	if spec.Partition == nil {
+		return []target{{name: spec.Stream, subjects: spec.Subject.Register}}
+	}
+	count := spec.Partition.Count
+	targets := make([]target, count)
+	for p := range count {
+		subjects := make([]string, len(spec.Subject.Register))
+		for i, subject := range spec.Subject.Register {
+			subjects[i] = natspartition.Expand(subject, p)
+		}
+		targets[p] = target{
+			name:      natspartition.Expand(spec.Stream, p),
+			subjects:  subjects,
+			metadata:  natspartition.Metadata(p, count),
+			partition: p,
+			count:     count,
+		}
+	}
+	return targets
+}
+
+func setUpStreams(
 	ctx context.Context,
 	js jetstream.JetStream,
 	spec *Spec,
 	logger *slog.Logger,
+) ([]jetstream.Stream, error) {
+	targets := targetsOf(spec)
+	streams := make([]jetstream.Stream, 0, len(targets))
+	for _, t := range targets {
+		stream, err := setUpStream(ctx, js, spec, t, logger)
+		if err != nil {
+			return nil, err
+		}
+		streams = append(streams, stream)
+	}
+	return streams, nil
+}
+
+func setUpStream(
+	ctx context.Context,
+	js jetstream.JetStream,
+	spec *Spec,
+	t target,
+	logger *slog.Logger,
 ) (jetstream.Stream, error) {
 	var err error
 	for range streamSetUpAttempts {
-		if err = applyStream(ctx, js, spec, logger); err != nil {
+		if err = applyStream(ctx, js, spec, t, logger); err != nil {
 			if errors.Is(err, jetstream.ErrStreamNameAlreadyInUse) {
 				continue
 			}
-			return nil, fmt.Errorf("failed to set up stream %s: %w", spec.Stream, err)
+			return nil, fmt.Errorf("failed to set up stream %s: %w", t.name, err)
 		}
 
 		// JetStream has no compare-and-swap for stream configs, so a sink
 		// updating the stream at the same time can overwrite the subjects
-		// just added. Reading the config again detects that.
-		stream, streamErr := js.Stream(ctx, spec.Stream)
+		// and metadata just added. Reading the config again detects that.
+		stream, streamErr := js.Stream(ctx, t.name)
 		if streamErr != nil {
-			return nil, fmt.Errorf("failed to get stream %s: %w", spec.Stream, streamErr)
+			return nil, fmt.Errorf("failed to get stream %s: %w", t.name, streamErr)
 		}
-		if covered(stream.CachedInfo().Config.Subjects, spec.Subject.Register) {
+		config := stream.CachedInfo().Config
+		if covered(config.Subjects, t.subjects) && hasMetadata(config.Metadata, t.metadata) {
 			return stream, nil
 		}
 		err = errSubjectsOverwritten
 	}
-	return nil, fmt.Errorf("failed to set up stream %s: %w", spec.Stream, err)
+	return nil, fmt.Errorf("failed to set up stream %s: %w", t.name, err)
 }
 
-func applyStream(ctx context.Context, js jetstream.JetStream, spec *Spec, logger *slog.Logger) error {
-	stream, err := js.Stream(ctx, spec.Stream)
+func hasMetadata(metadata, want map[string]string) bool {
+	for key, value := range want {
+		if metadata[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func applyStream(ctx context.Context, js jetstream.JetStream, spec *Spec, t target, logger *slog.Logger) error {
+	stream, err := js.Stream(ctx, t.name)
 	if errors.Is(err, jetstream.ErrStreamNotFound) {
-		config, configErr := configFromSpec(spec)
+		config, configErr := configFromSpec(spec, t)
 		if configErr != nil {
 			return configErr
 		}
@@ -65,22 +130,22 @@ func applyStream(ctx context.Context, js jetstream.JetStream, spec *Spec, logger
 		return err
 	}
 
-	merged, update, err := mergeStreamConfig(stream.CachedInfo().Config, spec)
+	merged, update, err := mergeStreamConfig(stream.CachedInfo().Config, spec, t)
 	if err != nil || !update.changed() {
 		return err
 	}
 
 	if len(update.replacedLimits) > 0 {
 		logger.WarnContext(ctx, "Replacing limits of JetStream stream; set them in one sink only",
-			slog.String("stream", spec.Stream), slog.Any("limits", update.replacedLimits))
+			slog.String("stream", t.name), slog.Any("limits", update.replacedLimits))
 	}
 	logger.InfoContext(ctx, "Updating JetStream stream",
-		slog.String("stream", spec.Stream), slog.Any("added_subjects", update.subjects))
+		slog.String("stream", t.name), slog.Any("added_subjects", update.subjects))
 	_, err = js.UpdateStream(ctx, merged)
 	return err
 }
 
-func configFromSpec(spec *Spec) (jetstream.StreamConfig, error) {
+func configFromSpec(spec *Spec, t target) (jetstream.StreamConfig, error) {
 	retention, _, err := retentionPolicyFromSpec(spec)
 	if err != nil {
 		return jetstream.StreamConfig{}, err
@@ -93,8 +158,8 @@ func configFromSpec(spec *Spec) (jetstream.StreamConfig, error) {
 	discard, _ := discardFromSpec(spec)
 	storage, _ := storageFromSpec(spec)
 	return jetstream.StreamConfig{
-		Name:        spec.Stream,
-		Subjects:    spec.Subject.Register,
+		Name:        t.name,
+		Subjects:    t.subjects,
 		Retention:   retention,
 		MaxAge:      maxAge,
 		MaxBytes:    spec.Size,
@@ -102,6 +167,7 @@ func configFromSpec(spec *Spec) (jetstream.StreamConfig, error) {
 		Replicas:    spec.Replicas,
 		Discard:     discard,
 		Storage:     storage,
+		Metadata:    t.metadata,
 	}, nil
 }
 
@@ -150,13 +216,14 @@ func compressionFromSpec(spec *Spec) (jetstream.StoreCompression, bool) {
 }
 
 type streamUpdate struct {
-	subjects       []string
-	limitsChanged  bool
-	replacedLimits []string
+	subjects        []string
+	limitsChanged   bool
+	metadataChanged bool
+	replacedLimits  []string
 }
 
 func (u streamUpdate) changed() bool {
-	return len(u.subjects) > 0 || u.limitsChanged
+	return len(u.subjects) > 0 || u.limitsChanged || u.metadataChanged
 }
 
 // applyLimit records that a limit of the spec is applied; replaced describes
@@ -168,7 +235,11 @@ func applyLimit(u *streamUpdate, replaced string) {
 	}
 }
 
-func mergeStreamConfig(existing jetstream.StreamConfig, spec *Spec) (jetstream.StreamConfig, streamUpdate, error) {
+func mergeStreamConfig(
+	existing jetstream.StreamConfig,
+	spec *Spec,
+	t target,
+) (jetstream.StreamConfig, streamUpdate, error) {
 	retention, retentionSet, err := retentionPolicyFromSpec(spec)
 	if err != nil {
 		return existing, streamUpdate{}, err
@@ -183,14 +254,14 @@ func mergeStreamConfig(existing jetstream.StreamConfig, spec *Spec) (jetstream.S
 	// messages survive a restart.
 	if storage, ok := storageFromSpec(spec); ok && existing.Storage != storage {
 		return existing, streamUpdate{}, fmt.Errorf("%w: stream %s uses %s storage, the sink requires %s",
-			ErrStorageMismatch, spec.Stream, strings.ToLower(existing.Storage.String()), spec.Storage)
+			ErrStorageMismatch, t.name, strings.ToLower(existing.Storage.String()), spec.Storage)
 	}
 
 	merged := existing
 	merged.Subjects = slices.Clone(existing.Subjects)
 	var update streamUpdate
 
-	for _, subject := range spec.Subject.Register {
+	for _, subject := range t.subjects {
 		if !covered(merged.Subjects, []string{subject}) {
 			merged.Subjects = append(merged.Subjects, subject)
 			update.subjects = append(update.subjects, subject)
@@ -227,7 +298,33 @@ func mergeStreamConfig(existing jetstream.StreamConfig, spec *Spec) (jetstream.S
 		merged.Discard = discard
 	}
 
+	if err = mergeMetadata(&merged, &update, t); err != nil {
+		return existing, streamUpdate{}, err
+	}
 	return merged, update, nil
+}
+
+// mergeMetadata adds the partition of t to the stream's metadata.
+func mergeMetadata(merged *jetstream.StreamConfig, update *streamUpdate, t target) error {
+	if t.metadata == nil {
+		return nil
+	}
+	// A stream of another partitioning holds other keys, so publishing to it
+	// would mix the partitionings.
+	if err := natspartition.Check(t.name, merged.Metadata, t.partition, t.count); err != nil {
+		return err
+	}
+	if hasMetadata(merged.Metadata, t.metadata) {
+		return nil
+	}
+	metadata := maps.Clone(merged.Metadata)
+	if metadata == nil {
+		metadata = map[string]string{}
+	}
+	maps.Copy(metadata, t.metadata)
+	merged.Metadata = metadata
+	update.metadataChanged = true
+	return nil
 }
 
 // replacedIf describes a replaced limit if the stream had one set before.

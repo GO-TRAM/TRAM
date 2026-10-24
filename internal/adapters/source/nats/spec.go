@@ -11,4 +11,13 @@ type Spec struct {
 	Subject string `json:"subject"           validate:"required"`
 	Durable string `json:"durable,omitempty"`
 	Workers uint   `json:"workers,omitempty" validate:"max=10000"`
+
+	Partition *PartitionSpec `json:"partition,omitempty"`
+}
+
+// PartitionSpec reads the partition of Key from streams that the NATS sink
+// spread over Count partitions.
+type PartitionSpec struct {
+	Count int    `json:"count" validate:"required,min=1,max=1024"`
+	Key   string `json:"key"   validate:"required"`
 }

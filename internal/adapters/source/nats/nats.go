@@ -17,6 +17,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
+	"codeberg.org/eljoth/tram/internal/adapters/natspartition"
 	"codeberg.org/eljoth/tram/internal/adapters/source/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
@@ -42,6 +43,7 @@ const (
 
 type NATS struct {
 	*base.Source[Spec]
+	target
 
 	logger *slog.Logger
 	nc     *nats.Conn
@@ -61,6 +63,10 @@ func New(source domain.SourceSpec, validator *validator.Validate, logger *slog.L
 	if err != nil {
 		return nil, err
 	}
+	t, err := targetOf(base.Spec())
+	if err != nil {
+		return nil, err
+	}
 
 	nc, err := nats.Connect(base.Spec().URL)
 	if err != nil {
@@ -76,6 +82,7 @@ func New(source domain.SourceSpec, validator *validator.Validate, logger *slog.L
 	stop, cancel := context.WithCancel(context.Background())
 	return &NATS{
 		Source: base,
+		target: t,
 		logger: logger,
 		nc:     nc,
 		js:     js,
@@ -96,9 +103,15 @@ func (n *NATS) Run(ctx context.Context) error {
 	// being processed can be acknowledged.
 	defer n.nc.Close()
 
-	stream, err := n.js.Stream(ctx, n.Spec().Stream)
+	stream, err := n.js.Stream(ctx, n.stream)
 	if err != nil {
-		return fmt.Errorf("failed to get stream %s: %w", n.Spec().Stream, err)
+		return fmt.Errorf("failed to get stream %s: %w", n.stream, err)
+	}
+	if p := n.Spec().Partition; p != nil {
+		err = natspartition.Check(n.stream, stream.CachedInfo().Config.Metadata, n.partition, p.Count)
+		if err != nil {
+			return err
+		}
 	}
 
 	workers := uint(1)
@@ -106,7 +119,7 @@ func (n *NATS) Run(ctx context.Context) error {
 		workers = n.Spec().Workers
 	}
 
-	cons, err := stream.CreateOrUpdateConsumer(ctx, consumerConfig(n.Spec(), int(workers)))
+	cons, err := stream.CreateOrUpdateConsumer(ctx, consumerConfig(n.Spec(), n.subject, int(workers)))
 	if err != nil {
 		return fmt.Errorf("failed to create consumer: %w", err)
 	}
@@ -115,17 +128,50 @@ func (n *NATS) Run(ctx context.Context) error {
 	return nil
 }
 
+// target is the stream and subject the source reads, with partitioning those
+// of the key's partition.
+type target struct {
+	stream    string
+	subject   string
+	partition int
+}
+
+func targetOf(spec *Spec) (target, error) {
+	p := spec.Partition
+	if p == nil {
+		for _, field := range []struct{ name, value string }{{"stream", spec.Stream}, {"subject", spec.Subject}} {
+			if natspartition.HasPlaceholder(field.value) {
+				return target{}, fmt.Errorf("%w: %s %s has %s, but partition is not set",
+					ErrInvalidPartition, field.name, field.value, natspartition.Placeholder)
+			}
+		}
+		return target{stream: spec.Stream, subject: spec.Subject}, nil
+	}
+
+	// Without the placeholder, every key would read the same stream.
+	if !natspartition.HasPlaceholder(spec.Stream) {
+		return target{}, fmt.Errorf("%w: stream %s needs %s to read the key's partition",
+			ErrInvalidPartition, spec.Stream, natspartition.Placeholder)
+	}
+	partition := natspartition.Of(p.Key, p.Count)
+	return target{
+		stream:    natspartition.Expand(spec.Stream, partition),
+		subject:   natspartition.Expand(spec.Subject, partition),
+		partition: partition,
+	}, nil
+}
+
 // A source has up to twice its workers in messages unacknowledged: those being
 // handled and as many buffered. NATS stops delivering at the consumer's max ack
 // pending, 1,000 by default, so with more than 500 workers some of them would
 // stay idle. It is only raised, since messages waiting for redelivery also
 // count towards it.
-func consumerConfig(spec *Spec, workers int) jetstream.ConsumerConfig {
+func consumerConfig(spec *Spec, subject string, workers int) jetstream.ConsumerConfig {
 	return jetstream.ConsumerConfig{
 		Durable:       spec.Durable,
 		AckPolicy:     jetstream.AckExplicitPolicy,
 		DeliverPolicy: jetstream.DeliverAllPolicy,
-		FilterSubject: spec.Subject,
+		FilterSubject: subject,
 		MaxAckPending: max(unackedPerWorker*workers, defaultMaxAckPending),
 	}
 }

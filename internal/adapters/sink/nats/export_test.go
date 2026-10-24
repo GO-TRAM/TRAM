@@ -47,15 +47,16 @@ func NewWithoutConnection(spec map[string]any, validator *validator.Validate) (*
 	if err != nil {
 		return nil, err
 	}
-	compiled, err := compileSubjects(b.Spec().Subject)
+	compiled, parts, err := compile(b.Spec())
 	if err != nil {
 		return nil, err
 	}
 	return &NATS{
-		Sink:      b,
-		subjects:  compiled,
-		logger:    slog.New(slog.DiscardHandler),
-		jetstream: noConnection{},
+		Sink:       b,
+		subjects:   compiled,
+		partitions: parts,
+		logger:     slog.New(slog.DiscardHandler),
+		jetstream:  noConnection{},
 	}, nil
 }
 
@@ -70,7 +71,17 @@ type StreamUpdate struct {
 }
 
 func MergeStreamConfig(existing jetstream.StreamConfig, spec *Spec) (jetstream.StreamConfig, StreamUpdate, error) {
-	merged, update, err := mergeStreamConfig(existing, spec)
+	return MergePartitionStreamConfig(existing, spec, 0)
+}
+
+// MergePartitionStreamConfig merges the stream of partition, which is the
+// only stream without partitioning.
+func MergePartitionStreamConfig(
+	existing jetstream.StreamConfig,
+	spec *Spec,
+	partition int,
+) (jetstream.StreamConfig, StreamUpdate, error) {
+	merged, update, err := mergeStreamConfig(existing, spec, targetsOf(spec)[partition])
 	return merged, StreamUpdate{
 		Changed:        update.changed(),
 		Subjects:       update.subjects,
@@ -88,4 +99,18 @@ func GroupEventsBySubjects(n *NATS, event *domain.Event) ([]Message, error) {
 		out[i] = Message{Subject: m.subject, Event: m.event}
 	}
 	return out, nil
+}
+
+type Target struct {
+	Name     string
+	Subjects []string
+}
+
+// Targets returns the streams the sink publishes to.
+func Targets(spec *Spec) []Target {
+	var out []Target
+	for _, t := range targetsOf(spec) {
+		out = append(out, Target{Name: t.name, Subjects: t.subjects})
+	}
+	return out
 }

@@ -16,6 +16,17 @@ type Spec struct {
 	Replicas    int         `json:"replicas"    validate:"omitempty,min=1,max=5"`
 	Discard     string      `json:"discard"     validate:"omitempty,oneof=old new"`
 	Storage     string      `json:"storage"     validate:"omitempty,oneof=file memory"`
+
+	Partition *PartitionSpec `json:"partition,omitempty"`
+}
+
+// PartitionSpec spreads records over Count streams by the key that the
+// expression of their signal returns.
+type PartitionSpec struct {
+	Count   int    `json:"count"             validate:"required,min=1,max=1024"`
+	Logs    string `json:"logs,omitempty"`
+	Metrics string `json:"metrics,omitempty"`
+	Traces  string `json:"traces,omitempty"`
 }
 
 type SubjectSpec struct {

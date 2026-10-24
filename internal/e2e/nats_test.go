@@ -21,7 +21,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"codeberg.org/eljoth/tram/internal/adapters/natspartition"
 	natssink "codeberg.org/eljoth/tram/internal/adapters/sink/nats"
+	natssource "codeberg.org/eljoth/tram/internal/adapters/source/nats"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/natstest"
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
@@ -165,6 +167,26 @@ func TestNATS(t *testing.T) {
 		assert.Equal(t, 1, config.Replicas)
 		assert.Equal(t, jetstream.DiscardNew, config.Discard)
 		assert.Equal(t, jetstream.FileStorage, config.Storage)
+	})
+
+	t.Run("sink spreads records over partition streams", func(t *testing.T) {
+		t.Parallel()
+		testPartitionStreams(t, n)
+	})
+
+	t.Run("sink refuses streams of another partitioning", func(t *testing.T) {
+		t.Parallel()
+		testPartitionCountMismatch(t, n)
+	})
+
+	t.Run("sink rejects a subject outside its partition", func(t *testing.T) {
+		t.Parallel()
+		testPartitionWrongSubject(t, n)
+	})
+
+	t.Run("source reads the partition of its key", func(t *testing.T) {
+		t.Parallel()
+		testPartitionedSource(t, n)
 	})
 
 	t.Run("sink refuses a stream with other storage", func(t *testing.T) {
@@ -461,6 +483,161 @@ func (n *natsServer) read(t *testing.T, name string) []*jetstream.RawStreamMsg {
 		messages = append(messages, m)
 	}
 	return messages
+}
+
+func partitionCustomers() []string {
+	return []string{"A", "B", "C", "D", "E", "F"}
+}
+
+func testPartitionCountMismatch(t *testing.T, n *natsServer) {
+	t.Helper()
+
+	prefix := n.stream("partcount")
+	const count = 4
+	postPartitioned(t, n, prefix, count)
+
+	spec := partitionedSinkSpec(n, prefix, 2*count)
+	_, err := natssink.New(domain.SinkSpec{Name: "out", Type: "nats", From: "in", Spec: spec},
+		validator.New(), discard())
+	require.ErrorIs(t, err, natspartition.ErrMismatch)
+}
+
+func testPartitionWrongSubject(t *testing.T, n *natsServer) {
+	t.Helper()
+
+	prefix := n.stream("partwrong")
+	const count = 4
+	spec := partitionedSinkSpec(n, prefix, count)
+	// Ignores the partition, so every record would go to the stream of
+	// partition 0.
+	spec["subject"].(map[string]any)["logs"] = fmt.Sprintf(
+		"'%s.0.' + record.attributes.get_attr('customer')", prefix)
+	p := newPipeline(t, nil, []domain.SinkSpec{{Name: "out", Type: "nats", From: "in", Spec: spec}})
+
+	key := ""
+	for _, c := range partitionCustomers() {
+		if natspartition.Of(c, count) != 0 {
+			key = c
+			break
+		}
+	}
+	require.NotEmpty(t, key, "a key outside partition 0")
+	assert.Equal(t, http.StatusUnprocessableEntity, p.post(t, request("shop", rec{"r1", key}), 10*time.Second))
+	assert.Empty(t, n.read(t, prefix+"-0"), "nothing is stored in the wrong partition")
+}
+
+// partitionedSinkSpec spreads records by customer over count streams named
+// after prefix.
+func partitionedSinkSpec(n *natsServer, prefix string, count int) map[string]any {
+	customer := "record.attributes.get_attr('customer')"
+	return map[string]any{
+		"url":    n.url,
+		"stream": prefix + "-{partition}",
+		"subject": map[string]any{
+			"register": []any{prefix + ".{partition}.>"},
+			"logs":     fmt.Sprintf("'%s.' + string(partition) + '.' + %s", prefix, customer),
+		},
+		"partition": map[string]any{"count": float64(count), "logs": customer},
+		"retention": "limits",
+	}
+}
+
+// postPartitioned publishes a record per customer into count partition
+// streams named after prefix.
+func postPartitioned(t *testing.T, n *natsServer, prefix string, count int) {
+	t.Helper()
+
+	spec := partitionedSinkSpec(n, prefix, count)
+	p := newPipeline(t, nil, []domain.SinkSpec{{Name: "out", Type: "nats", From: "in", Spec: spec}})
+
+	var records []rec
+	for _, c := range partitionCustomers() {
+		records = append(records, rec{"r" + c, c})
+	}
+	require.Equal(t, http.StatusOK, p.post(t, request("shop", records...), 10*time.Second))
+}
+
+func testPartitionStreams(t *testing.T, n *natsServer) {
+	t.Helper()
+
+	prefix := n.stream("part")
+	const count = 4
+	postPartitioned(t, n, prefix, count)
+
+	for partition := range count {
+		name := fmt.Sprintf("%s-%d", prefix, partition)
+		stream, err := n.js.Stream(t.Context(), name)
+		require.NoError(t, err, "every partition has a stream")
+		assert.Equal(t, natspartition.Metadata(partition, count), metadataOf(stream.CachedInfo().Config.Metadata))
+
+		expected := map[string][]string{}
+		for _, c := range partitionCustomers() {
+			if natspartition.Of(c, count) == partition {
+				subject := fmt.Sprintf("%s.%d.%s", prefix, partition, c)
+				expected[subject] = []string{"shop/e2e/r" + c}
+			}
+		}
+		assert.Equal(t, expected, nonNil(bySubject(t, n.read(t, name))), "partition %d", partition)
+	}
+}
+
+func testPartitionedSource(t *testing.T, n *natsServer) {
+	t.Helper()
+
+	prefix := n.stream("partsrc")
+	const count = 4
+	postPartitioned(t, n, prefix, count)
+
+	sourceSpec := func(customer string, partitions int) domain.SourceSpec {
+		return domain.SourceSpec{Name: "in", Type: "nats", Spec: map[string]any{
+			"url":       n.url,
+			"stream":    prefix + "-{partition}",
+			"subject":   prefix + ".{partition}." + customer,
+			"partition": map[string]any{"count": float64(partitions), "key": customer},
+		}}
+	}
+
+	for _, customer := range []string{"A", "D"} {
+		forward := newStream(t, sourceSpec(customer, count), nil, []domain.SinkSpec{captureSinkSpec("received", "in")})
+		received := forward.sinks.sink(t, "received")
+		require.Eventually(t, func() bool { return len(arrived(received.received())) == 1 },
+			10*time.Second, 10*time.Millisecond, "customer %s", customer)
+		assert.Equal(t, []string{"shop/e2e/r" + customer}, arrived(received.received()))
+	}
+
+	// A source that assumes another count reads the wrong stream for some
+	// keys, so it refuses every stream of another partitioning. Keys whose
+	// partition has no stream at all fail with stream not found.
+	key := ""
+	for _, c := range partitionCustomers() {
+		if natspartition.Of(c, 2*count) < count {
+			key = c
+			break
+		}
+	}
+	require.NotEmpty(t, key, "a key whose partition exists with both counts")
+	src, err := natssource.New(sourceSpec(key, 2*count), validator.New(), discard())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = src.Stop() })
+	require.ErrorIs(t, src.Run(t.Context()), natspartition.ErrMismatch)
+}
+
+// metadataOf returns the partition metadata, without what NATS adds itself.
+func metadataOf(metadata map[string]string) map[string]string {
+	out := map[string]string{}
+	for _, key := range []string{natspartition.MetadataCount, natspartition.MetadataIndex} {
+		if value, ok := metadata[key]; ok {
+			out[key] = value
+		}
+	}
+	return out
+}
+
+func nonNil(m map[string][]string) map[string][]string {
+	if m == nil {
+		return map[string][]string{}
+	}
+	return m
 }
 
 func bySubject(t *testing.T, messages []*jetstream.RawStreamMsg) map[string][]string {

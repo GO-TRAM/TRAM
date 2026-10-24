@@ -92,6 +92,7 @@ Consumes events from a NATS JetStream stream that were published by Tram's [NATS
 | `subject` | string | Yes | - | Subject filter of the consumer; wildcards like `logs.*` are allowed |
 | `durable` | string | No | - | Name of a durable consumer. Without it, a temporary consumer is created |
 | `workers` | int | No | `1` | Number of messages processed concurrently (1-10000) |
+| `partition` | object | No | - | Reads the stream of a key from streams partitioned by the NATS sink: `count` (1-1024) as in the sink, and the required `key` |
 
 **Example:**
 
@@ -134,6 +135,27 @@ Consumes events from a NATS JetStream stream that were published by Tram's [NATS
 - A `batch` stage after the source holds up to `workers` messages, since every message waits for its batch to be delivered before it is acknowledged. To let batches fill up to `max_records` before their `timeout`, set `workers` to at least `max_records` divided by the records per message
 - The source sets the consumer's `MaxAckPending`, the unacknowledged messages JetStream hands out, to twice `workers` and at least 1,000, the JetStream default. The limit applies across all Tram replicas that share a durable consumer
 - Stopping or updating the source interrupts waiting for new messages right away; it only waits for messages that are being processed, which are still delivered and acknowledged
+- With `partition`, the source computes the partition of `key` like the [NATS sink](#partitioning) and replaces `{partition}` in `stream` and `subject` with it, so a source per key reads only the stream that holds the key. `stream` must contain `{partition}`; without `partition`, neither field may contain it
+- `count` must match the sink's. The source refuses a stream whose metadata names another count or partition and stays idle like with a missing stream. With a wrong count, the key's stream may also not exist at all
+
+**Example with partitioning by tenant:**
+
+```json
+{
+  "name": "tenant-123",
+  "type": "nats",
+  "spec": {
+    "url": "nats://localhost:4222",
+    "stream": "audit-{partition}",
+    "subject": "audit.{partition}.tenant-123",
+    "durable": "tenant-123",
+    "partition": {
+      "count": 8,
+      "key": "tenant-123"
+    }
+  }
+}
+```
 
 ---
 
@@ -494,6 +516,7 @@ Publishes OTLP-encoded events to NATS JetStream. Uses dynamic subject mapping wi
 | `replicas` | int | No | - | How many NATS servers store the stream, from 1 to 5. A new stream without it gets the server's default, 1 |
 | `discard` | string | No | `"old"` | What JetStream does when the stream reaches `size` or another limit: `"old"` deletes the oldest messages, `"new"` refuses new ones |
 | `storage` | string | No | `"file"` | Where JetStream stores the stream: `"file"` or `"memory"`. Fixed once the stream exists |
+| `partition` | object | No | - | Spreads records over several streams, see [Partitioning](#partitioning) |
 
 **Subject Configuration:**
 
@@ -513,6 +536,8 @@ Signals without an expression are not published by this sink.
 | `logs` | `logs` (payload), `resource` (Resource), `scope` (InstrumentationScope), `record` (LogRecord) |
 | `metrics` | `metrics` (payload), `resource`, `scope`, `metric` (Metric), `datapoint` (the data point; its type depends on the metric type) |
 | `traces` | `traces` (payload), `resource`, `scope`, `span` (Span) |
+
+With [partitioning](#partitioning), subject expressions also have `partition` (int), the partition of the record, data point or span.
 
 - Each expression is evaluated once per log record, metric data point and span. The payload variable holds only the current log record, metric or span with its resource and scope, so `[0]` indexes address it, e.g. `logs.resource_logs[0].scope_logs[0].log_records[0]`. For metrics it holds the whole metric with all its data points
 - `resource` and `scope` are empty messages when the payload has none. Field names follow the OTLP protobuf definitions, e.g. `record.severity_text`, `datapoint.attributes`
@@ -582,6 +607,47 @@ Signals without an expression are not published by this sink.
 - An event is rejected if a subject expression fails for one of its records, or resolves to an invalid subject: one with an empty token, whitespace or a wildcard. `get_attr` returns `""` for a missing attribute, so `'logs.' + ...get_attr('team')` gives the invalid `logs.` for records without it. The OTLP source answers with HTTP 422, the NATS source terminates the message instead of redelivering it
 - If a CEL expression fails to evaluate or returns a non-string value, the whole event is dropped with an error log and nothing of it is published
 - If publishing fails, the error is reported back to the source, e.g. the NATS source redelivers the message
+
+#### Partitioning
+
+A stream slows down with many subjects, and all its writes go through one NATS server. With `partition`, the sink spreads records over `count` streams by a key, e.g. the tenant, so each stream holds a part of the subjects and the streams can be led by different servers.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `count` | int | Yes | - | Number of streams, from 1 to 1024 |
+| `logs` | string | With `subject.logs` | - | CEL expression returning the key of a log record. Has the same variables as the subject expression, without `partition` |
+| `metrics` | string | With `subject.metrics` | - | CEL expression returning the key of a metric data point |
+| `traces` | string | With `subject.traces` | - | CEL expression returning the key of a span |
+
+- The partition of a key is its 32-bit FNV-1a hash modulo `count`. This never changes, so consumers can compute which stream holds a key. The [NATS Source](#nats-source) does so with its `partition` field
+- `{partition}` in `stream` and in every `register` subject is replaced by the partition number, so the sink sets up one stream per partition, e.g. `audit-0` to `audit-7` with the subjects `audit.0.>` to `audit.7.>`. Without `partition`, `{partition}` must not appear. All other stream settings, like `replicas` and `max_age`, apply to every stream
+- JetStream stores a message in the stream whose subjects cover it, so the subject expression has to put the partition into the subject, e.g. `'audit.' + string(partition) + '.' + ...`. An event with a subject that is not covered by its partition's `register` is rejected
+- An expression for the key that fails or does not return a string rejects the event. A missing attribute gives the key `""`, which is a valid key like any other
+- Each stream gets the metadata `tram.partition.count` and `tram.partition.index`. A sink refuses to start if a stream has metadata of another count or index, so streams of different partitionings are never mixed
+- Changing `count` moves keys to other streams. Data already stored stays in its old stream, where consumers of the new partitioning do not read it, so changing it is a migration. Choose `count` with room to grow
+
+**Example with partitioning by tenant:**
+
+```json
+{
+  "name": "audit_sink",
+  "type": "nats",
+  "from": "validator",
+  "spec": {
+    "url": "nats://localhost:4222",
+    "stream": "audit-{partition}",
+    "replicas": 3,
+    "partition": {
+      "count": 8,
+      "logs": "record.attributes.get_attr('tenant.id')"
+    },
+    "subject": {
+      "register": ["audit.{partition}.>"],
+      "logs": "'audit.' + string(partition) + '.' + record.attributes.get_attr('tenant.id')"
+    }
+  }
+}
+```
 
 ---
 

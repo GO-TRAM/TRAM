@@ -25,7 +25,14 @@ func NewWithoutConnection(logger *slog.Logger) (*NATS, error) {
 		return nil, err
 	}
 	stop, cancel := context.WithCancel(context.Background())
-	return &NATS{Source: b, logger: logger, stop: stop, cancel: cancel}, nil
+	return &NATS{
+		Source:  b,
+		stream:  "test",
+		subject: "test.>",
+		logger:  logger,
+		stop:    stop,
+		cancel:  cancel,
+	}, nil
 }
 
 func Consume(ctx context.Context, n *NATS, cons jetstream.Consumer, workers int) {
@@ -33,7 +40,22 @@ func Consume(ctx context.Context, n *NATS, cons jetstream.Consumer, workers int)
 }
 
 func ConsumerConfig(spec *Spec, workers int) jetstream.ConsumerConfig {
-	return consumerConfig(spec, workers)
+	return consumerConfig(spec, spec.Subject, workers)
+}
+
+type Target struct {
+	Stream  string
+	Subject string
+}
+
+// TargetOf returns the stream and subject the source with spec reads.
+func TargetOf(spec map[string]any) (Target, error) {
+	b, err := base.New[Spec]("nats", spec, validator.New())
+	if err != nil {
+		return Target{}, err
+	}
+	t, err := targetOf(b.Spec())
+	return Target{Stream: t.stream, Subject: t.subject}, err
 }
 
 func CancelReceiving(n *NATS) {

@@ -20,6 +20,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
+	"codeberg.org/eljoth/tram/internal/adapters/natspartition"
 	"codeberg.org/eljoth/tram/internal/adapters/sink/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 
@@ -47,6 +48,8 @@ const (
 	dataPointVariable = "datapoint"
 	spanVariable      = "span"
 
+	partitionVariable = "partition"
+
 	getAttrArguments = 2
 
 	// Without it, a publish whose acknowledgement is lost, e.g. while NATS
@@ -64,10 +67,13 @@ type NATS struct {
 	*base.Sink[Spec]
 	subjects
 
+	// Nil without partitioning.
+	partitions *partitions
+
 	logger    *slog.Logger
 	natsConn  *nats.Conn
 	jetstream jetstream.JetStream
-	stream    jetstream.Stream
+	streams   []jetstream.Stream
 }
 
 type subjects struct {
@@ -76,13 +82,21 @@ type subjects struct {
 	traces  cel.Program
 }
 
+type partitions struct {
+	count int
+	// keys returns the key an entry is partitioned by.
+	keys subjects
+	// registers holds the subjects of each partition's stream.
+	registers [][]string
+}
+
 func New(sink domain.SinkSpec, validator *validator.Validate, logger *slog.Logger) (*NATS, error) {
 	base, err := base.New[Spec](sink.Name, sink.From, sink.Spec, validator)
 	if err != nil {
 		return nil, err
 	}
 
-	compiled, err := compileSubjects(base.Spec().Subject)
+	compiled, parts, err := compile(base.Spec())
 	if err != nil {
 		return nil, err
 	}
@@ -100,23 +114,99 @@ func New(sink domain.SinkSpec, validator *validator.Validate, logger *slog.Logge
 		return nil, fmt.Errorf("failed to initialize JetStream: %w", err)
 	}
 
-	stream, err := setUpStream(context.Background(), js, base.Spec(), logger)
+	streams, err := setUpStreams(context.Background(), js, base.Spec(), logger)
 	if err != nil {
 		nc.Close()
 		return nil, err
 	}
 
 	return &NATS{
-		Sink:      base,
-		subjects:  compiled,
-		logger:    logger,
-		natsConn:  nc,
-		jetstream: js,
-		stream:    stream,
+		Sink:       base,
+		subjects:   compiled,
+		partitions: parts,
+		logger:     logger,
+		natsConn:   nc,
+		jetstream:  js,
+		streams:    streams,
 	}, nil
 }
 
-func compileSubjects(subject SubjectSpec) (subjects, error) {
+func compile(spec *Spec) (subjects, *partitions, error) {
+	if err := checkPartitioning(spec); err != nil {
+		return subjects{}, nil, err
+	}
+	compiled, err := compileSubjects(spec.Subject, spec.Partition != nil)
+	if err != nil || spec.Partition == nil {
+		return compiled, nil, err
+	}
+
+	keys, err := compileKeys(*spec.Partition)
+	if err != nil {
+		return subjects{}, nil, err
+	}
+	parts := &partitions{count: spec.Partition.Count, keys: keys}
+	for _, t := range targetsOf(spec) {
+		parts.registers = append(parts.registers, t.subjects)
+	}
+	return compiled, parts, nil
+}
+
+// checkPartitioning checks that the placeholder is used exactly where
+// partitioning needs it, and that every published signal has a key.
+func checkPartitioning(spec *Spec) error {
+	p := spec.Partition
+	if p == nil {
+		if natspartition.HasPlaceholder(spec.Stream) {
+			return fmt.Errorf("%w: stream %s has %s, but partition is not set",
+				ErrInvalidPartition, spec.Stream, natspartition.Placeholder)
+		}
+		for _, subject := range spec.Subject.Register {
+			if natspartition.HasPlaceholder(subject) {
+				return fmt.Errorf("%w: register subject %s has %s, but partition is not set",
+					ErrInvalidPartition, subject, natspartition.Placeholder)
+			}
+		}
+		return nil
+	}
+
+	if !natspartition.HasPlaceholder(spec.Stream) {
+		return fmt.Errorf("%w: stream %s needs %s to name one stream per partition",
+			ErrInvalidPartition, spec.Stream, natspartition.Placeholder)
+	}
+	for _, subject := range spec.Subject.Register {
+		if !natspartition.HasPlaceholder(subject) {
+			return fmt.Errorf("%w: register subject %s needs %s, since streams cannot share subjects",
+				ErrInvalidPartition, subject, natspartition.Placeholder)
+		}
+	}
+	for _, signal := range []struct{ name, subject, key string }{
+		{logsVariable, spec.Subject.Logs, p.Logs},
+		{metricsVariable, spec.Subject.Metrics, p.Metrics},
+		{tracesVariable, spec.Subject.Traces, p.Traces},
+	} {
+		switch {
+		case signal.subject != "" && signal.key == "":
+			return fmt.Errorf("%w: %s are published, but partition.%s is not set",
+				ErrInvalidPartition, signal.name, signal.name)
+		case signal.subject == "" && signal.key != "":
+			return fmt.Errorf("%w: partition.%s is set, but %s are not published",
+				ErrInvalidPartition, signal.name, signal.name)
+		}
+	}
+	return nil
+}
+
+func compileKeys(p PartitionSpec) (subjects, error) {
+	keys, err := compileSubjects(SubjectSpec{Logs: p.Logs, Metrics: p.Metrics, Traces: p.Traces}, false)
+	if err != nil {
+		return subjects{}, fmt.Errorf("%w: key: %w", ErrInvalidPartition, err)
+	}
+	return keys, nil
+}
+
+// compileSubjects compiles an expression per signal, with the variables of its
+// entries. With partitioned, the expressions can read the entry's partition.
+func compileSubjects(subject SubjectSpec, partitioned bool) (subjects, error) {
 	getAttrFunc := cel.Function("get_attr",
 		cel.MemberOverload("attributes_get_attr",
 			[]*cel.Type{
@@ -128,7 +218,7 @@ func compileSubjects(subject SubjectSpec) (subjects, error) {
 		),
 	)
 
-	baseEnv, err := cel.NewEnv(
+	opts := []cel.EnvOption{
 		cel.TypeDescs(
 			commonpb.File_opentelemetry_proto_common_v1_common_proto,
 			resourcepb.File_opentelemetry_proto_resource_v1_resource_proto,
@@ -137,7 +227,11 @@ func compileSubjects(subject SubjectSpec) (subjects, error) {
 			tracespb.File_opentelemetry_proto_trace_v1_trace_proto,
 		),
 		getAttrFunc,
-	)
+	}
+	if partitioned {
+		opts = append(opts, cel.Variable(partitionVariable, cel.IntType))
+	}
+	baseEnv, err := cel.NewEnv(opts...)
 	if err != nil {
 		return subjects{}, errors.Join(ErrCELEnvironmenInitialization, err)
 	}

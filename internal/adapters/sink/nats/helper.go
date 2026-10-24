@@ -14,6 +14,7 @@ import (
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	"google.golang.org/protobuf/proto"
 
+	"codeberg.org/eljoth/tram/internal/adapters/natspartition"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
@@ -49,9 +50,13 @@ type message struct {
 
 func (n *NATS) groupEventsBySubjects(event *domain.Event) ([]message, error) {
 	var messages []message
+	var keys subjects
+	if n.partitions != nil {
+		keys = n.partitions.keys
+	}
 
 	if event.Logs != nil && n.Spec().Subject.Logs != "" {
-		parts, err := domain.PartitionLogs(event.Logs, logSubject(n.logs))
+		parts, err := domain.PartitionLogs(event.Logs, logSubject(n.logs, n.partitioner(keys.logs)))
 		if err != nil {
 			return nil, fmt.Errorf("logs: %w", err)
 		}
@@ -61,7 +66,7 @@ func (n *NATS) groupEventsBySubjects(event *domain.Event) ([]message, error) {
 	}
 
 	if event.Metrics != nil && n.Spec().Subject.Metrics != "" {
-		parts, err := domain.PartitionMetrics(event.Metrics, metricSubject(n.metrics))
+		parts, err := domain.PartitionMetrics(event.Metrics, metricSubject(n.metrics, n.partitioner(keys.metrics)))
 		if err != nil {
 			return nil, fmt.Errorf("metrics: %w", err)
 		}
@@ -71,7 +76,7 @@ func (n *NATS) groupEventsBySubjects(event *domain.Event) ([]message, error) {
 	}
 
 	if event.Traces != nil && n.Spec().Subject.Traces != "" {
-		parts, err := domain.PartitionSpans(event.Traces, spanSubject(n.traces))
+		parts, err := domain.PartitionSpans(event.Traces, spanSubject(n.traces, n.partitioner(keys.traces)))
 		if err != nil {
 			return nil, fmt.Errorf("traces: %w", err)
 		}
@@ -95,7 +100,7 @@ func appendMessages[D any](messages []message, parts []domain.Part[D], event fun
 // only the entry. The payload is built once per scope.
 
 //nolint:dupl // Same shape as spanSubject, for another signal.
-func logSubject(program cel.Program) domain.LogKey {
+func logSubject(program cel.Program, part *partitioner) domain.LogKey {
 	vars := &activation{name: logsVariable}
 	var resourceIn *logspb.ResourceLogs
 	var scopeIn *logspb.ScopeLogs
@@ -112,12 +117,12 @@ func logSubject(program cel.Program) domain.LogKey {
 		}
 		current[0] = record
 		vars.record = record
-		return evalSubject(program, vars)
+		return resolveSubject(program, part, vars)
 	}
 }
 
 //nolint:dupl // Same shape as logSubject, for another signal.
-func spanSubject(program cel.Program) domain.SpanKey {
+func spanSubject(program cel.Program, part *partitioner) domain.SpanKey {
 	vars := &activation{name: tracesVariable}
 	var resourceIn *tracespb.ResourceSpans
 	var scopeIn *tracespb.ScopeSpans
@@ -134,12 +139,12 @@ func spanSubject(program cel.Program) domain.SpanKey {
 		}
 		current[0] = span
 		vars.span = span
-		return evalSubject(program, vars)
+		return resolveSubject(program, part, vars)
 	}
 }
 
 // metricSubject evaluates per data point. The payload holds the whole metric.
-func metricSubject(program cel.Program) domain.MetricKey {
+func metricSubject(program cel.Program, part *partitioner) domain.MetricKey {
 	vars := &activation{name: metricsVariable}
 	var resourceIn *metricspb.ResourceMetrics
 	var scopeIn *metricspb.ScopeMetrics
@@ -166,23 +171,85 @@ func metricSubject(program cel.Program) domain.MetricKey {
 		current[0] = m
 		vars.metric = m
 		vars.dataPoint = dataPoint
-		return evalSubject(program, vars)
+		return resolveSubject(program, part, vars)
 	}
 }
 
-func evalSubject(program cel.Program, vars *activation) (string, error) {
-	out, _, err := program.Eval(vars)
-	if err != nil {
-		return "", fmt.Errorf("failed to evaluate CEL: %w", err)
+// resolveSubject evaluates the subject of the entry in vars. With part, it
+// first sets the entry's partition and then checks that the subject belongs
+// to it.
+func resolveSubject(program cel.Program, part *partitioner, vars *activation) (string, error) {
+	if part == nil {
+		return evalSubject(program, vars)
 	}
-	subject, ok := out.Value().(string)
-	if !ok {
-		return "", fmt.Errorf("CEL expression returned %T instead of a string", out.Value())
+	key, err := evalString(part.key, vars)
+	if err != nil {
+		return "", fmt.Errorf("partition key: %w", err)
+	}
+	partition := natspartition.Of(key, part.count)
+	vars.partition = int64(partition)
+	subject, err := evalSubject(program, vars)
+	if err != nil {
+		return "", err
+	}
+	return subject, part.check(subject, partition)
+}
+
+func evalSubject(program cel.Program, vars *activation) (string, error) {
+	subject, err := evalString(program, vars)
+	if err != nil {
+		return "", err
 	}
 	if err = validSubject(subject); err != nil {
 		return "", err
 	}
 	return subject, nil
+}
+
+func evalString(program cel.Program, vars *activation) (string, error) {
+	out, _, err := program.Eval(vars)
+	if err != nil {
+		return "", fmt.Errorf("failed to evaluate CEL: %w", err)
+	}
+	value, ok := out.Value().(string)
+	if !ok {
+		return "", fmt.Errorf("CEL expression returned %T instead of a string", out.Value())
+	}
+	return value, nil
+}
+
+// partitioner checks the subjects of one signal of an event against the
+// partitions of their entries.
+type partitioner struct {
+	*partitions
+
+	key cel.Program
+	// checked holds the partition each subject was found in, so a subject is
+	// checked once per event.
+	checked map[string]int
+}
+
+// partitioner returns nil without partitioning.
+func (n *NATS) partitioner(key cel.Program) *partitioner {
+	if n.partitions == nil {
+		return nil
+	}
+	return &partitioner{partitions: n.partitions, key: key, checked: map[string]int{}}
+}
+
+// check returns an error if subject is not stored in the stream of partition.
+// JetStream picks the stream by subject, so a subject expression that ignores
+// the partition would otherwise put entries into another partition's stream.
+func (p *partitioner) check(subject string, partition int) error {
+	if checked, ok := p.checked[subject]; ok && checked == partition {
+		return nil
+	}
+	if !covered(p.registers[partition], []string{subject}) {
+		return fmt.Errorf("subject %q is not stored in partition %d, whose stream holds %v",
+			subject, partition, p.registers[partition])
+	}
+	p.checked[subject] = partition
+	return nil
 }
 
 func validSubject(subject string) error {
@@ -208,6 +275,7 @@ type activation struct {
 	metric    any
 	dataPoint proto.Message
 	span      any
+	partition int64
 
 	emptyResource *resourcepb.Resource
 	emptyScope    *commonpb.InstrumentationScope
@@ -249,6 +317,8 @@ func (a *activation) ResolveName(name string) (any, bool) {
 		return a.dataPoint, a.dataPoint != nil
 	case spanVariable:
 		return a.span, true
+	case partitionVariable:
+		return a.partition, true
 	}
 	return nil, false
 }
