@@ -29,6 +29,23 @@ func Limits(b *Batch) (int, time.Duration) {
 	return b.maxRecords, b.timeout
 }
 
+func OpenBytes(b *Batch) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.current == nil {
+		return 0
+	}
+	return b.current.bytes
+}
+
+func MaxBytes(b *Batch) int {
+	return b.maxBytes
+}
+
+func Size(event *domain.Event) int {
+	return size(event)
+}
+
 func Merge(events ...*domain.Event) *domain.Event {
 	entries := make([]*entry, len(events))
 	for i, e := range events {

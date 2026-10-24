@@ -20,6 +20,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
+	"codeberg.org/eljoth/tram/internal/adapters/natsconn"
 	"codeberg.org/eljoth/tram/internal/adapters/natspartition"
 	"codeberg.org/eljoth/tram/internal/adapters/sink/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
@@ -101,9 +102,9 @@ func New(sink domain.SinkSpec, validator *validator.Validate, logger *slog.Logge
 		return nil, err
 	}
 
-	nc, err := nats.Connect(base.Spec().URL)
+	nc, err := natsconn.Connect(base.Spec().URL, "sink "+sink.Name, logger.With(slog.String("sink", sink.Name)))
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
+		return nil, err
 	}
 
 	js, err := jetstream.New(nc,

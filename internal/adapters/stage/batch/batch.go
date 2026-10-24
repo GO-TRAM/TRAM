@@ -15,6 +15,7 @@ import (
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
+	"google.golang.org/protobuf/proto"
 
 	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
@@ -34,7 +35,9 @@ type Batch struct {
 	*base.Stage[Spec]
 
 	maxRecords int
-	timeout    time.Duration
+	// Zero without a limit.
+	maxBytes int
+	timeout  time.Duration
 
 	mu      sync.Mutex
 	current *batch
@@ -45,6 +48,7 @@ type Batch struct {
 type batch struct {
 	entries []*entry
 	records int
+	bytes   int
 	sealed  bool
 	timer   *time.Timer
 }
@@ -53,6 +57,7 @@ type entry struct {
 	ctx       context.Context
 	event     *domain.Event
 	records   int
+	bytes     int
 	cancelled bool
 	done      chan struct{}
 	err       error
@@ -83,6 +88,7 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*Batch, error) 
 	return &Batch{
 		Stage:      base,
 		maxRecords: maxRecords,
+		maxBytes:   base.Spec().MaxBytes,
 		timeout:    timeout,
 	}, nil
 }
@@ -99,6 +105,10 @@ func (b *Batch) Notify(ctx context.Context, event *domain.Event) error {
 	}
 
 	e := &entry{ctx: ctx, event: event, records: records, done: make(chan struct{})}
+	if b.maxBytes > 0 {
+		// Only measured with a limit, since it walks the whole event.
+		e.bytes = size(event)
+	}
 
 	b.mu.Lock()
 	if b.stopped {
@@ -106,18 +116,34 @@ func (b *Batch) Notify(ctx context.Context, event *domain.Event) error {
 		return ErrBatchStopped
 	}
 	current := b.current
+	// The batch is sent before the event would take it over max_bytes. An
+	// event over it by itself is sent alone.
+	var previous *batch
+	if current != nil && b.maxBytes > 0 && current.bytes > 0 && current.bytes+e.bytes > b.maxBytes {
+		previous = current
+		b.flushes.Add(1)
+		current = nil
+	}
 	if current == nil {
 		current = b.newBatch()
 	}
 	current.entries = append(current.entries, e)
 	current.records += records
-	full := current.records >= b.maxRecords
+	current.bytes += e.bytes
+	full := current.records >= b.maxRecords || (b.maxBytes > 0 && current.bytes >= b.maxBytes)
 	if full {
 		b.current = nil
 		b.flushes.Add(1)
 	}
 	b.mu.Unlock()
 
+	if previous != nil {
+		// Its callers wait for it, this caller only for its own batch.
+		go func() {
+			defer b.flushes.Done()
+			b.flush(previous)
+		}()
+	}
 	if full {
 		b.flush(current)
 		b.flushes.Done()
@@ -134,6 +160,7 @@ func (b *Batch) Notify(ctx context.Context, event *domain.Event) error {
 	if !sealed {
 		e.cancelled = true
 		current.records -= e.records
+		current.bytes -= e.bytes
 	}
 	b.mu.Unlock()
 
@@ -203,6 +230,13 @@ func (b *Batch) Stop() error {
 	}
 	b.flushes.Wait()
 	return b.Stage.Stop()
+}
+
+// size is the encoded size of the event's data. The merged data of a batch is
+// as large as the data of its events together, since OTLP data is a list of
+// resource entries.
+func size(event *domain.Event) int {
+	return proto.Size(event.Logs) + proto.Size(event.Metrics) + proto.Size(event.Traces)
 }
 
 func merge(entries []*entry) *domain.Event {

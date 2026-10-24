@@ -135,6 +135,7 @@ Consumes events from a NATS JetStream stream that were published by Tram's [NATS
 - A `batch` stage after the source holds up to `workers` messages, since every message waits for its batch to be delivered before it is acknowledged. To let batches fill up to `max_records` before their `timeout`, set `workers` to at least `max_records` divided by the records per message
 - The source sets the consumer's `MaxAckPending`, the unacknowledged messages JetStream hands out, to twice `workers` and at least 1,000, the JetStream default. The limit applies across all Tram replicas that share a durable consumer
 - Stopping or updating the source interrupts waiting for new messages right away; it only waits for messages that are being processed, which are still delivered and acknowledged
+- A lost connection to NATS is retried every 2 seconds, with up to 1 second of jitter, for as long as the source runs, so the source continues after any outage. Acknowledgements that fail while disconnected are not repeated; those messages are redelivered after their ack wait
 - With `partition`, the source computes the partition of `key` like the [NATS sink](#partitioning) and replaces `{partition}` in `stream` and `subject` with it, so a source per key reads only the stream that holds the key. `stream` must contain `{partition}`; without `partition`, neither field may contain it
 - `count` must match the sink's. The source refuses a stream whose metadata names another count or partition and stays idle like with a missing stream. With a wrong count, the key's stream may also not exist at all
 
@@ -325,6 +326,7 @@ Merges events that arrive concurrently into one event, so downstream components 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `max_records` | int | No | `8192` | Flushes once the batch holds at least this many records (log records, metric data points and spans). Events are never split, so a batch can exceed it by the size of the last event |
+| `max_bytes` | int | No | - | Flushes a batch before the next event would take it over this many bytes of encoded OTLP data. Without it, the size is not limited |
 | `timeout` | string | No | `"200ms"` | Flushes a batch this long after its first event arrived |
 
 **Example:**
@@ -347,6 +349,7 @@ Merges events that arrive concurrently into one event, so downstream components 
 - Behind an OTLP source, `timeout` has to stay below the source's `delivery_timeout` (8s by default), together with the other `batch` and `delay` stages on the way to a sink; otherwise the stream is rejected, see [Hold Times](#hold-times)
 - If a caller's context is cancelled (e.g. the OTLP client disconnects or the OTLP source's `delivery_timeout` expires) before the batch flushes, its event is withdrawn and not delivered. Once the flush has started, the event is delivered and the caller waits for the result
 - A delivery error, including a rejection by a later stage, applies to every event in the batch. Place `cel_validator` stages with `on_mismatch: reject` before the batch, so one invalid event does not reject the others
+- `max_bytes` keeps batches below a limit downstream, e.g. the NATS server's `max_payload` (1 MB by default) or the request size a destination accepts. It counts the protobuf encoding of the data, which is what the NATS and OTLP sinks send uncompressed. An event that is larger by itself is sent alone, since events are never split, so the limit downstream can still be exceeded by single large requests. Measuring costs a pass over every event, so it is only done with `max_bytes` set
 - Events are merged by concatenating their resource entries. Resources and scopes that appear in several events are kept as separate entries, which OTLP allows
 - On shutdown, the open batch is delivered before downstream stages and sinks stop
 
@@ -607,6 +610,7 @@ With [partitioning](#partitioning), subject expressions also have `partition` (i
 - An event is rejected if a subject expression fails for one of its records, or resolves to an invalid subject: one with an empty token, whitespace or a wildcard. `get_attr` returns `""` for a missing attribute, so `'logs.' + ...get_attr('team')` gives the invalid `logs.` for records without it. The OTLP source answers with HTTP 422, the NATS source terminates the message instead of redelivering it
 - If a CEL expression fails to evaluate or returns a non-string value, the whole event is dropped with an error log and nothing of it is published
 - If publishing fails, the error is reported back to the source, e.g. the NATS source redelivers the message
+- A lost connection to NATS is retried every 2 seconds, with up to 1 second of jitter, for as long as the sink runs. While disconnected, publishing fails at once instead of being buffered, so the OTLP source answers with `503` and clients retry until NATS is back
 
 #### Partitioning
 

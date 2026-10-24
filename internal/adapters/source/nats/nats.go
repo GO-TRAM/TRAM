@@ -17,6 +17,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
+	"codeberg.org/eljoth/tram/internal/adapters/natsconn"
 	"codeberg.org/eljoth/tram/internal/adapters/natspartition"
 	"codeberg.org/eljoth/tram/internal/adapters/source/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
@@ -68,9 +69,9 @@ func New(source domain.SourceSpec, validator *validator.Validate, logger *slog.L
 		return nil, err
 	}
 
-	nc, err := nats.Connect(base.Spec().URL)
+	nc, err := natsconn.Connect(base.Spec().URL, "source "+source.Name, logger.With(slog.String("source", source.Name)))
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
+		return nil, err
 	}
 
 	js, err := jetstream.New(nc)

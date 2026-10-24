@@ -119,6 +119,7 @@ func TestNew(t *testing.T) {
 			expectErrIs: batch.ErrInvalidTimeout,
 		},
 		{name: "negative max records", spec: map[string]any{"max_records": -1}, expectErr: true},
+		{name: "negative max bytes", spec: map[string]any{"max_bytes": -1}, expectErr: true},
 	}
 
 	for _, c := range cases {
@@ -198,6 +199,100 @@ func TestEventLargerThanMaxRecordsIsFlushedWhole(t *testing.T) {
 
 	require.NoError(t, receive(t, notifyAsync(t.Context(), b, logs(10))))
 	assert.Equal(t, []int{10}, rec.delivered())
+}
+
+func TestNewMaxBytes(t *testing.T) {
+	t.Parallel()
+
+	b, err := batch.New(domain.StageSpec{Name: "batch", Spec: map[string]any{"max_bytes": 1000}}, validator.New())
+	require.NoError(t, err)
+	assert.Equal(t, 1000, batch.MaxBytes(b))
+
+	b, err = batch.New(domain.StageSpec{Name: "batch"}, validator.New())
+	require.NoError(t, err)
+	assert.Zero(t, batch.MaxBytes(b), "no limit by default")
+}
+
+// The limit holds for what the batch sends, so the size of the merged event
+// must be the sum of its events' sizes.
+func TestSizeOfMergedEventIsTheSumOfItsEvents(t *testing.T) {
+	t.Parallel()
+
+	a, b := logs(3), logs(5)
+	traces := &domain.Event{Traces: otlpgen.Traces(otlpgen.Shape{Records: 4, Resources: 2, Teams: 1})}
+	both := &domain.Event{Logs: logs(2).Logs, Traces: traces.Traces}
+
+	assert.Equal(t, batch.Size(a)+batch.Size(b), batch.Size(batch.Merge(a, b)))
+	assert.Equal(t, batch.Size(a)+batch.Size(both)+batch.Size(traces), batch.Size(batch.Merge(a, both, traces)))
+	assert.Zero(t, batch.Size(&domain.Event{}))
+}
+
+func TestFlushOnMaxBytes(t *testing.T) {
+	t.Parallel()
+
+	size := batch.Size(logs(2))
+	rec := &recorder{}
+	b := newBatch(t, map[string]any{"max_bytes": 2 * size, "timeout": "1h"}, rec)
+
+	first := notifyAsync(t.Context(), b, logs(2))
+	waitForRecords(t, b, 2)
+	second := notifyAsync(t.Context(), b, logs(2))
+
+	require.NoError(t, receive(t, first))
+	require.NoError(t, receive(t, second))
+	assert.Equal(t, []int{4}, rec.delivered(), "a batch that reaches max_bytes is sent")
+}
+
+func TestBatchIsSentBeforeExceedingMaxBytes(t *testing.T) {
+	t.Parallel()
+
+	size := batch.Size(logs(2))
+	rec := &recorder{}
+	b := newBatch(t, map[string]any{"max_bytes": size + size/2, "timeout": "1h"}, rec)
+
+	first := notifyAsync(t.Context(), b, logs(2))
+	waitForRecords(t, b, 2)
+	second := notifyAsync(t.Context(), b, logs(2))
+
+	require.NoError(t, receive(t, first), "the open batch is sent before the second event would exceed max_bytes")
+	assert.Equal(t, []int{2}, rec.delivered())
+	waitForRecords(t, b, 2)
+
+	require.NoError(t, b.Stop())
+	require.NoError(t, receive(t, second))
+	assert.Equal(t, []int{2, 2}, rec.delivered())
+}
+
+func TestEventLargerThanMaxBytesIsSentAlone(t *testing.T) {
+	t.Parallel()
+
+	rec := &recorder{}
+	b := newBatch(t, map[string]any{"max_bytes": 1, "timeout": "1h"}, rec)
+
+	require.NoError(t, receive(t, notifyAsync(t.Context(), b, logs(5))))
+	require.NoError(t, receive(t, notifyAsync(t.Context(), b, logs(3))))
+	assert.Equal(t, []int{5, 3}, rec.delivered())
+}
+
+func TestCancelWithdrawsBytes(t *testing.T) {
+	t.Parallel()
+
+	size := batch.Size(logs(2))
+	rec := &recorder{}
+	b := newBatch(t, map[string]any{"max_bytes": 10 * size, "timeout": "1h"}, rec)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancelled := notifyAsync(ctx, b, logs(2))
+	waitForRecords(t, b, 2)
+	kept := notifyAsync(t.Context(), b, logs(2))
+	waitForRecords(t, b, 4)
+
+	cancel()
+	require.ErrorIs(t, receive(t, cancelled), context.Canceled)
+	assert.Equal(t, size, batch.OpenBytes(b), "the withdrawn event no longer counts")
+
+	require.NoError(t, b.Stop())
+	require.NoError(t, receive(t, kept))
 }
 
 func TestEmptyEventIsNotBatched(t *testing.T) {
