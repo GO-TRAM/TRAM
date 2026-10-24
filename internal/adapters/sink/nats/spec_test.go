@@ -6,6 +6,7 @@
 package nats_test
 
 import (
+	"maps"
 	"testing"
 
 	natssink "codeberg.org/eljoth/tram/internal/adapters/sink/nats"
@@ -25,8 +26,53 @@ func TestSpecValidation(t *testing.T) {
 		compression string
 		retention   string
 		maxAge      string
+		extra       map[string]any
 		expectErr   bool
 	}{
+		{
+			name:    "replicas",
+			subject: map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			extra:   map[string]any{"replicas": 3},
+		},
+		{
+			name:      "too many replicas",
+			subject:   map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			extra:     map[string]any{"replicas": 6},
+			expectErr: true,
+		},
+		{
+			name:      "negative replicas",
+			subject:   map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			extra:     map[string]any{"replicas": -1},
+			expectErr: true,
+		},
+		{
+			name:    "new discard",
+			subject: map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			extra:   map[string]any{"discard": "new"},
+		},
+		{
+			name:      "unknown discard",
+			subject:   map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			extra:     map[string]any{"discard": "all"},
+			expectErr: true,
+		},
+		{
+			name:    "file storage",
+			subject: map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			extra:   map[string]any{"storage": "file"},
+		},
+		{
+			name:    "memory storage",
+			subject: map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			extra:   map[string]any{"storage": "memory"},
+		},
+		{
+			name:      "unknown storage",
+			subject:   map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			extra:     map[string]any{"storage": "disk"},
+			expectErr: true,
+		},
 		{
 			name:        "s2 compression",
 			subject:     map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
@@ -107,6 +153,7 @@ func TestSpecValidation(t *testing.T) {
 			if c.maxAge != "" {
 				spec["max_age"] = c.maxAge
 			}
+			maps.Copy(spec, c.extra)
 			_, err := base.New[natssink.Spec]("nats", "src", spec, validator.New())
 			if c.expectErr {
 				assert.Error(t, err)

@@ -90,6 +90,8 @@ func configFromSpec(spec *Spec) (jetstream.StreamConfig, error) {
 		return jetstream.StreamConfig{}, err
 	}
 	compression, _ := compressionFromSpec(spec)
+	discard, _ := discardFromSpec(spec)
+	storage, _ := storageFromSpec(spec)
 	return jetstream.StreamConfig{
 		Name:        spec.Stream,
 		Subjects:    spec.Subject.Register,
@@ -97,7 +99,43 @@ func configFromSpec(spec *Spec) (jetstream.StreamConfig, error) {
 		MaxAge:      maxAge,
 		MaxBytes:    spec.Size,
 		Compression: compression,
+		Replicas:    spec.Replicas,
+		Discard:     discard,
+		Storage:     storage,
 	}, nil
+}
+
+// discardFromSpec returns the discard policy of the spec and whether it sets
+// one. DiscardOld is the zero value, so it cannot tell by itself.
+func discardFromSpec(spec *Spec) (jetstream.DiscardPolicy, bool) {
+	switch spec.Discard {
+	case "old":
+		return jetstream.DiscardOld, true
+	case "new":
+		return jetstream.DiscardNew, true
+	default:
+		return jetstream.DiscardOld, false
+	}
+}
+
+func discardName(policy jetstream.DiscardPolicy) string {
+	if policy == jetstream.DiscardNew {
+		return "new"
+	}
+	return "old"
+}
+
+// storageFromSpec returns the storage of the spec and whether it sets one.
+// FileStorage is the zero value, so it cannot tell by itself.
+func storageFromSpec(spec *Spec) (jetstream.StorageType, bool) {
+	switch spec.Storage {
+	case "file":
+		return jetstream.FileStorage, true
+	case "memory":
+		return jetstream.MemoryStorage, true
+	default:
+		return jetstream.FileStorage, false
+	}
 }
 
 func compressionFromSpec(spec *Spec) (jetstream.StoreCompression, bool) {
@@ -140,6 +178,14 @@ func mergeStreamConfig(existing jetstream.StreamConfig, spec *Spec) (jetstream.S
 		return existing, streamUpdate{}, err
 	}
 
+	// The storage is fixed when a stream is created. Using a stream with
+	// another storage would break what the spec asks for, e.g. that acked
+	// messages survive a restart.
+	if storage, ok := storageFromSpec(spec); ok && existing.Storage != storage {
+		return existing, streamUpdate{}, fmt.Errorf("%w: stream %s uses %s storage, the sink requires %s",
+			ErrStorageMismatch, spec.Stream, strings.ToLower(existing.Storage.String()), spec.Storage)
+	}
+
 	merged := existing
 	merged.Subjects = slices.Clone(existing.Subjects)
 	var update streamUpdate
@@ -168,6 +214,17 @@ func mergeStreamConfig(existing jetstream.StreamConfig, spec *Spec) (jetstream.S
 		applyLimit(&update, replacedIf(merged.Compression != jetstream.NoCompression, "compression %s -> %s",
 			strings.ToLower(merged.Compression.String()), spec.Compression))
 		merged.Compression = compression
+	}
+	// JetStream reports the replicas of every stream, so a different value
+	// always replaces one.
+	if spec.Replicas != 0 && merged.Replicas != spec.Replicas {
+		applyLimit(&update, replacedIf(merged.Replicas > 0, "replicas %d -> %d", merged.Replicas, spec.Replicas))
+		merged.Replicas = spec.Replicas
+	}
+	if discard, ok := discardFromSpec(spec); ok && merged.Discard != discard {
+		applyLimit(&update, replacedIf(merged.Discard != jetstream.DiscardOld, "discard %s -> %s",
+			discardName(merged.Discard), spec.Discard))
+		merged.Discard = discard
 	}
 
 	return merged, update, nil

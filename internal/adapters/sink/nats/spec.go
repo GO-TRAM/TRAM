@@ -13,6 +13,9 @@ type Spec struct {
 	MaxAge      string      `json:"max_age"     validate:"omitempty"`
 	Size        int64       `json:"size"`
 	Compression string      `json:"compression" validate:"omitempty,oneof=none s2"`
+	Replicas    int         `json:"replicas"    validate:"omitempty,min=1,max=5"`
+	Discard     string      `json:"discard"     validate:"omitempty,oneof=old new"`
+	Storage     string      `json:"storage"     validate:"omitempty,oneof=file memory"`
 }
 
 type SubjectSpec struct {

@@ -491,6 +491,9 @@ Publishes OTLP-encoded events to NATS JetStream. Uses dynamic subject mapping wi
 | `max_age` | string | No | - | Maximum age for messages in the stream as a Go duration (e.g., `"24h"`, `"168h"`; days are not supported) |
 | `size` | int | No | - | Maximum stream size in bytes |
 | `compression` | string | No | - | How JetStream compresses the stream on disk: `"s2"` or `"none"` |
+| `replicas` | int | No | - | How many NATS servers store the stream, from 1 to 5. A new stream without it gets the server's default, 1 |
+| `discard` | string | No | `"old"` | What JetStream does when the stream reaches `size` or another limit: `"old"` deletes the oldest messages, `"new"` refuses new ones |
+| `storage` | string | No | `"file"` | Where JetStream stores the stream: `"file"` or `"memory"`. Fixed once the stream exists |
 
 **Subject Configuration:**
 
@@ -565,8 +568,11 @@ Signals without an expression are not published by this sink.
 ```
 
 **Behavior Notes:**
-- When the stream is created in Tram, the sink creates a missing JetStream stream from `register`, `retention`, `max_age`, `size` and `compression`. An existing stream is only extended: `register` subjects it does not cover yet are added, and `retention`, `max_age`, `size` and `compression` are applied if set. Other settings, limits that are not set, and the subjects of other sinks or writers are kept, so several sinks can share a stream and it can be configured outside Tram
-- Subjects are never removed from a stream; removing one from `register` leaves it on the stream. Set `retention`, `size` and `compression` in one sink only, since sinks with different values replace each other's when they start
+- When the stream is created in Tram, the sink creates a missing JetStream stream from `register`, `retention`, `max_age`, `size`, `compression`, `replicas`, `discard` and `storage`. An existing stream is only extended: `register` subjects it does not cover yet are added, and `retention`, `max_age`, `size`, `compression`, `replicas` and `discard` are applied if set. Other settings, limits that are not set, and the subjects of other sinks or writers are kept, so several sinks can share a stream and it can be configured outside Tram
+- JetStream cannot change the storage of an existing stream. If `storage` is set and the stream has another one, the sink is not created and the Tram stream fails with an error, instead of the sink writing to a stream that does not keep its messages the way it asks for
+- `replicas` above 1 needs a NATS cluster with at least that many JetStream servers; otherwise creating or updating the stream fails. Changing it on an existing stream makes JetStream add or remove copies
+- Subjects are never removed from a stream; removing one from `register` leaves it on the stream. Set `retention`, `size`, `compression`, `replicas` and `discard` in one sink only, since sinks with different values replace each other's when they start
+- With `discard: "old"`, a stream that reaches a limit deletes its oldest messages without telling anyone. With `"new"`, JetStream refuses the publish instead; the event fails and the source retries it, e.g. the OTLP source answers with `503`. Use `"new"` where no message may be lost to a limit, like audit logs
 - The `retention` policy controls when acknowledged messages are removed: `"limits"` (default) keeps all messages until stream limits like `max_age`, `max_bytes` or `max_msgs` are reached, `"interest"` removes messages when all consumers have acknowledged them, and `"workqueue"` removes messages when the first consumer acknowledges them. The `max_age` setting applies to all messages regardless of acknowledgment status
 - Compression saves disk space and costs CPU on the NATS server; how much it saves depends on the data. Changing it affects only data written afterwards. `size` counts the messages uncompressed
 - An event becomes one message per subject. The sink publishes them all at once and reports success once JetStream has acknowledged every one; if one fails or is not acknowledged within 10 seconds, the event fails and the source retries it, so messages already stored are stored again

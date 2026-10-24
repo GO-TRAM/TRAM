@@ -15,11 +15,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	natssink "codeberg.org/eljoth/tram/internal/adapters/sink/nats"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/natstest"
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
@@ -141,6 +143,9 @@ func TestNATS(t *testing.T) {
 		spec["max_age"] = "4h"
 		spec["size"] = float64(1 << 30)
 		spec["compression"] = "s2"
+		spec["replicas"] = float64(1)
+		spec["discard"] = "new"
+		spec["storage"] = "file"
 		p := newPipeline(t, nil, []domain.SinkSpec{{Name: "out", Type: "nats", From: "in", Spec: spec}})
 
 		require.Equal(t, http.StatusOK, p.post(t, request("shop", rec{"r1", "A"}, rec{"r2", "B"}), 10*time.Second))
@@ -157,6 +162,27 @@ func TestNATS(t *testing.T) {
 		assert.Equal(t, jetstream.LimitsPolicy, config.Retention)
 		assert.Equal(t, 4*time.Hour, config.MaxAge)
 		assert.Equal(t, int64(1<<30), config.MaxBytes)
+		assert.Equal(t, 1, config.Replicas)
+		assert.Equal(t, jetstream.DiscardNew, config.Discard)
+		assert.Equal(t, jetstream.FileStorage, config.Storage)
+	})
+
+	t.Run("sink refuses a stream with other storage", func(t *testing.T) {
+		t.Parallel()
+
+		out := n.stream("memory")
+		_, err := n.js.CreateStream(t.Context(), jetstream.StreamConfig{
+			Name:     out,
+			Subjects: []string{out + ".>"},
+			Storage:  jetstream.MemoryStorage,
+		})
+		require.NoError(t, err)
+
+		spec := n.sinkSpec(out, map[string]any{"logs": fmt.Sprintf("'%s.l'", out)})
+		spec["storage"] = "file"
+		_, err = natssink.New(domain.SinkSpec{Name: "out", Type: "nats", From: "in", Spec: spec},
+			validator.New(), discard())
+		require.ErrorIs(t, err, natssink.ErrStorageMismatch)
 	})
 
 	t.Run("sink to source round trip", func(t *testing.T) {

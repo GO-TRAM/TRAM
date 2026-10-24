@@ -257,4 +257,76 @@ func TestMergeStreamConfig(t *testing.T) {
 		assert.False(t, update.Changed)
 		assert.Equal(t, jetstream.InterestPolicy, merged.Retention)
 	})
+
+	t.Run("replacing replicas is reported", func(t *testing.T) {
+		t.Parallel()
+
+		s := spec("logs.>")
+		s.Replicas = 1
+		merged, update, err := natssink.MergeStreamConfig(existing(), s)
+		require.NoError(t, err)
+		assert.True(t, update.Changed)
+		assert.Equal(t, 1, merged.Replicas)
+		assert.Equal(t, []string{"replicas 3 -> 1"}, update.ReplacedLimits)
+	})
+
+	t.Run("same replicas change nothing", func(t *testing.T) {
+		t.Parallel()
+
+		s := spec("logs.>")
+		s.Replicas = 3
+		_, update, err := natssink.MergeStreamConfig(existing(), s)
+		require.NoError(t, err)
+		assert.False(t, update.Changed)
+	})
+
+	// DiscardOld is the zero value of the policy, so it must still count as
+	// set when the spec names it.
+	t.Run("old discard replaces new", func(t *testing.T) {
+		t.Parallel()
+
+		s := spec("logs.>")
+		s.Discard = "old"
+		merged, update, err := natssink.MergeStreamConfig(existing(), s)
+		require.NoError(t, err)
+		assert.True(t, update.Changed)
+		assert.Equal(t, jetstream.DiscardOld, merged.Discard)
+		assert.Equal(t, []string{"discard new -> old"}, update.ReplacedLimits)
+	})
+
+	t.Run("setting discard from the default replaces nothing", func(t *testing.T) {
+		t.Parallel()
+
+		in := existing()
+		in.Discard = jetstream.DiscardOld
+		s := spec("logs.>")
+		s.Discard = "new"
+		merged, update, err := natssink.MergeStreamConfig(in, s)
+		require.NoError(t, err)
+		assert.True(t, update.Changed)
+		assert.Equal(t, jetstream.DiscardNew, merged.Discard)
+		assert.Empty(t, update.ReplacedLimits)
+	})
+
+	t.Run("matching storage changes nothing", func(t *testing.T) {
+		t.Parallel()
+
+		s := spec("logs.>")
+		s.Storage = "memory"
+		_, update, err := natssink.MergeStreamConfig(existing(), s)
+		require.NoError(t, err)
+		assert.False(t, update.Changed)
+	})
+
+	// FileStorage is the zero value, so requiring it of a memory stream must
+	// still fail.
+	t.Run("different storage fails", func(t *testing.T) {
+		t.Parallel()
+
+		s := spec("logs.>")
+		s.Storage = "file"
+		_, _, err := natssink.MergeStreamConfig(existing(), s)
+		require.ErrorIs(t, err, natssink.ErrStorageMismatch)
+		assert.ErrorContains(t, err, "stream telemetry uses memory storage, the sink requires file")
+	})
 }
