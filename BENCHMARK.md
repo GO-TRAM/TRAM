@@ -21,7 +21,7 @@ Absolute numbers depend on the machine, its load and the network to NATS, so tre
 <!-- BEGIN benchreport:environment -->
 | | |
 |---|---|
-| Commit | `c4c1bab (with uncommitted changes)` |
+| Commit | `e28181f (with uncommitted changes)` |
 | Date | 2026-10-15 |
 | CPU | 13th Gen Intel(R) Core(TM) i7-13700K |
 | Go | go1.27.2 |
@@ -47,57 +47,57 @@ Configuration used in all scenarios:
 
 | Callers | Records per event | Records/s | Events/s | CPU per record | Records/s per core | p50 latency | p99 latency | Allocs per record | Spread |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | 1 (1 service) | 12 k | 12 k | 87.10 µs | 11 k | 0.08 ms | 0.20 ms | 205 | ±4% |
-| 1 | 100 (1 service) | 188 k | 1.9 k | 7.67 µs | 130 k | 0.45 ms | 0.97 ms | 54 | ±3% |
-| 1 | 1000 (10 services) | 247 k | 247 | 6.09 µs | 164 k | 3.57 ms | 5.87 ms | 53 | ±3% |
-| 4 | 1 (1 service) | 35 k | 35 k | 87.08 µs | 11 k | 0.11 ms | 0.31 ms | 205 | ±3% |
-| 4 | 100 (1 service) | 602 k | 6.0 k | 7.87 µs | 127 k | 0.65 ms | 1.13 ms | 54 | ±2% |
-| 4 | 1000 (10 services) | 859 k | 859 | 6.04 µs | 166 k | 4.37 ms | 6.53 ms | 53 | ±0% |
-| 8 | 1 (1 service) | 52 k | 52 k | 97.71 µs | 10 k | 0.14 ms | 0.38 ms | 205 | ±1% |
-| 8 | 100 (1 service) | 909 k | 9.1 k | 8.46 µs | 118 k | 0.89 ms | 1.38 ms | 54 | ±1% |
-| 8 | 1000 (10 services) | 1.48 M | 1.5 k | 6.19 µs | 162 k | 5.21 ms | 7.40 ms | 53 | ±0% |
+| 1 | 1 (1 service) | 12 k | 12 k | 83.43 µs | 12 k | 0.07 ms | 0.18 ms | 205 | ±5% |
+| 1 | 100 (1 service) | 192 k | 1.9 k | 7.50 µs | 133 k | 0.44 ms | 0.97 ms | 54 | ±2% |
+| 1 | 1000 (10 services) | 251 k | 251 | 6.03 µs | 166 k | 3.56 ms | 5.82 ms | 53 | ±2% |
+| 4 | 1 (1 service) | 35 k | 35 k | 87.39 µs | 11 k | 0.11 ms | 0.31 ms | 205 | ±2% |
+| 4 | 100 (1 service) | 601 k | 6.0 k | 7.91 µs | 126 k | 0.66 ms | 1.13 ms | 54 | ±2% |
+| 4 | 1000 (10 services) | 862 k | 862 | 6.04 µs | 166 k | 4.39 ms | 6.46 ms | 53 | ±1% |
+| 8 | 1 (1 service) | 52 k | 52 k | 98.44 µs | 10 k | 0.14 ms | 0.38 ms | 206 | ±1% |
+| 8 | 100 (1 service) | 909 k | 9.1 k | 8.44 µs | 118 k | 0.89 ms | 1.40 ms | 54 | ±1% |
+| 8 | 1000 (10 services) | 1.48 M | 1.5 k | 6.17 µs | 162 k | 5.21 ms | 7.35 ms | 53 | ±0% |
 
 #### `otlp-batch-nats`: OTLP → batch → NATS
 
 | Callers | Records per event | Records/s | Events/s | CPU per record | Records/s per core | p50 latency | p99 latency | Allocs per record | Spread |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | 1 (1 service) | 96 | 96 | 318.91 µs | 3.1 k | 10.41 ms | 10.88 ms | 220 | ±1% |
-| 1 | 100 (1 service) | 9.0 k | 90 | 11.56 µs | 87 k | 11.03 ms | 11.73 ms | 54 | ±1% |
-| 1 | 1000 (10 services) | 241 k | 240 | 6.26 µs | 160 k | 3.74 ms | 6.00 ms | 53 | ±3% |
-| 4 | 1 (1 service) | 377 | 377 | 192.67 µs | 5.2 k | 10.53 ms | 10.87 ms | 188 | ±0% |
-| 4 | 100 (1 service) | 34 k | 341 | 9.52 µs | 105 k | 11.56 ms | 12.67 ms | 54 | ±0% |
-| 4 | 1000 (10 services) | 859 k | 859 | 6.05 µs | 165 k | 4.38 ms | 6.46 ms | 53 | ±2% |
-| 8 | 1 (1 service) | 754 | 754 | 173.22 µs | 5.8 k | 10.57 ms | 11.00 ms | 183 | ±1% |
-| 8 | 100 (1 service) | 62 k | 621 | 9.43 µs | 106 k | 12.70 ms | 14.11 ms | 54 | ±1% |
-| 8 | 1000 (10 services) | 1.47 M | 1.5 k | 6.25 µs | 160 k | 5.25 ms | 7.42 ms | 53 | ±1% |
+| 1 | 1 (1 service) | 95 | 95 | 277.90 µs | 3.6 k | 10.45 ms | 11.04 ms | 220 | ±1% |
+| 1 | 100 (1 service) | 9.1 k | 90 | 12.18 µs | 82 k | 11.04 ms | 11.80 ms | 54 | ±0% |
+| 1 | 1000 (10 services) | 245 k | 245 | 6.18 µs | 162 k | 3.65 ms | 5.97 ms | 53 | ±4% |
+| 4 | 1 (1 service) | 378 | 378 | 194.73 µs | 5.1 k | 10.50 ms | 10.89 ms | 188 | ±1% |
+| 4 | 100 (1 service) | 34 k | 341 | 9.48 µs | 105 k | 11.59 ms | 12.49 ms | 54 | ±0% |
+| 4 | 1000 (10 services) | 853 k | 852 | 6.11 µs | 164 k | 4.41 ms | 6.53 ms | 53 | ±0% |
+| 8 | 1 (1 service) | 749 | 749 | 181.13 µs | 5.5 k | 10.58 ms | 11.03 ms | 183 | ±1% |
+| 8 | 100 (1 service) | 62 k | 619 | 9.52 µs | 105 k | 13.10 ms | 14.34 ms | 54 | ±1% |
+| 8 | 1000 (10 services) | 1.48 M | 1.5 k | 6.22 µs | 161 k | 5.22 ms | 7.38 ms | 53 | ±0% |
 
 #### `otlp-split-nats`: OTLP → 2 × cel_filter → 2 × NATS
 
 | Callers | Records per event | Records/s | Events/s | CPU per record | Records/s per core | p50 latency | p99 latency | Allocs per record | Spread |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | 1 (1 service) | 8.8 k | 8.8 k | 125.17 µs | 8.0 k | 0.11 ms | 0.23 ms | 250 | ±3% |
-| 1 | 100 (1 service) | 141 k | 1.4 k | 13.50 µs | 74 k | 0.70 ms | 1.15 ms | 88 | ±1% |
-| 1 | 1000 (10 services) | 173 k | 173 | 11.75 µs | 85 k | 6.12 ms | 6.95 ms | 86 | ±1% |
-| 4 | 1 (1 service) | 28 k | 28 k | 115.64 µs | 8.6 k | 0.13 ms | 0.35 ms | 251 | ±6% |
-| 4 | 100 (1 service) | 442 k | 4.4 k | 14.62 µs | 68 k | 0.93 ms | 1.38 ms | 88 | ±1% |
-| 4 | 1000 (10 services) | 644 k | 644 | 11.28 µs | 89 k | 6.17 ms | 7.83 ms | 86 | ±0% |
-| 8 | 1 (1 service) | 44 k | 44 k | 126.18 µs | 7.9 k | 0.16 ms | 0.46 ms | 251 | ±2% |
-| 8 | 100 (1 service) | 649 k | 6.5 k | 16.26 µs | 62 k | 1.25 ms | 1.84 ms | 88 | ±0% |
-| 8 | 1000 (10 services) | 1.03 M | 1.0 k | 12.67 µs | 79 k | 7.76 ms | 9.61 ms | 86 | ±1% |
+| 1 | 1 (1 service) | 8.9 k | 8.9 k | 123.03 µs | 8.1 k | 0.11 ms | 0.23 ms | 250 | ±2% |
+| 1 | 100 (1 service) | 142 k | 1.4 k | 13.38 µs | 75 k | 0.69 ms | 1.14 ms | 88 | ±1% |
+| 1 | 1000 (10 services) | 179 k | 179 | 11.38 µs | 88 k | 5.99 ms | 6.92 ms | 86 | ±3% |
+| 4 | 1 (1 service) | 29 k | 29 k | 114.40 µs | 8.7 k | 0.13 ms | 0.35 ms | 251 | ±3% |
+| 4 | 100 (1 service) | 445 k | 4.5 k | 14.54 µs | 69 k | 0.93 ms | 1.36 ms | 88 | ±1% |
+| 4 | 1000 (10 services) | 647 k | 647 | 11.24 µs | 89 k | 6.13 ms | 7.92 ms | 86 | ±1% |
+| 8 | 1 (1 service) | 44 k | 44 k | 127.79 µs | 7.8 k | 0.16 ms | 0.47 ms | 251 | ±2% |
+| 8 | 100 (1 service) | 646 k | 6.5 k | 16.30 µs | 61 k | 1.25 ms | 1.85 ms | 88 | ±0% |
+| 8 | 1000 (10 services) | 1.04 M | 1.0 k | 12.56 µs | 80 k | 7.70 ms | 9.41 ms | 86 | ±0% |
 
 #### `nats-filter-nats`: NATS → cel_filter → NATS
 
 | Callers | Records per event | Records/s | Events/s | CPU per record | Records/s per core | p50 latency | p99 latency | Allocs per record | Spread |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | 1 (1 service) | 7.6 k | 7.6 k | 107.37 µs | 9.3 k | – | – | 158 | ±4% |
-| 1 | 100 (1 service) | 164 k | 1.6 k | 7.93 µs | 126 k | – | – | 61 | ±4% |
-| 1 | 1000 (10 services) | 194 k | 194 | 7.33 µs | 136 k | – | – | 61 | ±2% |
-| 4 | 1 (1 service) | 28 k | 28 k | 78.05 µs | 13 k | – | – | 154 | ±4% |
-| 4 | 100 (1 service) | 600 k | 6.0 k | 7.83 µs | 128 k | – | – | 61 | ±3% |
-| 4 | 1000 (10 services) | 757 k | 757 | 6.71 µs | 149 k | – | – | 61 | ±1% |
-| 8 | 1 (1 service) | 45 k | 45 k | 70.94 µs | 14 k | – | – | 153 | ±2% |
-| 8 | 100 (1 service) | 966 k | 9.7 k | 8.40 µs | 119 k | – | – | 61 | ±1% |
-| 8 | 1000 (10 services) | 1.34 M | 1.3 k | 6.86 µs | 146 k | – | – | 61 | ±1% |
+| 1 | 1 (1 service) | 7.9 k | 7.9 k | 104.83 µs | 9.5 k | – | – | 158 | ±1% |
+| 1 | 100 (1 service) | 167 k | 1.7 k | 7.86 µs | 127 k | – | – | 61 | ±4% |
+| 1 | 1000 (10 services) | 199 k | 199 | 7.16 µs | 140 k | – | – | 61 | ±1% |
+| 4 | 1 (1 service) | 28 k | 28 k | 76.75 µs | 13 k | – | – | 154 | ±4% |
+| 4 | 100 (1 service) | 600 k | 6.0 k | 7.81 µs | 128 k | – | – | 61 | ±1% |
+| 4 | 1000 (10 services) | 760 k | 760 | 6.67 µs | 150 k | – | – | 61 | ±2% |
+| 8 | 1 (1 service) | 45 k | 45 k | 71.15 µs | 14 k | – | – | 153 | ±0% |
+| 8 | 100 (1 service) | 962 k | 9.6 k | 8.43 µs | 119 k | – | – | 61 | ±0% |
+| 8 | 1000 (10 services) | 1.34 M | 1.3 k | 6.89 µs | 145 k | – | – | 61 | ±1% |
 
 <!-- END benchreport:scenarios -->
 
@@ -108,10 +108,10 @@ CPU needed for pure processing, from the CPU per record of the scenarios above. 
 <!-- BEGIN benchreport:sizing -->
 | Pipeline | CPU per record | Cores for 100 k records/s | Cores for 1 M records/s |
 |---|---|---|---|
-| Batched: OTLP → batch → NATS, 1,000 records per request, 8 callers | 6.25 µs | 0.6 | 6.3 |
-| Split: OTLP → 2 × cel_filter → 2 × NATS, 1,000 records per request, 8 callers | 12.67 µs | 1.3 | 12.7 |
-| Forwarding: NATS → cel_filter → NATS, 1,000 records per message, 8 workers | 6.86 µs | 0.7 | 6.9 |
-| Unbatched: OTLP → NATS, 1 record per request, 8 callers | 97.71 µs | 9.8 | 97.7 |
+| Batched: OTLP → batch → NATS, 1,000 records per request, 8 callers | 6.22 µs | 0.6 | 6.2 |
+| Split: OTLP → 2 × cel_filter → 2 × NATS, 1,000 records per request, 8 callers | 12.56 µs | 1.3 | 12.6 |
+| Forwarding: NATS → cel_filter → NATS, 1,000 records per message, 8 workers | 6.89 µs | 0.7 | 6.9 |
+| Unbatched: OTLP → NATS, 1 record per request, 8 callers | 98.44 µs | 9.8 | 98.4 |
 <!-- END benchreport:sizing -->
 
 Scaling out works because Tram keeps no state between events, with two conditions:
@@ -136,15 +136,15 @@ Idle CPU is shown for 1,000 streams only; for fewer streams it is below the nois
 <!-- BEGIN benchreport:streams -->
 | Stream | Streams | Build | Heap | Goroutines | NATS connections | NATS messages/s, idle | Idle CPU of a core |
 |---|---|---|---|---|---|---|---|
-| NATS (1 worker) → cel_filter → NATS | 10 | 1.6 ms | 344 KiB | 11.0 | 2.0 | 0.00 | – |
+| NATS (1 worker) → cel_filter → NATS | 10 | 1.6 ms | 343 KiB | 11.0 | 2.0 | 0.00 | – |
 | NATS (1 worker) → cel_filter → NATS | 100 | 1.4 ms | 337 KiB | 11.0 | 2.0 | 0.00 | – |
-| NATS (1 worker) → cel_filter → NATS | 1,000 | 1.4 ms | 336 KiB | 11.0 | 2.0 | 0.00 | 0.0026 % |
-| NATS (4 workers) → cel_filter → NATS | 10 | 1.4 ms | 339 KiB | 11.0 | 2.0 | 0.00 | – |
+| NATS (1 worker) → cel_filter → NATS | 1,000 | 1.3 ms | 336 KiB | 11.0 | 2.0 | 0.00 | 0.0026 % |
+| NATS (4 workers) → cel_filter → NATS | 10 | 1.3 ms | 340 KiB | 11.0 | 2.0 | 0.00 | – |
 | NATS (4 workers) → cel_filter → NATS | 100 | 1.4 ms | 336 KiB | 11.0 | 2.0 | 0.00 | – |
-| NATS (4 workers) → cel_filter → NATS | 1,000 | 1.3 ms | 336 KiB | 11.0 | 2.0 | 0.00 | 0.0026 % |
-| OTLP → batch → NATS | 10 | 933.10 µs | 211 KiB | 5.0 | 1.0 | 0.00 | – |
-| OTLP → batch → NATS | 100 | 847.80 µs | 208 KiB | 5.0 | 1.0 | 0.00 | – |
-| OTLP → batch → NATS | 1,000 | 903.60 µs | 207 KiB | 5.0 | 1.0 | 0.00 | 0.0014 % |
+| NATS (4 workers) → cel_filter → NATS | 1,000 | 1.4 ms | 336 KiB | 11.0 | 2.0 | 0.00 | 0.0026 % |
+| OTLP → batch → NATS | 10 | 828.70 µs | 212 KiB | 5.0 | 1.0 | 0.00 | – |
+| OTLP → batch → NATS | 100 | 878.00 µs | 208 KiB | 5.0 | 1.0 | 0.00 | – |
+| OTLP → batch → NATS | 1,000 | 876.30 µs | 207 KiB | 5.0 | 1.0 | 0.00 | 0.0014 % |
 <!-- END benchreport:streams -->
 
 What a number of streams costs when every replica runs all of them, projected from the 1,000-stream rows. Heap and CPU are per replica; connections and messages add up on the NATS server over all replicas:
@@ -182,20 +182,20 @@ Costs of single components, measured in isolation. Per-record costs are measured
 <!-- BEGIN benchreport:components-per-record -->
 | Component | Per record | Allocs per record | Records/s | Spread |
 |---|---|---|---|---|
-| NATS sink: group and publish, 10 subjects | 3.22 µs | 31.2 | 310 k | ±4% |
-| NATS sink: group and publish, 1 subject | 3.82 µs | 30.1 | 262 k | ±9% |
-| NATS sink: grouping by subject only | 2.48 µs | 30.1 | 403 k | ±13% ⚠️ |
-| Serializing for NATS and back (logs) | 2.28 µs | 34.2 | 438 k | ±9% |
-| NATS source, 1 worker | 1.68 µs | 34.2 | 594 k | ±7% |
-| NATS source, 8 workers | 269.0 ns | 34.2 | 3.72 M | ±0% |
-| OTLP source: decoding a request | 1.65 µs | 34.3 | 606 k | ±16% ⚠️ |
-| cel_filter, keeping half of the records | 1.90 µs | 16.6 | 527 k | ±14% ⚠️ |
-| cel_filter, keeping all records | 869.1 ns | 8.0 | 1.15 M | ±3% |
-| cel_validator, record-level expression | 963.0 ns | 9.1 | 1.04 M | ±4% |
-| cel_validator, resource-level expression | 14.1 ns | 0.1 | 70.97 M | ±28% ⚠️ |
-| Record filter helper without CEL | 9.2 ns | 0.0 | 108.58 M | ±10% ⚠️ |
-| batch, 8 concurrent callers | 0.5 ns | 0.0 | 2.21 G | ±3% |
-| noop stage | 1.1 ns | 0.0 | 931.97 M | ±3% |
+| NATS sink: group and publish, 10 subjects | 3.44 µs | 31.2 | 291 k | ±15% ⚠️ |
+| NATS sink: group and publish, 1 subject | 3.38 µs | 30.1 | 296 k | ±19% ⚠️ |
+| NATS sink: grouping by subject only | 2.39 µs | 30.1 | 419 k | ±11% ⚠️ |
+| Serializing for NATS and back (logs) | 2.56 µs | 34.2 | 391 k | ±6% |
+| NATS source, 1 worker | 1.63 µs | 34.2 | 614 k | ±7% |
+| NATS source, 8 workers | 269.2 ns | 34.2 | 3.71 M | ±1% |
+| OTLP source: decoding a request | 1.58 µs | 34.3 | 633 k | ±7% |
+| cel_filter, keeping half of the records | 1.72 µs | 16.6 | 583 k | ±29% ⚠️ |
+| cel_filter, keeping all records | 838.6 ns | 8.0 | 1.19 M | ±6% |
+| cel_validator, record-level expression | 1.11 µs | 9.1 | 897 k | ±13% ⚠️ |
+| cel_validator, resource-level expression | 14.2 ns | 0.1 | 70.36 M | ±15% ⚠️ |
+| Record filter helper without CEL | 9.4 ns | 0.0 | 106.73 M | ±19% ⚠️ |
+| batch, 8 concurrent callers | 0.5 ns | 0.0 | 2.10 G | ±6% |
+| noop stage | 1.0 ns | 0.0 | 982.32 M | ±1% |
 <!-- END benchreport:components-per-record -->
 
 Fixed costs per event, independent of its size. They dominate when events are small:
@@ -203,12 +203,12 @@ Fixed costs per event, independent of its size. They dominate when events are sm
 <!-- BEGIN benchreport:components-per-event -->
 | Component | Per event | Allocs per event | Spread |
 |---|---|---|---|
-| NATS sink: one record (waits for the acknowledgement) | 37.76 µs | 67 | ±2% |
-| OTLP source: request with one record | 6.67 µs | 85 | ±4% |
-| batch, one caller | 1.38 µs | 15 | ±7% |
-| Passing an event to 1 child | 374.3 ns | 6 | ±3% |
-| Passing an event to 8 children | 1.63 µs | 20 | ±2% |
-| Each additional noop stage | 455.0 ns | 7 | ±4% |
+| NATS sink: one record (waits for the acknowledgement) | 37.70 µs | 67 | ±8% |
+| OTLP source: request with one record | 6.57 µs | 85 | ±11% ⚠️ |
+| batch, one caller | 1.37 µs | 15 | ±13% ⚠️ |
+| Passing an event to 1 child | 371.2 ns | 6 | ±3% |
+| Passing an event to 8 children | 1.53 µs | 20 | ±6% |
+| Each additional noop stage | 423.2 ns | 7 | ±1% |
 <!-- END benchreport:components-per-event -->
 
 ## Tuning
