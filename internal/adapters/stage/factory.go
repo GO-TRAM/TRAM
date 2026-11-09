@@ -15,6 +15,7 @@ import (
 	"codeberg.org/eljoth/tram/internal/adapters/stage/celvalidator"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/delay"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/noop"
+	"codeberg.org/eljoth/tram/internal/adapters/stage/valuemap"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
@@ -40,6 +41,8 @@ func (f *Factory) New(spec domain.StageSpec) (domain.Stage, error) {
 		return delay.New(spec, f.validator)
 	case batch.Type:
 		return batch.New(spec, f.validator)
+	case valuemap.Type:
+		return valuemap.New(spec, f.validator)
 	default:
 		return nil, fmt.Errorf("%w: %q", domain.ErrInvalidStageType, spec.Type)
 	}

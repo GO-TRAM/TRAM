@@ -174,6 +174,7 @@ Stages process, transform, or filter data between sources and sinks.
 | `cel_validator` | `cel_validator` | Accepts, drops or rejects whole events using Common Expression Language (CEL) |
 | `delay` | `delay` | Holds every event back for a fixed duration |
 | `noop` | `noop` | Pass-through stage that does no processing (useful for testing) |
+| `value_map` | `value_map` | Copies an attribute value to another attribute by looking it up in a table |
 
 ### CEL Filter Stage
 
@@ -399,6 +400,60 @@ A pass-through stage that performs no processing. Useful for testing, debugging,
   "from": "source"
 }
 ```
+
+### Value Map Stage
+
+Looks up the value of a source attribute in a table for every log record, metric data point and span, and sets a target attribute to the value the table maps it to. On a miss - the source attribute is missing, or its value has no table entry - the target attribute is set to a default value instead. Every record is passed on; nothing is filtered, dropped or held back. The stage is generic: it knows nothing about specific attributes beyond its configuration.
+
+**Type:** `value_map`
+
+**Configuration:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `source_attr` | string | Yes | - | Attribute whose value is looked up |
+| `target_attr` | string | Yes | - | Attribute set to the result of the lookup. An existing attribute of that name is replaced |
+| `default` | string | Yes | - | Value set when the source attribute is missing or its value has no table entry |
+| `level` | string | No | `"record"` | Level the source attribute is read from: `record` (the record's own attributes) or `resource` (the attributes of the record's resource) |
+| `table` | object | One of `table`, `table_ref` | - | Embedded lookup table, source value to target value |
+| `table_ref` | string | One of `table`, `table_ref` | - | Path to a JSON file that holds the lookup table as an object of string values, e.g. `{"value-a": "target-a"}`. Read once when the stage is created; an unreadable file or invalid JSON is rejected. Exactly one of `table` and `table_ref` has to be set |
+
+The target attribute is always set on the record itself, whatever `level` the source attribute is read from. A source value that is not a string cannot have a table entry and receives the default value.
+
+**Example:** translate a `team` attribute into a `team.id` attribute:
+
+```json
+{
+  "name": "team-ids",
+  "type": "value_map",
+  "from": "otlp-in",
+  "spec": {
+    "source_attr": "team",
+    "target_attr": "team.id",
+    "default": "unassigned",
+    "table": {
+      "team-0": "cart",
+      "team-1": "checkout"
+    }
+  }
+}
+```
+
+**Metrics:** besides the node metrics of its stream, the stage records its lookup outcomes, with the `node` of the stage and the `signal` as labels:
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `tram_stage_value_map_mapped_total` | Counter | `node`, `signal` | Records whose source value the table maps, which received the mapped value |
+| `tram_stage_value_map_lookup_missing_attr_total` | Counter | `node`, `signal` | Records without the source attribute, which received the default value |
+| `tram_stage_value_map_lookup_no_entry_total` | Counter | `node`, `signal` | Records whose source value has no table entry, which received the default value |
+
+The node metrics framework counts records and durations only, not lookup outcomes, which is why the stage adds its own counters. Unlike the node metrics, they cannot carry the stream name, so they are series per stage name; keep stage names unique per stream to keep the series apart.
+
+**Behavior Notes:**
+- A lookup miss is a defined state, not an error: the record is still passed on, with the target attribute set to `default`
+- Every record is annotated, so the stage always passes on a copy of the event: the containers it annotates (records of each signal) are rebuilt, resources, scopes and metric metadata are shared
+- The table is fixed while the stream runs. To change it, update the stream with a changed spec, through the API, the config sync or a `Stream` resource; the usual stream update applies: an update with an identical spec changes nothing, an update with just a changed spec replaces the stage without touching the source
+- The stage holds no events back and does not count toward the [Hold Times](#hold-times)
 
 ---
 
