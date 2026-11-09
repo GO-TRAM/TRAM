@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"codeberg.org/eljoth/tram/internal/adapters/sink/base"
 )
@@ -133,6 +134,17 @@ func TestSpecValidation(t *testing.T) {
 			subject: map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
 			maxAge:  "2h",
 		},
+		{
+			name:    "max_pending",
+			subject: map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			extra:   map[string]any{"max_pending": 2048},
+		},
+		{
+			name:      "negative max_pending",
+			subject:   map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			extra:     map[string]any{"max_pending": -1},
+			expectErr: true,
+		},
 	}
 
 	for _, c := range cases {
@@ -160,6 +172,43 @@ func TestSpecValidation(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestMaxPendingPublishes(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		config map[string]any
+		want   int
+	}{
+		{
+			name:   "unset means default",
+			config: nil,
+			want:   256,
+		},
+		{
+			name:   "set",
+			config: map[string]any{"max_pending": 2048},
+			want:   2048,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			spec := map[string]any{
+				"url":     "nats://localhost:4222",
+				"stream":  "s",
+				"subject": map[string]any{"register": []any{"a.>"}, "logs": "'a.l'"},
+			}
+			maps.Copy(spec, c.config)
+			sink, err := natssink.NewWithoutConnection(spec, validator.New())
+			require.NoError(t, err)
+			assert.Equal(t, c.want, natssink.MaxPendingPublishes(sink.Spec()))
 		})
 	}
 }

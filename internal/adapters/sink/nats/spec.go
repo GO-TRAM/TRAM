@@ -17,6 +17,10 @@ type Spec struct {
 	Discard     string      `json:"discard"     validate:"omitempty,oneof=old new"`
 	Storage     string      `json:"storage"     validate:"omitempty,oneof=file memory"`
 
+	// MaxPending bounds how many messages the sink publishes before it
+	// waits for their acknowledgements. Zero means defaultMaxPending.
+	MaxPending int `json:"max_pending,omitempty" validate:"omitempty,min=1"`
+
 	Partition *PartitionSpec `json:"partition,omitempty"`
 }
 

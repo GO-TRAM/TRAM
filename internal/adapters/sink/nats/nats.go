@@ -43,7 +43,7 @@ const (
 	// stream one after another and buffers what it has not stored yet, so
 	// without a bound a fast sink can make it run out of memory. A sink at the
 	// bound waits instead, which slows its source down.
-	maxPendingPublishes = 256
+	defaultMaxPending = 256
 )
 
 type NATS struct {
@@ -91,7 +91,7 @@ func New(sink domain.SinkSpec, validator *validator.Validate, logger *slog.Logge
 
 	js, err := jetstream.New(nc,
 		jetstream.WithPublishAsyncTimeout(publishAckTimeout),
-		jetstream.WithPublishAsyncMaxPending(maxPendingPublishes))
+		jetstream.WithPublishAsyncMaxPending(maxPendingPublishes(base.Spec())))
 	if err != nil {
 		nc.Close()
 		return nil, fmt.Errorf("failed to initialize JetStream: %w", err)
@@ -112,6 +112,15 @@ func New(sink domain.SinkSpec, validator *validator.Validate, logger *slog.Logge
 		jetstream:  js,
 		streams:    streams,
 	}, nil
+}
+
+// maxPendingPublishes returns how many messages the sink publishes before it
+// waits for their acknowledgements.
+func maxPendingPublishes(spec *Spec) int {
+	if spec.MaxPending != 0 {
+		return spec.MaxPending
+	}
+	return defaultMaxPending
 }
 
 func compile(spec *Spec) (subjects, *partitions, error) {

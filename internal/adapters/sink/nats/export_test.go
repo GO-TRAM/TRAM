@@ -64,6 +64,12 @@ func SubjectCovers(pattern, subject string) bool {
 	return subjectCovers(pattern, subject)
 }
 
+// MaxPendingPublishes returns how many messages the sink of spec publishes
+// before it waits for their acknowledgements.
+func MaxPendingPublishes(spec *Spec) int {
+	return maxPendingPublishes(spec)
+}
+
 type StreamUpdate struct {
 	Changed        bool
 	Subjects       []string

@@ -608,6 +608,7 @@ Publishes OTLP-encoded events to NATS JetStream. Uses dynamic subject mapping wi
 | `replicas` | int | No | - | How many NATS servers store the stream, from 1 to 5. A new stream without it gets the server's default, 1 |
 | `discard` | string | No | `"old"` | What JetStream does when the stream reaches `size` or another limit: `"old"` deletes the oldest messages, `"new"` refuses new ones |
 | `storage` | string | No | `"file"` | Where JetStream stores the stream: `"file"` or `"memory"`. Fixed once the stream exists |
+| `max_pending` | int | No | `256` | How many messages the sink publishes before it waits for their acknowledgements. Raise it to move more messages at once, e.g. `1024` or `2048`; the NATS server has to store them as they arrive |
 | `partition` | object | No | - | Spreads records over several streams, see [Partitioning](#partitioning) |
 
 **Subject Configuration:**
