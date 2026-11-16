@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
+	"codeberg.org/eljoth/tram/internal/adapters/source/cloudevent"
 	"codeberg.org/eljoth/tram/internal/adapters/source/generator"
 	"codeberg.org/eljoth/tram/internal/adapters/source/nats"
 	"codeberg.org/eljoth/tram/internal/adapters/source/otlp"
@@ -35,6 +36,8 @@ func (f *Factory) New(spec domain.SourceSpec) (domain.Source, error) {
 		return generator.New(spec, f.validator)
 	case nats.Type:
 		return nats.New(spec, f.validator, f.logger)
+	case cloudevent.Type:
+		return cloudevent.New(spec, f.validator, f.logger)
 	case otlp.Type:
 		return otlp.New(spec, f.validator, f.logger)
 	default:

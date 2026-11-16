@@ -12,9 +12,50 @@ Sources are the entry points of a pipeline that produce or receive data events.
 
 | Name | Type | Description |
 |------|------|-------------|
+| `cloudevent` | `cloudevent` | Receives OTLP data as CloudEvents from a message broker chosen by configuration (NATS JetStream) |
 | `generator` | `generator` | Emits empty events at a fixed interval, for testing pipelines |
 | `nats` | `nats` | Consumes events published by Tram's `nats` sink from NATS JetStream |
 | `otlp` | `otlp` | Receives protobuf-encoded OpenTelemetry Protocol (OTLP) data via HTTP |
+
+### CloudEvent Source
+
+Receives OTLP data as [CloudEvents](https://cloudevents.io) from a message broker, e.g. those sent by the [CloudEvent Sink](#cloudevent-sink). The broker is chosen by `broker`; the source uses the protocol binding of the CloudEvents SDK for it. The broker is set up outside of Tram: the stream holding `subject` has to exist.
+
+**Type:** `cloudevent`
+
+**Configuration:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `broker` | string | Yes | - | Broker the events are received from. Supported: `nats` (NATS JetStream) |
+| `workers` | int | No | `1` | Number of events processed concurrently (1-10000) |
+| `nats` | object | With `broker: nats` | - | `url` (required), `subject` (required, the consumer's subject filter, wildcards allowed) and `durable` (name of a durable consumer) |
+
+**Example:**
+
+```json
+{
+  "name": "events",
+  "type": "cloudevent",
+  "spec": {
+    "broker": "nats",
+    "workers": 64,
+    "nats": {
+      "url": "nats://localhost:4222",
+      "subject": "telemetry.>",
+      "durable": "tram"
+    }
+  }
+}
+```
+
+**Behavior Notes:**
+- An event must have the type `io.opentelemetry.logs`, `io.opentelemetry.metrics` or `io.opentelemetry.traces` and the data content type `application/x-protobuf`, with one serialized OTLP `LogsData`, `MetricsData` or `TracesData` as data. Other messages are rejected and not redelivered
+- Each message becomes one event
+- A message is acknowledged once all sinks have accepted it. If passing it on fails, it is redelivered after 5 seconds; data rejected by a stage is rejected instead
+- Delivery is at-least-once, and messages are not processed in order unless `workers` is 1
+- With `nats`, the source creates or updates the consumer on the stream that holds `subject`, starting at the beginning of the stream, with `MaxAckPending` twice `workers` and at least 1,000. It buffers at most `workers` messages and takes one only when a worker is free
+- When the source stops, messages the binding still buffers are handed back to the broker for redelivery
 
 ### Generator Source
 
@@ -465,9 +506,50 @@ Sinks are the terminal points of a pipeline that consume or export data.
 
 | Name | Type | Description |
 |------|------|-------------|
+| `cloudevent` | `cloudevent` | Sends OTLP data as CloudEvents to a message broker chosen by configuration (NATS JetStream) |
 | `debug` | `debug` | Writes events to the log (stderr) for debugging and development |
 | `nats` | `nats` | Publishes OTLP-encoded events to NATS JetStream with dynamic subject mapping |
 | `otlp` | `otlp` | Sends OTLP-encoded events via HTTP to an OpenTelemetry endpoint |
+
+### CloudEvent Sink
+
+Sends OTLP data as [CloudEvents](https://cloudevents.io) to a message broker. The broker is chosen by `broker`; the sink uses the protocol binding of the CloudEvents SDK for it, so other brokers are a matter of configuration rather than a sink of their own. The broker is set up outside of Tram: unlike the [NATS Sink](#nats-sink), this sink creates no streams.
+
+**Type:** `cloudevent`
+
+**Configuration:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `broker` | string | Yes | - | Broker the events are sent to. Supported: `nats` (NATS JetStream) |
+| `destination` | object | Yes | - | CEL expressions per signal (`logs`, `metrics`, `traces`, at least one) that compute where a record is sent, e.g. the NATS subject. They see the same variables as the NATS sink's `subject` expressions. Signals without an expression are not sent |
+| `source` | string | No | `tram/<sink name>` | The CloudEvents `source` attribute |
+| `concurrency` | int | No | `256` | Events the sink sends at once, across all events it is notified of (1-65536) |
+| `nats` | object | With `broker: nats` | - | `url` (required) |
+
+**Example:**
+
+```json
+{
+  "name": "events",
+  "type": "cloudevent",
+  "from": "source",
+  "spec": {
+    "broker": "nats",
+    "nats": { "url": "nats://localhost:4222" },
+    "destination": {
+      "logs": "'telemetry.logs.' + resource.attributes.get_attr('service.name')"
+    }
+  }
+}
+```
+
+**Behavior Notes:**
+- Records are grouped by their destination like in the NATS sink; every group of one signal becomes one CloudEvent in binary content mode, with the attributes as `ce-` headers and the serialized OTLP data as the body
+- `id` is a random UUID, `type` is `io.opentelemetry.<signal>`, `subject` is the destination, `time` is when it is sent and `datacontenttype` is `application/x-protobuf`
+- A destination that cannot be resolved, or that is no valid NATS subject (wildcards, empty tokens, whitespace), rejects the event instead of retrying it
+- The sink returns once the broker stored all events, or with the errors of those it did not. Each send waits for the broker for up to 10 seconds
+- With `nats`, the event is encoded by the NATS binding of the CloudEvents SDK and published to JetStream, with `datacontenttype` in the `content-type` header as the NATS binding specifies. A subject that no stream holds fails the send, since no stream acknowledges it
 
 ### Debug Sink
 
