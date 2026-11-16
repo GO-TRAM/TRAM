@@ -353,3 +353,99 @@ func TestOperatorAppliesSecrets(t *testing.T) {
 	require.Eventually(t, func() bool { return token() == "new" }, eventuallyTimeout, pollInterval,
 		"a changed secret is applied without a change to the stream")
 }
+
+// resolvedTable returns the table of the first stage a stream runs with.
+func (c *syncCore) resolvedTable(name string) map[string]any {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	s, ok := c.resolved[name]
+	if !ok || len(s.Stages) == 0 {
+		return nil
+	}
+	table, _ := s.Stages[0].Spec["table"].(map[string]any)
+	return table
+}
+
+// The operator merges the config maps a stream selects, with a role bound in
+// the watched namespace only and without the stream selector's label on them,
+// and applies created, changed, relabeled and conflicting config maps.
+func TestOperatorAppliesConfigMaps(t *testing.T) {
+	t.Parallel()
+	c := startCluster(t)
+
+	content, err := os.ReadFile(filepath.Join("config", "rbac", "role.yaml"))
+	require.NoError(t, err)
+	var role rbacv1.ClusterRole
+	require.NoError(t, yaml.Unmarshal(content, &role))
+	require.NoError(t, c.admin.Create(t.Context(), &role))
+
+	ns := c.newNamespace(t)
+	const user = "tram-operator"
+	require.NoError(t, c.admin.Create(t.Context(), &rbacv1.RoleBinding{
+		Namespace: ns, Name: "tram",
+		RoleRef:  rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: role.Name},
+		Subjects: []rbacv1.Subject{{APIGroup: rbacv1.GroupName, Kind: rbacv1.UserKind, Name: user}},
+	}))
+
+	routing := map[string]string{"tram.io/table": "routing"}
+	a := &corev1.ConfigMap{Namespace: ns, Name: "routing-a", Labels: routing, Data: map[string]string{"t1": "r1"}}
+	require.NoError(t, c.admin.Create(t.Context(), a))
+	require.NoError(t, c.admin.Create(t.Context(), &tramv1.Stream{
+		Namespace: ns, Name: "s", Labels: map[string]string{"tram.io/mapper": "true"},
+		Spec: tramv1.StreamSpec{
+			Source: tramv1.Spec{
+				Name: "in",
+				Type: "otlp",
+				Spec: &runtime.RawExtension{Raw: []byte(`{"http_port":4318}`)},
+			},
+			Stages: []tramv1.ReceiverSpec{
+				{Name: "map", Type: "value_map", From: "in", Spec: &runtime.RawExtension{Raw: []byte(
+					`{"source_attr":"tenant","target_attr":"router","default":"none","table":` +
+						`{"valueFrom":{"configMapSelector":{"matchLabels":{"tram.io/table":"routing"}}}}}`)}},
+			},
+			Sinks: []tramv1.ReceiverSpec{{Name: "out", Type: "debug", From: "map"}},
+		},
+	}))
+
+	core := newSyncCore()
+	runOperator(t, core, k8scrd.Options{
+		Kubeconfig:     c.kubeconfig(t, envtest.User{Name: user}),
+		Namespaces:     []string{ns},
+		StreamSelector: "tram.io/mapper=true",
+	})
+	requireTable := func(want map[string]any, msg string) {
+		t.Helper()
+		require.Eventually(t, func() bool { return assert.ObjectsAreEqual(want, core.resolvedTable(ns+".s")) },
+			eventuallyTimeout, pollInterval, msg)
+	}
+	requireTable(map[string]any{"t1": "r1"}, "the stream runs with the selected config map")
+	c.requireActive(t, ns, "s")
+
+	b := &corev1.ConfigMap{Namespace: ns, Name: "routing-b", Labels: routing, Data: map[string]string{"t2": "r2"}}
+	require.NoError(t, c.admin.Create(t.Context(), b))
+	requireTable(map[string]any{"t1": "r1", "t2": "r2"}, "a created config map is merged")
+
+	a.Data["t1"] = "r3"
+	require.NoError(t, c.admin.Update(t.Context(), a))
+	requireTable(map[string]any{"t1": "r3", "t2": "r2"}, "a changed config map is applied")
+
+	b.Labels = nil
+	require.NoError(t, c.admin.Update(t.Context(), b))
+	requireTable(map[string]any{"t1": "r3"}, "a config map that no longer matches is left out")
+
+	conflict := &corev1.ConfigMap{
+		Namespace: ns,
+		Name:      "routing-c",
+		Labels:    routing,
+		Data:      map[string]string{"t1": "r9"},
+	}
+	require.NoError(t, c.admin.Create(t.Context(), conflict))
+	require.Eventually(t, func() bool {
+		var s tramv1.Stream
+		return c.admin.Get(t.Context(), types.NamespacedName{Namespace: ns, Name: "s"}, &s) == nil && !s.Status.Active
+	}, eventuallyTimeout, pollInterval, "conflicting config maps deactivate the stream")
+	assert.Equal(t, map[string]any{"t1": "r3"}, core.resolvedTable(ns+".s"), "the stream keeps its last table")
+
+	require.NoError(t, c.admin.Delete(t.Context(), conflict))
+	c.requireActive(t, ns, "s")
+}

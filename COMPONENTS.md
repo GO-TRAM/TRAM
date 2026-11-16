@@ -415,7 +415,7 @@ Looks up the value of a source attribute in a table for every log record, metric
 | `target_attr` | string | Yes | - | Attribute set to the result of the lookup. An existing attribute of that name is replaced |
 | `default` | string | Yes | - | Value set when the source attribute is missing or its value has no table entry |
 | `level` | string | No | `"record"` | Level the source attribute is read from: `record` (the record's own attributes) or `resource` (the attributes of the record's resource) |
-| `table` | object | One of `table`, `table_ref` | - | Embedded lookup table, source value to target value |
+| `table` | object | One of `table`, `table_ref` | - | Embedded lookup table, source value to target value. In a Kubernetes `Stream` resource, the table can come from config maps selected by label, which keeps large tables out of the resource; see [Config Maps](internal/adapters/k8scrd/README.md#config-maps) |
 | `table_ref` | string | One of `table`, `table_ref` | - | Path to a JSON file that holds the lookup table as an object of string values, e.g. `{"value-a": "target-a"}`. Read once when the stage is created; an unreadable file or invalid JSON is rejected. Exactly one of `table` and `table_ref` has to be set |
 
 The target attribute is always set on the record itself, whatever `level` the source attribute is read from. A source value that is not a string cannot have a table entry and receives the default value.
@@ -452,7 +452,7 @@ The node metrics framework counts records and durations only, not lookup outcome
 **Behavior Notes:**
 - A lookup miss is a defined state, not an error: the record is still passed on, with the target attribute set to `default`
 - Every record is annotated, so the stage always passes on a copy of the event: the containers it annotates (records of each signal) are rebuilt, resources, scopes and metric metadata are shared
-- The table is fixed while the stream runs. To change it, update the stream with a changed spec, through the API, the config sync or a `Stream` resource; the usual stream update applies: an update with an identical spec changes nothing, an update with just a changed spec replaces the stage without touching the source
+- The table is fixed while the stream runs. To change it, update the stream with a changed spec, through the API, the config sync or a `Stream` resource, or change the config maps a `Stream` resource selects its table from; the usual stream update applies: an update with an identical spec changes nothing, an update with just a changed spec replaces the stage without touching the source
 - The stage holds no events back and does not count toward the [Hold Times](#hold-times)
 
 ---

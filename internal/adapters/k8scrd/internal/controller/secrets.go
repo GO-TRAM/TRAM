@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 
 	corev1 "k8s.io/api/core/v1"
@@ -21,8 +22,9 @@ import (
 )
 
 const (
-	valueFromKey    = "valueFrom"
-	secretKeyRefKey = "secretKeyRef"
+	valueFromKey         = "valueFrom"
+	secretKeyRefKey      = "secretKeyRef"
+	configMapSelectorKey = "configMapSelector"
 
 	// secretIndex indexes Stream resources by the secrets they refer to.
 	secretIndex = "spec.secretRefs" //nolint:gosec // The name of an index, no credential.
@@ -40,44 +42,59 @@ type secretRef struct {
 	key  string
 }
 
-// refOf reports whether value is a secret reference:
-// {"valueFrom": {"secretKeyRef": {"name": ..., "key": ...}}}. Other objects
+// ref is a reference to a value in the namespace of the stream: exactly one of
+// its fields is set.
+type ref struct {
+	secret     *secretRef
+	configMaps *configMapSelector
+}
+
+// refOf reports whether value is a reference:
+// {"valueFrom": {"secretKeyRef": {"name": ..., "key": ...}}} or
+// {"valueFrom": {"configMapSelector": {"matchLabels": ...}}}. Other objects
 // with a valueFrom key are not references.
-func refOf(value any) (secretRef, bool, error) {
+func refOf(value any) (ref, bool, error) {
 	object, ok := value.(map[string]any)
 	if !ok || len(object) != 1 {
-		return secretRef{}, false, nil
+		return ref{}, false, nil
 	}
 	valueFrom, ok := object[valueFromKey].(map[string]any)
 	if !ok || len(valueFrom) != 1 {
-		return secretRef{}, false, nil
+		return ref{}, false, nil
+	}
+	if selector, isSelector := valueFrom[configMapSelectorKey]; isSelector {
+		configMaps, err := configMapSelectorOf(selector)
+		if err != nil {
+			return ref{}, true, err
+		}
+		return ref{configMaps: configMaps}, true, nil
 	}
 	selector, ok := valueFrom[secretKeyRefKey]
 	if !ok {
-		return secretRef{}, false, nil
+		return ref{}, false, nil
 	}
 
 	fields, ok := selector.(map[string]any)
 	if !ok {
-		return secretRef{}, true, fmt.Errorf("%w: secretKeyRef is not an object", ErrInvalidSecretRef)
+		return ref{}, true, fmt.Errorf("%w: secretKeyRef is not an object", ErrInvalidSecretRef)
 	}
 	name, _ := fields["name"].(string)
 	key, _ := fields["key"].(string)
 	if name == "" || key == "" || len(fields) != 2 {
-		return secretRef{}, true, fmt.Errorf("%w: secretKeyRef needs exactly a name and a key", ErrInvalidSecretRef)
+		return ref{}, true, fmt.Errorf("%w: secretKeyRef needs exactly a name and a key", ErrInvalidSecretRef)
 	}
-	return secretRef{name: name, key: key}, true, nil
+	return ref{secret: &secretRef{name: name, key: key}}, true, nil
 }
 
 // replaceRefs returns a copy of value in which replace has replaced every
-// secret reference, and whether there were any. value is not modified.
-func replaceRefs(value any, replace func(secretRef) (any, error)) (any, bool, error) {
-	ref, isRef, err := refOf(value)
+// reference, and whether there were any. value is not modified.
+func replaceRefs(value any, replace func(ref) (any, error)) (any, bool, error) {
+	r, isRef, err := refOf(value)
 	if err != nil {
 		return nil, true, err
 	}
 	if isRef {
-		replaced, replaceErr := replace(ref)
+		replaced, replaceErr := replace(r)
 		return replaced, true, replaceErr
 	}
 
@@ -111,7 +128,7 @@ func replaceRefs(value any, replace func(secretRef) (any, error)) (any, bool, er
 }
 
 // specRefs walks the component specs of spec.
-func specRefs(spec domain.StreamSpec, replace func(secretRef) (any, error)) (domain.StreamSpec, bool, error) {
+func specRefs(spec domain.StreamSpec, replace func(ref) (any, error)) (domain.StreamSpec, bool, error) {
 	var found bool
 	walk := func(component string, s map[string]any) (map[string]any, error) {
 		if s == nil {
@@ -146,49 +163,82 @@ func specRefs(spec domain.StreamSpec, replace func(secretRef) (any, error)) (dom
 	return out, found, nil
 }
 
-// resolveSecrets returns a copy of spec with the values of the secrets it
-// refers to, read from namespace, and whether it refers to any.
-func resolveSecrets(
+// resolveRefs returns a copy of spec with the values of the secrets and config
+// maps it refers to, read from namespace, and whether it refers to any.
+func resolveRefs(
 	ctx context.Context,
 	reader client.Reader,
 	namespace string,
 	spec domain.StreamSpec,
 ) (domain.StreamSpec, bool, error) {
 	secrets := map[string]*corev1.Secret{}
-	return specRefs(spec, func(ref secretRef) (any, error) {
-		secret, ok := secrets[ref.name]
-		if !ok {
-			secret = &corev1.Secret{}
-			err := reader.Get(ctx, types.NamespacedName{Namespace: namespace, Name: ref.name}, secret)
-			if client.IgnoreNotFound(err) != nil {
-				return nil, fmt.Errorf("get secret %s: %w", ref.name, err)
+	tables := map[string]map[string]any{}
+	return specRefs(spec, func(r ref) (any, error) {
+		if r.configMaps != nil {
+			// Copies, as components may keep and change their spec.
+			if table, ok := tables[r.configMaps.String()]; ok {
+				return maps.Clone(table), nil
 			}
+			table, err := resolveConfigMaps(ctx, reader, namespace, r.configMaps)
 			if err != nil {
-				return nil, fmt.Errorf("%w: %s/%s", ErrSecretNotFound, namespace, ref.name)
+				return nil, err
 			}
-			secrets[ref.name] = secret
+			tables[r.configMaps.String()] = table
+			return maps.Clone(table), nil
 		}
-		value, ok := secret.Data[ref.key]
-		if !ok {
-			return nil, fmt.Errorf("%w: %s/%s has no key %s", ErrSecretNotFound, namespace, ref.name, ref.key)
-		}
-		return string(value), nil
+		return resolveSecret(ctx, reader, namespace, *r.secret, secrets)
 	})
+}
+
+func resolveSecret(
+	ctx context.Context,
+	reader client.Reader,
+	namespace string,
+	ref secretRef,
+	secrets map[string]*corev1.Secret,
+) (any, error) {
+	secret, ok := secrets[ref.name]
+	if !ok {
+		secret = &corev1.Secret{}
+		err := reader.Get(ctx, types.NamespacedName{Namespace: namespace, Name: ref.name}, secret)
+		if client.IgnoreNotFound(err) != nil {
+			return nil, fmt.Errorf("get secret %s: %w", ref.name, err)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s/%s", ErrSecretNotFound, namespace, ref.name)
+		}
+		secrets[ref.name] = secret
+	}
+	value, ok := secret.Data[ref.key]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s/%s has no key %s", ErrSecretNotFound, namespace, ref.name, ref.key)
+	}
+	return string(value), nil
 }
 
 // secretNames returns the names of the secrets a Stream resource refers to.
 func secretNames(stream *tramv1.Stream) []string {
 	var names []string
+	for _, r := range streamRefs(stream) {
+		if r.secret != nil && !slices.Contains(names, r.secret.name) {
+			names = append(names, r.secret.name)
+		}
+	}
+	return names
+}
+
+// streamRefs returns the valid references of a Stream resource.
+func streamRefs(stream *tramv1.Stream) []ref {
+	var refs []ref
 	collect := func(raw *runtime.RawExtension) {
 		spec, err := specToMap(raw)
 		if err != nil {
 			return
 		}
-		_, _, _ = replaceRefs(spec, func(ref secretRef) (any, error) {
-			if !slices.Contains(names, ref.name) {
-				names = append(names, ref.name)
-			}
-			return ref.name, nil
+		_, _, _ = replaceRefs(spec, func(r ref) (any, error) {
+			refs = append(refs, r)
+			// Only collected, so any value does.
+			return "", nil
 		})
 	}
 	collect(stream.Spec.Source.Spec)
@@ -198,5 +248,5 @@ func secretNames(stream *tramv1.Stream) []string {
 	for _, sink := range stream.Spec.Sinks {
 		collect(sink.Spec)
 	}
-	return names
+	return refs
 }

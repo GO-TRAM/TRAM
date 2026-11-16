@@ -38,8 +38,8 @@ Do not use `make manifests`, `make generate` or the `kubebuilder` CLI; they are 
 
 ## Reconciliation Rules
 
-- **Idempotent:** reconciling the same resource again must not restart its stream. Compare the desired spec with `Core.GetStream` and only call `UpsertStream` when they differ, because an upsert restarts the stream. A stream that refers to secrets is always passed on with `UpsertResolvedStream`: the core compares the resolved values too and keeps the stream if nothing changed
-- **Secrets:** resolve references only here, never in the core, so streams from the API cannot read secrets. Pass the resolved spec only as the second argument of `UpsertResolvedStream`; everything the core shows, including the file sync, gets the spec with the references. Read secret values through the API reader (`Secrets`), not the cache
+- **Idempotent:** reconciling the same resource again must not restart its stream. Compare the desired spec with `Core.GetStream` and only call `UpsertStream` when they differ, because an upsert restarts the stream. A stream that refers to secrets or config maps is always passed on with `UpsertResolvedStream`: the core compares the resolved values too and keeps the stream if nothing changed
+- **References (secrets, config maps):** resolve references only here, never in the core, so streams from the API cannot read secrets or config maps. Pass the resolved spec only as the second argument of `UpsertResolvedStream`; everything the core shows, including the file sync, gets the spec with the references. Read values through the API reader (`References`), not the cache; only the metadata of secrets and config maps is watched. Never write a resolved value back to a Kubernetes object: merged config map tables may exceed the size limit of one
 - **Trigger on spec changes only:** the controller uses `GenerationChangedPredicate`, so status writes and resyncs do not reconcile. Keep it that way
 - **Status:** only write it when it changes (`setActive`)
 - **Deletion:** when the resource is gone, delete the stream and treat `domain.ErrStreamNotFound` as success

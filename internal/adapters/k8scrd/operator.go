@@ -91,10 +91,10 @@ func New(core ports.Core, opts Options, logger *slog.Logger) (*Operator, error) 
 	}
 
 	if err = (&controller.StreamReconciler{
-		Client:  mgr.GetClient(),
-		Scheme:  mgr.GetScheme(),
-		Core:    core,
-		Secrets: mgr.GetAPIReader(),
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Core:       core,
+		References: mgr.GetAPIReader(),
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up controller: %w", err)
 	}
@@ -127,10 +127,13 @@ func cacheOptions(opts Options) (cache.Options, error) {
 			return cache.Options{}, fmt.Errorf("%w: %w", ErrInvalidStreamSelector, err)
 		}
 		cacheOpts.DefaultLabelSelector = selector
-		// The selector chooses Stream resources, not the secrets they refer
-		// to, whose metadata is watched to notice changes.
+		// The selector chooses Stream resources, not the secrets and config
+		// maps they refer to, whose metadata is watched to notice changes.
 		cacheOpts.ByObject = map[client.Object]cache.ByObject{
 			&metav1.PartialObjectMetadata{APIVersion: "v1", Kind: "Secret"}: {
+				Label: labels.Everything(),
+			},
+			&metav1.PartialObjectMetadata{APIVersion: "v1", Kind: "ConfigMap"}: {
 				Label: labels.Everything(),
 			},
 		}

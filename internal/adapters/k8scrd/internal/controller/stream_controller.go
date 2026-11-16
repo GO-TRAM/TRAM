@@ -30,9 +30,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -48,15 +50,17 @@ type StreamReconciler struct {
 
 	Core   ports.Core
 	Scheme *runtime.Scheme
-	// Secrets reads the secrets that streams refer to, e.g. the manager's API
-	// reader, so their values are not kept in the cache. The Client without it.
-	Secrets client.Reader
+	// References reads the secrets and config maps that streams refer to,
+	// e.g. the manager's API reader, so their values are not kept in the
+	// cache. The Client without it.
+	References client.Reader
 }
 
 // +kubebuilder:rbac:groups=io.tram.core,resources=streams,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=io.tram.core,resources=streams/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=io.tram.core,resources=streams/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 
 func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -80,14 +84,15 @@ func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, errors.Join(r.setActive(ctx, &stream, false), reconcile.TerminalError(err))
 	}
 
-	resolved, refersToSecrets, err := resolveSecrets(ctx, r.secrets(), stream.Namespace, *desired)
+	resolved, refersToValues, err := resolveRefs(ctx, r.references(), stream.Namespace, *desired)
 	if err != nil {
-		err = fmt.Errorf("resolve secrets: %w", err)
-		if errors.Is(err, ErrInvalidSecretRef) {
+		err = fmt.Errorf("resolve references: %w", err)
+		if errors.Is(err, ErrInvalidSecretRef) || errors.Is(err, ErrInvalidConfigMapSelector) {
 			err = reconcile.TerminalError(err)
 		}
-		// A missing secret is retried, and creating it reconciles the stream
-		// as well.
+		// A missing secret or config map, or config maps that disagree, are
+		// retried, and creating or changing them reconciles the stream as
+		// well.
 		return ctrl.Result{}, errors.Join(r.setActive(ctx, &stream, false), err)
 	}
 
@@ -98,9 +103,9 @@ func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	changed := current == nil || !current.Equal(*desired)
 
 	switch {
-	case refersToSecrets:
-		// The core only sees the secret values, so it decides whether they
-		// changed; it keeps a stream whose spec and values are the same.
+	case refersToValues:
+		// The core only sees the values, so it decides whether they changed;
+		// it keeps a stream whose spec and values are the same.
 		_, err = r.Core.UpsertResolvedStream(ctx, *desired, resolved)
 	case changed:
 		_, err = r.Core.UpsertStream(ctx, *desired)
@@ -115,9 +120,9 @@ func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	return ctrl.Result{}, r.setActive(ctx, &stream, true)
 }
 
-func (r *StreamReconciler) secrets() client.Reader {
-	if r.Secrets != nil {
-		return r.Secrets
+func (r *StreamReconciler) references() client.Reader {
+	if r.References != nil {
+		return r.References
 	}
 	return r.Client
 }
@@ -232,14 +237,52 @@ func (r *StreamReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err != nil {
 		return fmt.Errorf("index streams by secret: %w", err)
 	}
+	err = mgr.GetFieldIndexer().IndexField(context.Background(), &tramv1.Stream{}, configMapIndex,
+		func(obj client.Object) []string {
+			stream, ok := obj.(*tramv1.Stream)
+			if !ok || len(configMapSelectors(stream)) == 0 {
+				return nil
+			}
+			return []string{configMapIndexValue}
+		})
+	if err != nil {
+		return fmt.Errorf("index streams by config map selector: %w", err)
+	}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&tramv1.Stream{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		// Only the metadata of secrets is watched and cached, to notice
-		// changes; their values are read when a stream is reconciled.
+		// Only the metadata of secrets and config maps is watched and cached,
+		// to notice changes; their values are read when a stream is
+		// reconciled.
 		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.streamsReferringTo), builder.OnlyMetadata).
+		Watches(&corev1.ConfigMap{}, r.configMapHandler(), builder.OnlyMetadata).
 		Named("stream").
 		Complete(r)
+}
+
+// configMapHandler enqueues the streams whose selectors match a config map, on
+// an update with its old or new labels.
+func (r *StreamReconciler) configMapHandler() handler.EventHandler {
+	enqueue := func(ctx context.Context, q workqueue.TypedRateLimitingInterface[reconcile.Request],
+		namespace string, labelSets ...map[string]string) {
+		for _, req := range r.streamsSelecting(ctx, namespace, labelSets...) {
+			q.Add(req)
+		}
+	}
+	return handler.Funcs{
+		CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			enqueue(ctx, q, e.Object.GetNamespace(), e.Object.GetLabels())
+		},
+		UpdateFunc: func(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			enqueue(ctx, q, e.ObjectNew.GetNamespace(), e.ObjectOld.GetLabels(), e.ObjectNew.GetLabels())
+		},
+		DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			enqueue(ctx, q, e.Object.GetNamespace(), e.Object.GetLabels())
+		},
+		GenericFunc: func(ctx context.Context, e event.GenericEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			enqueue(ctx, q, e.Object.GetNamespace(), e.Object.GetLabels())
+		},
+	}
 }
 
 // streamsReferringTo returns the Stream resources that refer to secret, so a
