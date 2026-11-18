@@ -138,12 +138,12 @@ tasks:
   test:e2e:
     desc: Run the end-to-end pipeline tests that need no containers
     cmds:
-      - "{{.TESTCONTAINERS_ENV}} go test -race -skip '^TestBrokerNATS$' {{.CLI_ARGS}} ./internal/e2e/"
+      - "{{.TESTCONTAINERS_ENV}} go test -race -skip '^TestBroker(NATS|Kafka)$' {{.CLI_ARGS}} ./internal/e2e/"
 
   test:containers:
-    desc: Run the end-to-end tests against NATS in a container (Testcontainers; needs Docker or Podman)
+    desc: Run the end-to-end tests against NATS and Kafka in containers (Testcontainers; needs Docker or Podman)
     summary: |
-      Runs the tests that start a NATS server with Testcontainers. Unlike in
+      Runs the tests that start NATS and Kafka with Testcontainers. Unlike in
       `task test`, they fail instead of being skipped if no container runtime
       is running. Results are never cached, since they depend on the
       container. With Podman, the socket Podman reports is used; see
@@ -152,7 +152,7 @@ tasks:
       - sh: '{{.CONTAINER_TOOL}} info >/dev/null 2>&1'
         msg: '{{.CONTAINER_TOOL}} is not running; start it first (e.g. `podman machine start`)'
     cmds:
-      - "{{.TESTCONTAINERS_ENV}} go test -race -count=1 -run '^TestBrokerNATS$' {{.CLI_ARGS}} ./internal/e2e/"
+      - "{{.TESTCONTAINERS_ENV}} go test -race -count=1 -run '^TestBroker(NATS|Kafka)$' {{.CLI_ARGS}} ./internal/e2e/"
 
   test:envtest:
     desc: Run the Kubernetes operator tests against a real API server and etcd (envtest)

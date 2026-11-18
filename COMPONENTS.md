@@ -12,7 +12,7 @@ Sources are the entry points of a pipeline that produce or receive data events.
 
 | Name | Type | Description |
 |------|------|-------------|
-| `broker` | `broker` | Receives OTLP data from a message broker through a driver (NATS JetStream) |
+| `broker` | `broker` | Receives OTLP data from a message broker through a driver (NATS JetStream, Kafka) |
 | `generator` | `generator` | Emits empty events at a fixed interval, for testing pipelines |
 | `otlp` | `otlp` | Receives protobuf-encoded OpenTelemetry Protocol (OTLP) data via HTTP |
 
@@ -87,11 +87,12 @@ Receives OTLP data from a message broker. The broker is chosen by `driver`, and 
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `driver` | string | Yes | - | The broker: `nats` (NATS JetStream) |
+| `driver` | string | Yes | - | The broker: `nats` (NATS JetStream) or `kafka` (Apache Kafka and compatible brokers) |
 | `signal` | string | Yes | - | What every message holds: `logs`, `metrics` or `traces`. Messages name no signal themselves, so a source reads one signal; read several with one source each |
 | `workers` | int | No | `1` | Number of messages processed concurrently (1-10000) |
 | `partition` | object | No | - | Reads the partition of a key from data a Broker Sink spread over partitions: `count` (1-1024) as in the sink, and the required `key`. `{partition}` in the driver's options is replaced by the key's partition |
 | `nats` | object | With `driver: nats` | - | Options of the NATS driver, see below |
+| `kafka` | object | With `driver: kafka` | - | Options of the Kafka driver, see below |
 
 **NATS driver options (`nats`):**
 
@@ -101,6 +102,16 @@ Receives OTLP data from a message broker. The broker is chosen by `driver`, and 
 | `subject` | string | Yes | - | Subject filter of the consumer; wildcards like `logs.*` are allowed |
 | `stream` | string | No | - | Stream that holds `subject`. Without it, the stream is looked up by `subject` when the source starts |
 | `durable` | string | No | - | Name of a durable consumer. Without it, a temporary consumer is created whenever the source is created |
+
+**Kafka driver options (`kafka`):**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `brokers` | array[string] | Yes | - | Seed brokers, `host:port` |
+| `topic` | string | Yes | - | Topic to read, from all its partitions |
+| `group` | string | Yes | - | Consumer group. Sources that share it split the partitions; the group's committed offsets are where a source continues |
+| `tls` | object | No | - | Connect with TLS and the system's certificate authorities; `insecure_skip_verify: true` skips the verification, for tests only |
+| `sasl` | object | No | - | Authenticate: `mechanism` (`plain`, `scram-sha-256` or `scram-sha-512`), `username`, `password`. In a `Stream` resource, take them from a secret with `valueFrom.secretKeyRef` |
 
 **Example:**
 
@@ -132,6 +143,8 @@ Receives OTLP data from a message broker. The broker is chosen by `driver`, and 
 - **NATS:** the consumer starts at the beginning of the stream. A durable consumer continues where it stopped. Its `MaxAckPending` is twice `workers`, at least 1,000, the JetStream default; the limit applies across all Tram replicas that share a durable consumer
 - **NATS:** with large messages and many workers, NATS can have a lot of data to send to the source at once. If that exceeds what the server buffers for one connection (`max_pending`, 64 MB by default), the server disconnects the source as a slow consumer, and the messages it had sent come again after their acknowledgement deadline. Lower `workers`, or raise `max_pending` above `workers` × message size
 - **NATS:** a lost connection is retried every 2 seconds, with up to 1 second of jitter, for as long as the source runs. A stream that does not exist when the source starts fails the Tram stream, which is retried
+- **Kafka:** offsets are committed per partition, every second and when the source stops, and only up to the first message that is not done yet, so messages finished out of order are never skipped by a restart. A message that is retried comes again after the delay from the same source; its offset stays uncommitted until it is done, so a restart reads it again. A rejected message counts as done; Tram writes no dead-letter topic
+- **Kafka:** a topic that does not exist when the source starts fails the Tram stream, which is retried. A group rebalance hands partitions to other sources; messages of those partitions that were not done yet are read again by their new owner
 
 ---
 
@@ -439,7 +452,7 @@ Sinks are the terminal points of a pipeline that consume or export data.
 
 | Name | Type | Description |
 |------|------|-------------|
-| `broker` | `broker` | Sends OTLP data to a message broker through a driver (NATS JetStream), with the destination of each record computed by CEL |
+| `broker` | `broker` | Sends OTLP data to a message broker through a driver (NATS JetStream, Kafka), with the destination of each record computed by CEL |
 | `debug` | `debug` | Writes events to the log (stderr) for debugging and development |
 | `otlp` | `otlp` | Sends OTLP-encoded events via HTTP to an OpenTelemetry endpoint |
 
@@ -572,11 +585,12 @@ Sends OTLP data to a message broker. The broker is chosen by `driver`, and the d
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `driver` | string | Yes | - | The broker: `nats` (NATS JetStream) |
+| `driver` | string | Yes | - | The broker: `nats` (NATS JetStream) or `kafka` (Apache Kafka and compatible brokers) |
 | `destination` | object | Yes | - | CEL expressions per signal (`logs`, `metrics`, `traces`, at least one) that return the destination of each record, e.g. the NATS subject. Signals without an expression are not sent |
 | `max_pending` | int | No | `256` | How many messages the sink sends before it waits for their acknowledgements. The broker has to store them as they arrive |
 | `partition` | object | No | - | Spreads records over partitions, see [Partitioning](#broker-partitioning) |
 | `nats` | object | With `driver: nats` | - | Options of the NATS driver: `url` (required) |
+| `kafka` | object | With `driver: kafka` | - | Options of the Kafka driver: `brokers` (required), `tls` and `sasl` as for the [Broker Source](#broker-source), and `max_message_bytes` (default 1 MiB), the largest message sent; keep it at or below the broker's `message.max.bytes` |
 
 **CEL Expression Context:**
 
@@ -620,6 +634,8 @@ With partitioning, the expressions also have `partition` (int), the partition of
 - The sink encodes and sends the messages of an event one after another without waiting in between, and reports success once the broker has acknowledged every message. If one cannot be sent or is not acknowledged within 10 seconds, the event fails and the source retries it, so messages already stored are stored again
 - **NATS:** JetStream stores each message in the stream whose subjects cover its subject; a subject no stream covers fails the publish (`503` at the OTLP source). Set the streams up before the sink sends, e.g. with NACK or the `nats` CLI
 - **NATS:** each sink has its own connection. A lost connection is retried every 2 seconds, with up to 1 second of jitter, for as long as the sink runs. While disconnected, publishing fails at once instead of being buffered, so the OTLP source answers with `503` and clients retry until NATS is back
+- **Kafka:** destinations are topics, which may contain letters, digits, `.`, `_` and `-`, at most 249 characters. A topic that does not exist fails the send after a few metadata retries (`503` at the OTLP source); Tram creates no topics. Messages have no key, so Kafka spreads them over the topic's partitions; with partitioning, put the partition into the topic name
+- **Kafka:** `max_pending` bounds the records buffered and in flight; a record not acknowledged within 10 seconds, retries included, fails the event
 
 #### Broker Partitioning
 

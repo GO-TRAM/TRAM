@@ -63,7 +63,7 @@ task nats:up
 | `task test:all` | `task check` plus the container and operator (envtest) tests; fails instead of skipping if Podman/Docker or setup-envtest is missing |
 | `task test` | All tests; tests that need containers are skipped without Docker or Podman |
 | `task test:unit` / `task test:e2e` | Unit tests only, or the end-to-end tests that need no containers |
-| `task test:containers` | End-to-end tests against NATS in a container; fails if no container runtime runs |
+| `task test:containers` | End-to-end tests against NATS and Kafka in containers; fails if no container runtime runs |
 | `task test:envtest` | Kubernetes operator tests against a real API server and etcd; downloads them on first use |
 | `task test:cover` | All tests with coverage, written to `coverage.out` |
 | `task lint` / `task fmt` | golangci-lint (including go vet), or format with its configured formatters |
@@ -131,7 +131,7 @@ tram/
 ├── internal/                         # Private application code
 │   ├── adapters/
 │   │   ├── api/                      # gRPC API and HTTP gateway
-│   │   ├── broker/                   # Broker driver contract, drivers (nats/), conformance tests
+│   │   ├── broker/                   # Broker driver contract, drivers (nats/, kafka/), conformance tests
 │   │   ├── configsync/               # File sync (--enable-file-sync)
 │   │   ├── k8scrd/                   # Kubernetes operator (--enable-k8s-operator)
 │   │   ├── source/                   # Sources, base/ and factory.go
@@ -142,7 +142,7 @@ tram/
 │   ├── ports/                        # Interfaces between core and adapters
 │   ├── e2e/                          # End-to-end pipeline tests
 │   ├── scenario/                     # End-to-end pipeline benchmarks
-│   └── testutil/                     # Test helpers: OTLP payloads (otlpgen), NATS container (natstest)
+│   └── testutil/                     # Test helpers: OTLP payloads (otlpgen), NATS and Kafka containers (natstest, kafkatest)
 ├── pkg/gen/go/api/proto/stream/v1/   # Generated protobuf, gRPC and gateway code
 ├── setup/                            # Example configurations: config/, k8s/, nats/
 ├── tools/benchreport/                # Generates BENCHMARK.md
@@ -625,7 +625,7 @@ func TestMyFunction(t *testing.T) {
 
 `internal/e2e` tests complete pipelines without external dependencies: streams are built by the core from the real source and stage factories, OTLP data is sent over HTTP, and capturing sinks record exactly which records arrive where. They cover batching, splitting, cancelled requests, the status codes clients receive, and updates under load, and run with `go test ./...`.
 
-`TestBrokerNATS` in the same package runs pipelines against a NATS server in a container (see `internal/testutil/natstest`) and checks what actually ends up in JetStream: subjects, plain OTLP bodies without headers, and records with their resource and scope. It also sends data from the broker sink through the broker source, reads plain OTLP that another producer published, and checks partitioning, buffering and the answers clients get. It is skipped without Docker or Podman; with Podman on macOS, set the variables described under [Benchmarks](#benchmarks).
+`TestBrokerNATS` in the same package runs pipelines against a NATS server in a container (see `internal/testutil/natstest`) and checks what actually ends up in JetStream: subjects, plain OTLP bodies without headers, and records with their resource and scope. It also sends data from the broker sink through the broker source, reads plain OTLP that another producer published, and checks partitioning, buffering and the answers clients get. `TestBrokerKafka` does the same against Kafka (see `internal/testutil/kafkatest`). Both are skipped without Docker or Podman; with Podman on macOS, set the variables described under [Benchmarks](#benchmarks).
 
 When adding a stage or changing how events flow, add a case there that checks which records arrive in which sink.
 

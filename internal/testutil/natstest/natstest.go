@@ -12,6 +12,8 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcnats "github.com/testcontainers/testcontainers-go/modules/nats"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"codeberg.org/eljoth/tram/internal/testutil/containertest"
 )
 
 const Image = "nats:2.11"
@@ -31,7 +33,7 @@ func Start(tb testing.TB) string {
 func StartServer(tb testing.TB) Server {
 	tb.Helper()
 	ctx := context.Background()
-	skipWithoutContainerRuntime(ctx, tb)
+	containertest.SkipWithoutRuntime(ctx, tb)
 
 	container, err := tcnats.Run(ctx, Image,
 		testcontainers.WithCmd("-js", "-m", "8222"),
@@ -50,21 +52,4 @@ func StartServer(tb testing.TB) Server {
 		tb.Fatalf("get NATS monitoring URL: %v", err)
 	}
 	return Server{URL: url, MonitoringURL: monitoring}
-}
-
-func skipWithoutContainerRuntime(ctx context.Context, tb testing.TB) {
-	tb.Helper()
-	defer func() {
-		if r := recover(); r != nil {
-			tb.Skipf("no container runtime available: %v", r)
-		}
-	}()
-
-	provider, err := testcontainers.ProviderDocker.GetProvider()
-	if err != nil {
-		tb.Skipf("no container runtime available: %v", err)
-	}
-	if err = provider.Health(ctx); err != nil {
-		tb.Skipf("no container runtime available: %v", err)
-	}
 }
