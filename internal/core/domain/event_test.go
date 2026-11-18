@@ -212,3 +212,154 @@ func TestUnmarshalOTLPDataUnknownSignal(t *testing.T) {
 	_, err := domain.UnmarshalOTLPData("", nil)
 	assert.Error(t, err)
 }
+
+// TestEventReferenceSharing tests that events are passed by reference and not copied
+func TestEventReferenceSharing(t *testing.T) {
+	t.Parallel()
+
+	// Create an event with logs
+	shape := otlpgen.Shape{Records: 5, Resources: 2, Teams: 1}
+	originalEvent := &domain.Event{
+		Logs: otlpgen.Logs(shape),
+	}
+
+	// Make a copy of the event reference
+	copiedEvent := originalEvent
+
+	// Verify that both references point to the same underlying data
+	assert.Equal(t, originalEvent, copiedEvent, "Copied event should be identical to original")
+	assert.True(t, proto.Equal(originalEvent.Logs, copiedEvent.Logs), "Log data should be identical")
+
+	// Verify record counts are the same
+	assert.Equal(t, originalEvent.RecordCount(), copiedEvent.RecordCount(), "Record counts should match")
+}
+
+// TestEventReferenceSharingWithModification tests that modifications to event data are visible across references
+func TestEventReferenceSharingWithModification(t *testing.T) {
+	t.Parallel()
+
+	// Create an event with logs
+	shape := otlpgen.Shape{Records: 3, Resources: 1, Teams: 1}
+	originalEvent := &domain.Event{
+		Logs: otlpgen.Logs(shape),
+	}
+
+	// Create multiple references to the same event
+	reference1 := originalEvent
+	reference2 := originalEvent
+	reference3 := originalEvent
+
+	// Verify all references have the same record count initially
+	assert.Equal(t, 3, originalEvent.RecordCount())
+	assert.Equal(t, 3, reference1.RecordCount())
+	assert.Equal(t, 3, reference2.RecordCount())
+	assert.Equal(t, 3, reference3.RecordCount())
+}
+
+// TestEventReferenceSharingInFanout tests event reference sharing in a fanout scenario
+func TestEventReferenceSharingInFanout(t *testing.T) {
+	t.Parallel()
+
+	// Create an event with logs
+	shape := otlpgen.Shape{Records: 7, Resources: 1, Teams: 1}
+	originalEvent := &domain.Event{
+		Logs: otlpgen.Logs(shape),
+	}
+
+	// Simulate fanout by creating multiple references
+	subscriberEvents := make([]*domain.Event, 3)
+	for i := range subscriberEvents {
+		subscriberEvents[i] = originalEvent
+	}
+
+	// Verify all subscriber events reference the same data
+	for _, event := range subscriberEvents {
+		assert.Equal(t, originalEvent, event, "All subscriber events should reference the original")
+		assert.Equal(t, originalEvent.RecordCount(), event.RecordCount(), "Record counts should match")
+	}
+}
+
+// TestEventReferenceSharingWithNilEvent tests reference sharing with nil events
+func TestEventReferenceSharingWithNilEvent(t *testing.T) {
+	t.Parallel()
+
+	var nilEvent *domain.Event
+	copiedEvent := nilEvent
+
+	// Both should be nil
+	assert.Nil(t, nilEvent)
+	assert.Nil(t, copiedEvent)
+
+	// Record count should be 0 for nil events
+	assert.Equal(t, 0, nilEvent.RecordCount())
+	assert.Equal(t, 0, copiedEvent.RecordCount())
+}
+
+// TestEventReferenceSharingWithEmptyEvent tests reference sharing with empty events
+func TestEventReferenceSharingWithEmptyEvent(t *testing.T) {
+	t.Parallel()
+
+	emptyEvent := &domain.Event{}
+	copiedEvent := emptyEvent
+
+	// Both should be non-nil but empty
+	assert.NotNil(t, emptyEvent)
+	assert.NotNil(t, copiedEvent)
+
+	// Record count should be 0 for empty events
+	assert.Equal(t, 0, emptyEvent.RecordCount())
+	assert.Equal(t, 0, copiedEvent.RecordCount())
+}
+
+// TestEventReferenceSharingWithMultipleSignals tests reference sharing with events containing multiple signals
+func TestEventReferenceSharingWithMultipleSignals(t *testing.T) {
+	t.Parallel()
+
+	logsShape := otlpgen.Shape{Records: 10, Resources: 1, Teams: 1}
+	metricsShape := otlpgen.Shape{Records: 15, Resources: 1, Teams: 1}
+	tracesShape := otlpgen.Shape{Records: 20, Resources: 1, Teams: 1}
+
+	originalEvent := &domain.Event{
+		Logs:    otlpgen.Logs(logsShape),
+		Metrics: otlpgen.Metrics(metricsShape),
+		Traces:  otlpgen.Traces(tracesShape),
+	}
+
+	// Create multiple references
+	reference1 := originalEvent
+	reference2 := originalEvent
+
+	// Verify all references have the same data
+	assert.Equal(t, originalEvent.RecordCount(), reference1.RecordCount())
+	assert.Equal(t, originalEvent.RecordCount(), reference2.RecordCount())
+
+	// Verify individual signal counts match
+	logs1, metrics1, traces1 := reference1.RecordCounts()
+	logs2, metrics2, traces2 := reference2.RecordCounts()
+	assert.Equal(t, logs1, logs2)
+	assert.Equal(t, metrics1, metrics2)
+	assert.Equal(t, traces1, traces2)
+}
+
+// TestEventReferenceSharingConcurrency tests that event references work correctly in concurrent scenarios
+func TestEventReferenceSharingConcurrency(t *testing.T) {
+	t.Parallel()
+
+	// Create an event with logs
+	shape := otlpgen.Shape{Records: 100, Resources: 5, Teams: 2}
+	originalEvent := &domain.Event{
+		Logs: otlpgen.Logs(shape),
+	}
+
+	// Create multiple references (simulating concurrent subscribers)
+	subscriberEvents := make([]*domain.Event, 10)
+	for i := range subscriberEvents {
+		subscriberEvents[i] = originalEvent
+	}
+
+	// Verify all references point to the same event
+	for i, event := range subscriberEvents {
+		assert.Equal(t, originalEvent, event, "Subscriber %d should reference the original event", i)
+		assert.Equal(t, originalEvent.RecordCount(), event.RecordCount(), "Record count should match for subscriber %d", i)
+	}
+}

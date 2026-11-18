@@ -36,3 +36,12 @@ func (f *fanout) Notify(ctx context.Context, event *domain.Event) error {
 	}
 	return eg.Wait()
 }
+
+// NewFanout creates a new fanout for testing purposes.
+// This is a test-only constructor that doesn't include metrics instrumentation.
+func NewFanout(name string, children []domain.Subscriber) (*fanout, error) {
+	return &fanout{
+		name:     name,
+		children: children,
+	}, nil
+}
