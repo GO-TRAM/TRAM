@@ -104,17 +104,21 @@ func (m *Memory) deliver(msg broker.Message) {
 	}
 }
 
-func (m *Memory) NewPublisher(map[string]any, string, *slog.Logger) (broker.Publisher, error) {
+func (m *Memory) NewPublisher(map[string]any, broker.PublisherConfig, *slog.Logger) (broker.Publisher, error) {
 	return &memoryPublisher{m: m}, nil
 }
 
-func (m *Memory) NewSubscriber(opts map[string]any, capacity int, _ string, _ *slog.Logger) (broker.Subscriber, error) {
+func (m *Memory) NewSubscriber(
+	opts map[string]any,
+	cfg broker.SubscriberConfig,
+	_ *slog.Logger,
+) (broker.Subscriber, error) {
 	dest, _ := opts["destination"].(string)
 	if dest == "" {
 		return nil, errors.New("memory subscriber needs a destination")
 	}
 	durable, _ := opts["durable"].(string)
-	return &memorySubscriber{m: m, dest: dest, durable: durable, capacity: capacity}, nil
+	return &memorySubscriber{m: m, dest: dest, durable: durable, capacity: cfg.Capacity}, nil
 }
 
 type memoryPublisher struct{ m *Memory }

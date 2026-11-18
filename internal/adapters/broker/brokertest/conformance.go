@@ -82,7 +82,11 @@ func discard() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
 func publisher(t *testing.T, h Harness, s Setup) broker.Publisher {
 	t.Helper()
-	p, err := h.Driver.NewPublisher(s.Publisher, "conformance", discard())
+	p, err := h.Driver.NewPublisher(
+		s.Publisher,
+		broker.PublisherConfig{Name: "conformance", MaxPending: severalCapacity},
+		discard(),
+	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = p.Close() })
 	return p
@@ -90,7 +94,11 @@ func publisher(t *testing.T, h Harness, s Setup) broker.Publisher {
 
 func subscriber(t *testing.T, h Harness, s Setup, capacity int) broker.Subscriber {
 	t.Helper()
-	sub, err := h.Driver.NewSubscriber(s.Subscriber, capacity, "conformance", discard())
+	sub, err := h.Driver.NewSubscriber(
+		s.Subscriber,
+		broker.SubscriberConfig{Name: "conformance", Capacity: capacity},
+		discard(),
+	)
 	require.NoError(t, err)
 	require.NoError(t, sub.Open(t.Context()))
 	t.Cleanup(func() { _ = sub.Close() })

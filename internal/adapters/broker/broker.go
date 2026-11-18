@@ -85,12 +85,29 @@ type Delivery interface {
 	Reject() error
 }
 
+// PublisherConfig is what the sink tells a driver about a publisher.
+type PublisherConfig struct {
+	// Name identifies the connection, e.g. in the broker's monitoring.
+	Name string
+	// MaxPending bounds the messages published but not yet acknowledged;
+	// Publish blocks at the bound. Always above 0.
+	MaxPending int
+}
+
+// SubscriberConfig is what the source tells a driver about a subscriber.
+type SubscriberConfig struct {
+	// Name identifies the connection, e.g. in the broker's monitoring.
+	Name string
+	// Capacity is the number of workers, the most messages the subscriber
+	// buffers. Always above 0.
+	Capacity int
+}
+
 // Driver creates the publishers and subscribers of one kind of broker. opts
-// are the driver's options from the component spec; name identifies the
-// connection, e.g. in the broker's monitoring.
+// are the driver's options from the component spec; the driver parses and
+// validates them.
 type Driver interface {
-	NewPublisher(opts map[string]any, name string, logger *slog.Logger) (Publisher, error)
-	// NewSubscriber connects; capacity is the number of workers, the most
-	// messages the subscriber buffers.
-	NewSubscriber(opts map[string]any, capacity int, name string, logger *slog.Logger) (Subscriber, error)
+	NewPublisher(opts map[string]any, cfg PublisherConfig, logger *slog.Logger) (Publisher, error)
+	// NewSubscriber connects; the consumer is attached by Open.
+	NewSubscriber(opts map[string]any, cfg SubscriberConfig, logger *slog.Logger) (Subscriber, error)
 }
