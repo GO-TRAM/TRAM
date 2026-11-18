@@ -12,6 +12,7 @@ import (
 	"github.com/go-playground/validator/v10"
 
 	contract "codeberg.org/eljoth/tram/internal/adapters/broker"
+	amqpdriver "codeberg.org/eljoth/tram/internal/adapters/broker/amqp"
 	kafkadriver "codeberg.org/eljoth/tram/internal/adapters/broker/kafka"
 	natsdriver "codeberg.org/eljoth/tram/internal/adapters/broker/nats"
 	"codeberg.org/eljoth/tram/internal/adapters/source/broker"
@@ -32,6 +33,7 @@ func NewFactory(logger *slog.Logger) *Factory {
 		validator: v,
 		logger:    logger,
 		drivers: contract.Drivers{
+			amqpdriver.Name:  amqpdriver.New(v),
 			kafkadriver.Name: kafkadriver.New(v),
 			natsdriver.Name:  natsdriver.New(v),
 		},

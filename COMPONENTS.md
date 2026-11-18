@@ -12,7 +12,7 @@ Sources are the entry points of a pipeline that produce or receive data events.
 
 | Name | Type | Description |
 |------|------|-------------|
-| `broker` | `broker` | Receives OTLP data from a message broker through a driver (NATS JetStream, Kafka) |
+| `broker` | `broker` | Receives OTLP data from a message broker through a driver (NATS JetStream, Kafka, AMQP 1.0) |
 | `generator` | `generator` | Emits empty events at a fixed interval, for testing pipelines |
 | `otlp` | `otlp` | Receives protobuf-encoded OpenTelemetry Protocol (OTLP) data via HTTP |
 
@@ -87,12 +87,13 @@ Receives OTLP data from a message broker. The broker is chosen by `driver`, and 
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `driver` | string | Yes | - | The broker: `nats` (NATS JetStream) or `kafka` (Apache Kafka and compatible brokers) |
+| `driver` | string | Yes | - | The broker: `nats` (NATS JetStream), `kafka` (Apache Kafka and compatible brokers) or `amqp` (AMQP 1.0, e.g. ActiveMQ Artemis, RabbitMQ 4, Solace, Azure Service Bus) |
 | `signal` | string | Yes | - | What every message holds: `logs`, `metrics` or `traces`. Messages name no signal themselves, so a source reads one signal; read several with one source each |
 | `workers` | int | No | `1` | Number of messages processed concurrently (1-10000) |
 | `partition` | object | No | - | Reads the partition of a key from data a Broker Sink spread over partitions: `count` (1-1024) as in the sink, and the required `key`. `{partition}` in the driver's options is replaced by the key's partition |
 | `nats` | object | With `driver: nats` | - | Options of the NATS driver, see below |
 | `kafka` | object | With `driver: kafka` | - | Options of the Kafka driver, see below |
+| `amqp` | object | With `driver: amqp` | - | Options of the AMQP driver, see below |
 
 **NATS driver options (`nats`):**
 
@@ -112,6 +113,15 @@ Receives OTLP data from a message broker. The broker is chosen by `driver`, and 
 | `group` | string | Yes | - | Consumer group. Sources that share it split the partitions; the group's committed offsets are where a source continues |
 | `tls` | object | No | - | Connect with TLS and the system's certificate authorities; `insecure_skip_verify: true` skips the verification, for tests only |
 | `sasl` | object | No | - | Authenticate: `mechanism` (`plain`, `scram-sha-256` or `scram-sha-512`), `username`, `password`. In a `Stream` resource, take them from a secret with `valueFrom.secretKeyRef` |
+
+**AMQP 1.0 driver options (`amqp`):**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `url` | string | Yes | - | Broker URL, `amqp://host:5672` or `amqps://host:5671` |
+| `address` | string | Yes | - | Address to read, e.g. a queue. Its form depends on the broker: a queue name on ActiveMQ Artemis and Solace, `/queues/<name>` on RabbitMQ 4 |
+| `username`, `password` | string | No | - | Authenticate with SASL PLAIN; without them the connection uses SASL ANONYMOUS. In a `Stream` resource, take them from a secret with `valueFrom.secretKeyRef` |
+| `insecure_skip_verify` | bool | No | `false` | Skip the verification of the broker's certificate with `amqps`, for tests only |
 
 **Example:**
 
@@ -145,6 +155,8 @@ Receives OTLP data from a message broker. The broker is chosen by `driver`, and 
 - **NATS:** a lost connection is retried every 2 seconds, with up to 1 second of jitter, for as long as the source runs. A stream that does not exist when the source starts fails the Tram stream, which is retried
 - **Kafka:** offsets are committed per partition, every second and when the source stops, and only up to the first message that is not done yet, so messages finished out of order are never skipped by a restart. A message that is retried comes again after the delay from the same source; its offset stays uncommitted until it is done, so a restart reads it again. A rejected message counts as done; Tram writes no dead-letter topic
 - **Kafka:** a topic that does not exist when the source starts fails the Tram stream, which is retried. A group rebalance hands partitions to other sources; messages of those partitions that were not done yet are read again by their new owner
+- **AMQP:** the source has credit for twice `workers` messages. AMQP 1.0 has no delayed redelivery: a retried message is held for the delay and then returned as a failed delivery, which counts towards the broker's limit of attempts before it dead-letters the message; it keeps its credit while held. A rejected message is settled as rejected, and the broker's policy decides what happens to it, usually a dead-letter address
+- **AMQP:** a lost connection is opened again with growing delays, up to 5 seconds; messages not settled on the lost connection are delivered again by the broker. An address the broker does not have fails the Tram stream when it starts, unless the broker creates addresses on demand
 
 ---
 
@@ -452,7 +464,7 @@ Sinks are the terminal points of a pipeline that consume or export data.
 
 | Name | Type | Description |
 |------|------|-------------|
-| `broker` | `broker` | Sends OTLP data to a message broker through a driver (NATS JetStream, Kafka), with the destination of each record computed by CEL |
+| `broker` | `broker` | Sends OTLP data to a message broker through a driver (NATS JetStream, Kafka, AMQP 1.0), with the destination of each record computed by CEL |
 | `debug` | `debug` | Writes events to the log (stderr) for debugging and development |
 | `otlp` | `otlp` | Sends OTLP-encoded events via HTTP to an OpenTelemetry endpoint |
 
@@ -585,12 +597,13 @@ Sends OTLP data to a message broker. The broker is chosen by `driver`, and the d
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `driver` | string | Yes | - | The broker: `nats` (NATS JetStream) or `kafka` (Apache Kafka and compatible brokers) |
+| `driver` | string | Yes | - | The broker: `nats` (NATS JetStream), `kafka` (Apache Kafka and compatible brokers) or `amqp` (AMQP 1.0) |
 | `destination` | object | Yes | - | CEL expressions per signal (`logs`, `metrics`, `traces`, at least one) that return the destination of each record, e.g. the NATS subject. Signals without an expression are not sent |
 | `max_pending` | int | No | `256` | How many messages the sink sends before it waits for their acknowledgements. The broker has to store them as they arrive |
 | `partition` | object | No | - | Spreads records over partitions, see [Partitioning](#broker-partitioning) |
 | `nats` | object | With `driver: nats` | - | Options of the NATS driver: `url` (required) |
 | `kafka` | object | With `driver: kafka` | - | Options of the Kafka driver: `brokers` (required), `tls` and `sasl` as for the [Broker Source](#broker-source), and `max_message_bytes` (default 1 MiB), the largest message sent; keep it at or below the broker's `message.max.bytes` |
+| `amqp` | object | With `driver: amqp` | - | Options of the AMQP driver: `url` (required), `username`, `password` and `insecure_skip_verify` as for the [Broker Source](#broker-source), and `max_message_bytes`, the largest message sent (default: only the limit the broker announces per address) |
 
 **CEL Expression Context:**
 
@@ -636,6 +649,7 @@ With partitioning, the expressions also have `partition` (int), the partition of
 - **NATS:** each sink has its own connection. A lost connection is retried every 2 seconds, with up to 1 second of jitter, for as long as the sink runs. While disconnected, publishing fails at once instead of being buffered, so the OTLP source answers with `503` and clients retry until NATS is back
 - **Kafka:** destinations are topics, which may contain letters, digits, `.`, `_` and `-`, at most 249 characters. A topic that does not exist fails the send after a few metadata retries (`503` at the OTLP source); Tram creates no topics. Messages have no key, so Kafka spreads them over the topic's partitions; with partitioning, put the partition into the topic name
 - **Kafka:** `max_pending` bounds the records buffered and in flight; a record not acknowledged within 10 seconds, retries included, fails the event
+- **AMQP:** destinations are addresses, in the broker's form; the sink refuses only empty addresses and whitespace and leaves the rest to the broker. Each address gets its own sender link on one connection. Up to `max_pending` messages are sent at once, each waiting for the broker's disposition for up to 10 seconds. A lost connection is opened again on the next message, so the OTLP source answers `503` until the broker is back
 
 #### Broker Partitioning
 
