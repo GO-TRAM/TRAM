@@ -11,6 +11,9 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
+	contract "codeberg.org/eljoth/tram/internal/adapters/broker"
+	natsdriver "codeberg.org/eljoth/tram/internal/adapters/broker/nats"
+	"codeberg.org/eljoth/tram/internal/adapters/sink/broker"
 	"codeberg.org/eljoth/tram/internal/adapters/sink/debug"
 	"codeberg.org/eljoth/tram/internal/adapters/sink/nats"
 	"codeberg.org/eljoth/tram/internal/adapters/sink/noop"
@@ -21,17 +24,22 @@ import (
 type Factory struct {
 	validator *validator.Validate
 	logger    *slog.Logger
+	drivers   contract.Drivers
 }
 
 func NewFactory(logger *slog.Logger) *Factory {
+	v := validator.New(validator.WithRequiredStructEnabled())
 	return &Factory{
-		validator: validator.New(validator.WithRequiredStructEnabled()),
+		validator: v,
 		logger:    logger,
+		drivers:   contract.Drivers{natsdriver.Name: natsdriver.New(v)},
 	}
 }
 
 func (f *Factory) New(spec domain.SinkSpec) (domain.Sink, error) {
 	switch spec.Type {
+	case broker.Type:
+		return broker.New(spec, f.validator, f.logger, f.drivers)
 	case noop.Type:
 		return noop.New(spec, f.validator, f.logger)
 	case debug.Type:

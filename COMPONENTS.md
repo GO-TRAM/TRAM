@@ -12,8 +12,9 @@ Sources are the entry points of a pipeline that produce or receive data events.
 
 | Name | Type | Description |
 |------|------|-------------|
+| `broker` | `broker` | Receives OTLP data from a message broker through a driver (NATS JetStream) |
 | `generator` | `generator` | Emits empty events at a fixed interval, for testing pipelines |
-| `nats` | `nats` | Consumes events published by Tram's `nats` sink from NATS JetStream |
+| `nats` | `nats` | **Deprecated**, use `broker` with `driver: nats`. Consumes events published by Tram's `nats` sink from NATS JetStream |
 | `otlp` | `otlp` | Receives protobuf-encoded OpenTelemetry Protocol (OTLP) data via HTTP |
 
 ### Generator Source
@@ -77,7 +78,65 @@ Receives OpenTelemetry Protocol data over HTTP (OTLP/HTTP). OTLP over gRPC is no
 - A request may take up to 1 minute to send, which leaves time for large bodies on slow connections
 - The port is opened when the stream is created, so a port that is already in use fails the stream creation
 
+### Broker Source
+
+Receives OTLP data from a message broker. The broker is chosen by `driver`, and the driver's options are under a key of the same name, e.g. `nats:`. Every message is one serialized OTLP `LogsData`, `MetricsData` or `TracesData`, the plain body that the [Broker Sink](#broker-sink) writes, without headers, so any producer can feed the source. The broker is set up outside Tram: the source creates or updates only its consumer.
+
+**Type:** `broker`
+
+**Configuration:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `driver` | string | Yes | - | The broker: `nats` (NATS JetStream) |
+| `signal` | string | Yes | - | What every message holds: `logs`, `metrics` or `traces`. Messages name no signal themselves, so a source reads one signal; read several with one source each |
+| `workers` | int | No | `1` | Number of messages processed concurrently (1-10000) |
+| `partition` | object | No | - | Reads the partition of a key from data a Broker Sink spread over partitions: `count` (1-1024) as in the sink, and the required `key`. `{partition}` in the driver's options is replaced by the key's partition |
+| `nats` | object | With `driver: nats` | - | Options of the NATS driver, see below |
+
+**NATS driver options (`nats`):**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `url` | string | Yes | - | NATS server URL, e.g. `nats://localhost:4222` |
+| `subject` | string | Yes | - | Subject filter of the consumer; wildcards like `logs.*` are allowed |
+| `stream` | string | No | - | Stream that holds `subject`. Without it, the stream is looked up by `subject` when the source starts |
+| `durable` | string | No | - | Name of a durable consumer. Without it, a temporary consumer is created whenever the source is created |
+
+**Example:**
+
+```json
+{
+  "name": "audit-in",
+  "type": "broker",
+  "spec": {
+    "driver": "nats",
+    "signal": "logs",
+    "workers": 64,
+    "nats": {
+      "url": "nats://localhost:4222",
+      "subject": "audit.logs",
+      "durable": "audit"
+    }
+  }
+}
+```
+
+**Behavior Notes:**
+- A message that is not valid OTLP data of `signal` is rejected and not redelivered. Protobuf does not name its type, so data of another signal may decode without error; keep one signal per subject
+- Each message becomes one event. A message is acknowledged once all sinks have accepted it. If passing it on fails, it is redelivered after 5 seconds; data rejected by a stage or sink is rejected for good
+- Delivery is at-least-once, and messages are not processed in order unless `workers` is 1
+- Up to `workers` messages are processed at the same time. The driver buffers only as many messages as there are workers, so no message waits long for a worker while its acknowledgement deadline runs
+- A `batch` stage after the source holds up to `workers` messages, since every message waits for its batch to be delivered before it is acknowledged. To let batches fill up to `max_records` before their `timeout`, set `workers` to at least `max_records` divided by the records per message
+- Stopping or updating the source interrupts waiting for new messages right away; messages being processed are still delivered and acknowledged
+- With `partition`, the source computes the partition of `key` like the [Broker Sink](#broker-partitioning) and replaces `{partition}` in every option of the driver. Without `partition`, the options must not contain it; with it, at least one must
+- **NATS:** the consumer starts at the beginning of the stream. A durable consumer continues where it stopped. Its `MaxAckPending` is twice `workers`, at least 1,000, the JetStream default; the limit applies across all Tram replicas that share a durable consumer
+- **NATS:** with large messages and many workers, NATS can have a lot of data to send to the source at once. If that exceeds what the server buffers for one connection (`max_pending`, 64 MB by default), the server disconnects the source as a slow consumer, and the messages it had sent come again after their acknowledgement deadline. Lower `workers`, or raise `max_pending` above `workers` × message size
+- **NATS:** a lost connection is retried every 2 seconds, with up to 1 second of jitter, for as long as the source runs. A stream that does not exist when the source starts fails the Tram stream, which is retried
+
 ### NATS Source
+
+> **Deprecated:** use the [Broker Source](#broker-source) with `driver: nats`. Unlike this source, it reads messages without the `Tram-Signal` header and takes the signal from its spec.
 
 Consumes events from a NATS JetStream stream that were published by Tram's [NATS Sink](#nats-sink).
 
@@ -465,8 +524,9 @@ Sinks are the terminal points of a pipeline that consume or export data.
 
 | Name | Type | Description |
 |------|------|-------------|
+| `broker` | `broker` | Sends OTLP data to a message broker through a driver (NATS JetStream), with the destination of each record computed by CEL |
 | `debug` | `debug` | Writes events to the log (stderr) for debugging and development |
-| `nats` | `nats` | Publishes OTLP-encoded events to NATS JetStream with dynamic subject mapping |
+| `nats` | `nats` | **Deprecated**, use `broker` with `driver: nats`. Publishes OTLP-encoded events to NATS JetStream with dynamic subject mapping |
 | `otlp` | `otlp` | Sends OTLP-encoded events via HTTP to an OpenTelemetry endpoint |
 
 ### Debug Sink
@@ -588,7 +648,83 @@ With `url_expression`, the sink sends each log record, metric data point and spa
 }
 ```
 
+### Broker Sink
+
+Sends OTLP data to a message broker. The broker is chosen by `driver`, and the driver's options are under a key of the same name, e.g. `nats:`. A CEL expression per signal computes the destination of every record; the records of one signal and destination become one message whose body is the serialized OTLP data, without headers, so any consumer can read it. The broker is set up outside Tram: the sink creates no streams, topics or queues.
+
+**Type:** `broker`
+
+**Configuration:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `driver` | string | Yes | - | The broker: `nats` (NATS JetStream) |
+| `destination` | object | Yes | - | CEL expressions per signal (`logs`, `metrics`, `traces`, at least one) that return the destination of each record, e.g. the NATS subject. Signals without an expression are not sent |
+| `max_pending` | int | No | `256` | How many messages the sink sends before it waits for their acknowledgements. The broker has to store them as they arrive |
+| `partition` | object | No | - | Spreads records over partitions, see [Partitioning](#broker-partitioning) |
+| `nats` | object | With `driver: nats` | - | Options of the NATS driver: `url` (required) |
+
+**CEL Expression Context:**
+
+| Expression | Variables |
+|------------|-----------|
+| `logs` | `logs` (payload), `resource` (Resource), `scope` (InstrumentationScope), `record` (LogRecord) |
+| `metrics` | `metrics` (payload), `resource`, `scope`, `metric` (Metric), `datapoint` (the data point; its type depends on the metric type) |
+| `traces` | `traces` (payload), `resource`, `scope`, `span` (Span) |
+
+With partitioning, the expressions also have `partition` (int), the partition of the record, data point or span.
+
+- Each expression is evaluated once per log record, metric data point and span and must return a string. The payload variable holds only the current log record, metric or span with its resource and scope, so `[0]` indexes address it, e.g. `logs.resource_logs[0].scope_logs[0].log_records[0]`. For metrics it holds the whole metric with all its data points
+- `resource` and `scope` are empty messages when the payload has none. Field names follow the OTLP protobuf definitions, e.g. `record.severity_text`, `datapoint.attributes`
+- Metrics are routed per data point: a metric whose data points resolve to different destinations is split into one metric per destination, each with the metric's name, description, unit, metadata and type-specific fields. A metric whose data points all resolve to the same destination is sent as it is
+- A metric without data points is evaluated once without `datapoint`; an expression that reads it fails for that metric and rejects the event
+- The custom function `get_attr(key)` on an attribute list returns the string value of an attribute, or `""` if it is missing, e.g. `resource.attributes.get_attr('service.name')`
+
+**Example:**
+
+```json
+{
+  "name": "to-routers",
+  "type": "broker",
+  "from": "map-router",
+  "spec": {
+    "driver": "nats",
+    "nats": { "url": "nats://localhost:4222" },
+    "destination": {
+      "logs": "'router.audit.' + record.attributes.get_attr('example.router.id') + '.logs'"
+    },
+    "max_pending": 256
+  }
+}
+```
+
+**Behavior Notes:**
+- **One signal per destination.** Messages name no signal, so a consumer can only decode a destination that holds one signal. Give each signal its own destinations, e.g. by a signal token in the subject
+- Records keep their resource and scope. If all records of a signal resolve to the same destination, the payload is sent unchanged. Resources that appear in several entries of an event, e.g. after a `batch` stage, stay separate entries in the message, which OTLP allows
+- An event is rejected if a destination expression fails for one of its records, does not return a string, or returns a destination the driver refuses, e.g. a NATS subject with an empty token, whitespace or a wildcard. `get_attr` returns `""` for a missing attribute, so `'logs.' + ...get_attr('team')` gives the invalid `logs.` for records without it. The OTLP source answers with HTTP 422, the Broker Source rejects the message instead of redelivering it
+- A message larger than the broker accepts (NATS: the server's `max_payload`) rejects the event instead of failing on every retry. Messages of the event sent before it stay sent. Keep batches small enough that the largest message per destination stays below the limit
+- The sink encodes and sends the messages of an event one after another without waiting in between, and reports success once the broker has acknowledged every message. If one cannot be sent or is not acknowledged within 10 seconds, the event fails and the source retries it, so messages already stored are stored again
+- **NATS:** JetStream stores each message in the stream whose subjects cover its subject; a subject no stream covers fails the publish (`503` at the OTLP source). Set the streams up before the sink sends, e.g. with NACK or the `nats` CLI
+- **NATS:** each sink has its own connection. A lost connection is retried every 2 seconds, with up to 1 second of jitter, for as long as the sink runs. While disconnected, publishing fails at once instead of being buffered, so the OTLP source answers with `503` and clients retry until NATS is back
+
+#### Broker Partitioning
+
+With `partition`, the sink computes a partition per record from a key, e.g. the tenant, and gives it to the destination expressions as `partition`. Put it into the destination, e.g. `'audit.' + string(partition) + '.' + ...`, and set up one stream per partition, so each stream holds a part of the data and the streams can be led by different servers.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `count` | int | Yes | - | Number of partitions, from 1 to 1024 |
+| `logs` | string | With `destination.logs` | - | CEL expression returning the key of a log record. Has the same variables as the destination expression, without `partition` |
+| `metrics` | string | With `destination.metrics` | - | CEL expression returning the key of a metric data point |
+| `traces` | string | With `destination.traces` | - | CEL expression returning the key of a span |
+
+- The partition of a key is its 32-bit FNV-1a hash modulo `count`, the same as the NATS sink's. It never changes, so consumers can compute which partition holds a key; the [Broker Source](#broker-source) does so with its `partition` field
+- An expression for the key that fails or does not return a string rejects the event. A missing attribute gives the key `""`, which is a valid key like any other
+- Changing `count` moves keys to other partitions. Data already stored stays where it is, so changing it is a migration
+
 ### NATS Sink
+
+> **Deprecated:** use the [Broker Sink](#broker-sink) with `driver: nats`. Unlike this sink, it writes no `Tram-Signal` header and creates no streams.
 
 Publishes OTLP-encoded events to NATS JetStream. Uses dynamic subject mapping with CEL expressions to route different telemetry data to appropriate subjects. Creates the specified stream if it does not exist, and otherwise only adds what the sink needs to it.
 

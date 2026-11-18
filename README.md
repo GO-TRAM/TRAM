@@ -237,9 +237,9 @@ Source → [Stage] → Sink
 
 | Type | Components |
 |------|-------------|
-| **Sources** | `generator`, `nats`, `otlp` |
+| **Sources** | `broker`, `generator`, `nats` (deprecated), `otlp` |
 | **Stages** | `batch`, `cel_filter`, `cel_validator`, `delay`, `noop`, `value_map` |
-| **Sinks** | `debug`, `nats`, `otlp` |
+| **Sinks** | `broker`, `debug`, `nats` (deprecated), `otlp` |
 
 For detailed documentation on each component and its configuration, see [COMPONENTS.md](COMPONENTS.md).
 

@@ -6,6 +6,7 @@
 package broker
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -39,4 +40,25 @@ func Options(spec map[string]any, name string) (map[string]any, error) {
 		return nil, fmt.Errorf("options of driver %s must be an object", name)
 	}
 	return opts, nil
+}
+
+// Split takes a component spec apart: the spec without the driver's options,
+// the options, and the driver its `driver` field names. Options of another
+// driver stay in the spec, where the component refuses them as unknown.
+func Split(spec map[string]any, drivers Drivers) (map[string]any, map[string]any, Driver, error) {
+	name, _ := spec["driver"].(string)
+	if name == "" {
+		return nil, nil, nil, errors.New("driver is required")
+	}
+	driver, err := drivers.Get(name)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	opts, err := Options(spec, name)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	generic := maps.Clone(spec)
+	delete(generic, name)
+	return generic, opts, driver, nil
 }

@@ -72,8 +72,15 @@ func (m *Memory) Outcome(dest, durable string) Outcome {
 	return q.outcome
 }
 
-// Inject delivers body to the subscribers of dest as if it had been published
-// by another producer.
+// Declare creates the queue of dest and durable ahead of its subscriber, like
+// a durable consumer that exists before the source starts, so messages
+// published before the source opens wait for it.
+func (m *Memory) Declare(dest, durable string) {
+	m.queue(dest, durable)
+}
+
+// Inject delivers body to the queues of dest as if it had been published by
+// another producer.
 func (m *Memory) Inject(dest string, body []byte) {
 	m.deliver(broker.Message{Destination: dest, Body: body})
 }
