@@ -15,17 +15,17 @@ import (
 	"codeberg.org/eljoth/tram/internal/adapters/broker/brokertest"
 )
 
-func TestDriversGet(t *testing.T) {
+func TestDriversDriver(t *testing.T) {
 	t.Parallel()
 
 	m := brokertest.NewMemory(0)
-	drivers := broker.Drivers{"memory": m}
+	drivers := broker.Drivers[broker.PublisherDriver]{"memory": m}
 
-	got, err := drivers.Get("memory")
+	got, err := drivers.Driver("memory")
 	require.NoError(t, err)
 	assert.Same(t, m, got)
 
-	_, err = drivers.Get("kafka")
+	_, err = drivers.Driver("kafka")
 	require.ErrorIs(t, err, broker.ErrUnknownDriver)
 	assert.Contains(t, err.Error(), "available: memory")
 }

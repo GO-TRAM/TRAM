@@ -19,6 +19,7 @@ import (
 	"github.com/go-playground/validator/v10"
 
 	contract "codeberg.org/eljoth/tram/internal/adapters/broker"
+	"codeberg.org/eljoth/tram/internal/adapters/broker/drivers"
 	"codeberg.org/eljoth/tram/internal/adapters/broker/partition"
 	"codeberg.org/eljoth/tram/internal/adapters/source/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
@@ -48,13 +49,19 @@ type Source struct {
 	stopped bool
 }
 
-func New(
+func New(source domain.SourceSpec, validator *validator.Validate, logger *slog.Logger) (*Source, error) {
+	return newSource(source, validator, logger, drivers.NewSubscriberFactory(validator))
+}
+
+// newSource is [New] with the drivers to resolve the spec's `driver` from, so
+// tests can inject the in-memory driver; see export_test.go.
+func newSource(
 	source domain.SourceSpec,
 	validator *validator.Validate,
 	logger *slog.Logger,
-	drivers contract.Drivers,
+	driverFactory contract.DriverFactory[contract.SubscriberDriver],
 ) (*Source, error) {
-	generic, opts, driver, err := contract.Split(source.Spec, drivers)
+	generic, opts, driver, err := contract.Split(source.Spec, driverFactory)
 	if err != nil {
 		return nil, err
 	}

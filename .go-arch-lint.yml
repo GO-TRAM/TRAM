@@ -1,0 +1,218 @@
+# Architecture rules for go-arch-lint (https://github.com/fe3dback/go-arch-lint).
+#
+# Every package belongs to exactly one component; a component may only import
+# the components listed under `mayDependOn` and the vendors under `canUse`
+# (plus `commonComponents` / `commonVendors`). Anything not listed is a
+# violation. The standard library is always allowed.
+#
+#   go-arch-lint check      # verify
+#   go-arch-lint mapping    # show which package belongs to which component
+#   go-arch-lint graph      # render the component graph as SVG
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+  # deepScan also treats injected implementations as dependencies of the
+  # receiving component: main passing core into api.New, or the factories into
+  # core.New, would need api -> core and core -> sink. That is the dependency
+  # inversion of ports and adapters, so only plain imports are checked.
+  deepScan: false
+
+exclude:
+  - setup
+  - tools
+
+# Test files may wire things together freely (e.g. sink tests using a broker
+# driver); the rules are about production code.
+excludeFiles:
+  - "^.*_test\\.go$"
+  - "^.*/generate\\.go$" # go:generate directives at the module root
+
+vendors:
+  # Shared by (almost) everything.
+  validator:   { in: [github.com/go-playground/validator, github.com/go-playground/validator/**] }
+  errgroup:    { in: [golang.org/x/sync, golang.org/x/sync/**] }
+  protobuf:    { in: [google.golang.org/protobuf, google.golang.org/protobuf/**] }
+  otlp-proto:  { in: [go.opentelemetry.io/proto/otlp, go.opentelemetry.io/proto/otlp/**] }
+
+  # Observability.
+  otel-api:
+    in:
+      - go.opentelemetry.io/otel
+      - go.opentelemetry.io/otel/attribute
+      - go.opentelemetry.io/otel/metric
+      - go.opentelemetry.io/otel/trace
+  otel-sdk:
+    in:
+      - go.opentelemetry.io/otel/sdk
+      - go.opentelemetry.io/otel/sdk/**
+      - go.opentelemetry.io/otel/exporters
+      - go.opentelemetry.io/otel/exporters/**
+  prometheus:  { in: [github.com/prometheus, github.com/prometheus/**] }
+
+  # Expression language for filters, validators and sink routing.
+  cel:         { in: [github.com/google/cel-go, github.com/google/cel-go/**] }
+
+  # Broker client libraries: each one belongs to exactly one driver.
+  nats:        { in: [github.com/nats-io, github.com/nats-io/**] }
+  kafka:       { in: [github.com/twmb/franz-go, github.com/twmb/franz-go/**] }
+  amqp:        { in: [github.com/Azure/go-amqp, github.com/Azure/go-amqp/**] }
+
+  # Inbound adapters.
+  grpc:
+    in:
+      - google.golang.org/grpc
+      - google.golang.org/grpc/**
+      - github.com/grpc-ecosystem/grpc-gateway
+      - github.com/grpc-ecosystem/grpc-gateway/**
+      - buf.build/go/protovalidate
+      - buf.build/go/protovalidate/**
+  fsnotify:    { in: [github.com/fsnotify, github.com/fsnotify/**] }
+  k8s:
+    in:
+      - k8s.io
+      - k8s.io/**
+      - sigs.k8s.io
+      - sigs.k8s.io/**
+      - github.com/go-logr
+      - github.com/go-logr/**
+
+  # CLI.
+  cobra:       { in: [github.com/spf13/cobra, github.com/spf13/cobra/**] }
+
+  # Test support.
+  testify:        { in: [github.com/stretchr/testify, github.com/stretchr/testify/**] }
+  testcontainers: { in: [github.com/testcontainers/testcontainers-go, github.com/testcontainers/testcontainers-go/**] }
+
+components:
+  # --- core -------------------------------------------------------------
+  domain:          { in: internal/core/domain }
+  ports:           { in: internal/ports }
+  core:            { in: internal/core }
+
+  # --- generated API code -------------------------------------------------
+  protogen:        { in: [pkg/gen, pkg/gen/**] }
+
+  # --- inbound / config adapters -----------------------------------------
+  api:             { in: internal/adapters/api }
+  configsync:      { in: internal/adapters/configsync }
+  k8scrd:          { in: [internal/adapters/k8scrd, internal/adapters/k8scrd/**] }
+
+  # --- broker abstraction and drivers -------------------------------------
+  broker:          { in: internal/adapters/broker }
+  broker-partition: { in: internal/adapters/broker/partition }
+  broker-nats:     { in: internal/adapters/broker/nats }
+  broker-kafka:    { in: internal/adapters/broker/kafka }
+  broker-amqp:     { in: internal/adapters/broker/amqp }
+  broker-drivers:  { in: internal/adapters/broker/drivers }
+  brokertest:      { in: internal/adapters/broker/brokertest }
+
+  # --- pipeline components: factory, shared base, implementations --------
+  sink-factory:   { in: internal/adapters/sink }
+  sink-base:       { in: internal/adapters/sink/base }
+  sink-celentry:   { in: internal/adapters/sink/celentry }
+  sinks:           { in: internal/adapters/sink/* }
+
+  source-factory: { in: internal/adapters/source }
+  source-base:     { in: internal/adapters/source/base }
+  sources:         { in: internal/adapters/source/* }
+
+  stage-factory:  { in: internal/adapters/stage }
+  stage-base:      { in: internal/adapters/stage/base }
+  stages:          { in: internal/adapters/stage/* }
+
+  # --- tests and entrypoint ----------------------------------------------
+  testutil:        { in: [internal/testutil, internal/testutil/**] }
+  e2e:
+    in:
+      - internal/e2e
+      - internal/scenario
+  main:            { in: [cmd, cmd/**] }
+
+commonComponents:
+  - domain
+
+commonVendors:
+  - validator
+  - errgroup
+  - protobuf
+  - otlp-proto
+
+# Components without an entry here (domain, ports, broker, broker-partition,
+# sink-base, source-base, stage-base) may only use the common components and
+# vendors above: nothing else in the project.
+deps:
+  core:
+    mayDependOn: [ports]
+    canUse: [otel-api]
+
+  api:
+    mayDependOn: [ports, protogen]
+    canUse: [grpc]
+
+  configsync:
+    mayDependOn: [ports]
+    canUse: [fsnotify]
+
+  k8scrd:
+    mayDependOn: [k8scrd, ports]
+    canUse: [k8s]
+
+  # A driver implements the broker interface with exactly one client library.
+  broker-nats:
+    mayDependOn: [broker]
+    canUse: [nats]
+  broker-kafka:
+    mayDependOn: [broker]
+    canUse: [kafka]
+  broker-amqp:
+    mayDependOn: [broker]
+    canUse: [amqp]
+
+  # The only component that knows the concrete drivers.
+  broker-drivers:
+    mayDependOn: [broker, broker-nats, broker-kafka, broker-amqp]
+
+  brokertest:
+    mayDependOn: [broker]
+    canUse: [testify]
+
+  # Factories know the implementations of their kind and nothing else.
+  sink-factory:
+    mayDependOn: [sinks]
+  source-factory:
+    mayDependOn: [sources]
+  stage-factory:
+    mayDependOn: [stages]
+
+  sink-celentry:
+    canUse: [cel]
+  # A sink never imports another sink, a source or a stage, nor a concrete broker driver.
+  sinks:
+    mayDependOn: [sink-base, sink-celentry, broker, broker-partition, broker-drivers]
+    canUse: [cel]
+
+  sources:
+    mayDependOn: [source-base, broker, broker-partition, broker-drivers]
+
+  stages:
+    mayDependOn: [stage-base]
+    canUse: [cel, otel-api]
+
+  testutil:
+    mayDependOn: [testutil]
+    canUse: [testify, testcontainers, kafka, nats, amqp]
+
+  # Generated by buf; it needs whatever the generators import.
+  protogen:
+    anyVendorDeps: true
+
+  e2e:
+    anyProjectDeps: true
+    anyVendorDeps: true
+
+  # The composition root may wire everything.
+  main:
+    anyProjectDeps: true
+    canUse: [otel-api, otel-sdk, prometheus, cobra]

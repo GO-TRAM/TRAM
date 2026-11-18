@@ -13,8 +13,6 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	contract "codeberg.org/eljoth/tram/internal/adapters/broker"
-	natsdriver "codeberg.org/eljoth/tram/internal/adapters/broker/nats"
 	"codeberg.org/eljoth/tram/internal/adapters/sink/broker"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/natstest"
@@ -40,7 +38,6 @@ func BenchmarkNotify(b *testing.B) {
 	}
 
 	v := validator.New(validator.WithRequiredStructEnabled())
-	drivers := contract.Drivers{natsdriver.Name: natsdriver.New(v)}
 	shapes := []otlpgen.Shape{
 		{Records: 1, Resources: 1, Teams: 1, Attributes: 4},
 		{Records: 100, Resources: 1, Teams: 1, Attributes: 4},
@@ -54,7 +51,7 @@ func BenchmarkNotify(b *testing.B) {
 			"destination": map[string]any{
 				"logs": "'bench.' + logs.resource_logs[0].scope_logs[0].log_records[0].attributes.get_attr('team')",
 			},
-		}}, v, slog.New(slog.DiscardHandler), drivers)
+		}}, v, slog.New(slog.DiscardHandler))
 		if newErr != nil {
 			b.Fatal(newErr)
 		}

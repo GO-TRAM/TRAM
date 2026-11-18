@@ -18,6 +18,7 @@ import (
 	"github.com/go-playground/validator/v10"
 
 	contract "codeberg.org/eljoth/tram/internal/adapters/broker"
+	"codeberg.org/eljoth/tram/internal/adapters/broker/drivers"
 	"codeberg.org/eljoth/tram/internal/adapters/sink/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
@@ -42,13 +43,19 @@ type Sink struct {
 	logger    *slog.Logger
 }
 
-func New(
+func New(sink domain.SinkSpec, validator *validator.Validate, logger *slog.Logger) (*Sink, error) {
+	return newSink(sink, validator, logger, drivers.NewPublisherFactory(validator))
+}
+
+// newSink is [New] with the drivers to resolve the spec's `driver` from, so
+// tests can inject the in-memory driver; see export_test.go.
+func newSink(
 	sink domain.SinkSpec,
 	validator *validator.Validate,
 	logger *slog.Logger,
-	drivers contract.Drivers,
+	driverFactory contract.DriverFactory[contract.PublisherDriver],
 ) (*Sink, error) {
-	generic, opts, driver, err := contract.Split(sink.Spec, drivers)
+	generic, opts, driver, err := contract.Split(sink.Spec, driverFactory)
 	if err != nil {
 		return nil, err
 	}

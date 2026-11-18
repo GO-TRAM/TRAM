@@ -29,9 +29,9 @@ const byTeam = "'out.' + record.attributes.get_attr('team')"
 
 func newSink(t *testing.T, m *brokertest.Memory, spec map[string]any) (*broker.Sink, error) {
 	t.Helper()
-	s, err := broker.New(domain.SinkSpec{Name: "out", From: "in", Spec: spec},
+	s, err := broker.NewWithDrivers(domain.SinkSpec{Name: "out", From: "in", Spec: spec},
 		validator.New(validator.WithRequiredStructEnabled()), slog.New(slog.DiscardHandler),
-		contract.Drivers{brokertest.MemoryName: m})
+		contract.Drivers[contract.PublisherDriver]{brokertest.MemoryName: m})
 	if err == nil {
 		t.Cleanup(func() { _ = s.Stop() })
 	}

@@ -73,9 +73,9 @@ func spec(extra map[string]any) map[string]any {
 }
 
 func newSource(m *brokertest.Memory, s map[string]any) (*broker.Source, error) {
-	return broker.New(domain.SourceSpec{Name: "in", Spec: s},
+	return broker.NewWithDrivers(domain.SourceSpec{Name: "in", Spec: s},
 		validator.New(validator.WithRequiredStructEnabled()), slog.New(slog.DiscardHandler),
-		contract.Drivers{brokertest.MemoryName: m})
+		contract.Drivers[contract.SubscriberDriver]{brokertest.MemoryName: m})
 }
 
 // run starts the source and stops it when the test ends.

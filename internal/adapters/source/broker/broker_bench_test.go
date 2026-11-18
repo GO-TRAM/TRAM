@@ -18,8 +18,6 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	contract "codeberg.org/eljoth/tram/internal/adapters/broker"
-	natsdriver "codeberg.org/eljoth/tram/internal/adapters/broker/nats"
 	"codeberg.org/eljoth/tram/internal/adapters/source/broker"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/natstest"
@@ -91,7 +89,7 @@ func consume(b *testing.B, js jetstream.JetStream, url, name string, workers, re
 		"signal":  "logs",
 		"workers": float64(workers),
 		"nats":    map[string]any{"url": url, "stream": name, "subject": subject},
-	}}, v, slog.New(slog.DiscardHandler), contract.Drivers{natsdriver.Name: natsdriver.New(v)})
+	}}, v, slog.New(slog.DiscardHandler))
 	if err != nil {
 		b.Fatal(err)
 	}

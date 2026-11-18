@@ -631,7 +631,7 @@ When adding a stage or changing how events flow, add a case there that checks wh
 
 ### Broker Drivers
 
-A broker driver implements the contract in `internal/adapters/broker` and has to pass the conformance suite in `broker/brokertest` (`brokertest.Run`): publish and receive, acknowledge, retry after a delay, reject, a durable position across subscribers, cancellation, invalid destinations and the maximum message size. Run it against the broker in a container, as `broker/nats` does. Register the driver in the source and sink factories; its options sit under its name in the component spec. Unit tests of the broker source and sink use the in-memory driver of `brokertest` and need no container.
+A broker driver implements the contract in `internal/adapters/broker` and has to pass the conformance suite in `broker/brokertest` (`brokertest.Run`): publish and receive, acknowledge, retry after a delay, reject, a durable position across subscribers, cancellation, invalid destinations and the maximum message size. Run it against the broker in a container, as `broker/nats` does. Register the driver in `broker/drivers`, the only package that knows the concrete drivers; its options sit under its name in the component spec. The broker sink only sees a driver's `PublisherDriver` side and the broker source its `SubscriberDriver` side, so neither can do the other's job. Unit tests of the broker source and sink inject the in-memory driver of `brokertest` through `NewWithDrivers` (see their `export_test.go`) and need no container.
 
 ### Kubernetes Operator Tests
 

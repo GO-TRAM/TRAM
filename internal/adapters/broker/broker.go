@@ -103,11 +103,26 @@ type SubscriberConfig struct {
 	Capacity int
 }
 
-// Driver creates the publishers and subscribers of one kind of broker. opts
-// are the driver's options from the component spec; the driver parses and
-// validates them.
-type Driver interface {
+// PublisherDriver creates the publishers of one kind of broker. It is all the
+// broker sink sees of a driver, so a sink cannot subscribe. opts are the
+// driver's options from the component spec; the driver parses and validates
+// them.
+type PublisherDriver interface {
 	NewPublisher(opts map[string]any, cfg PublisherConfig, logger *slog.Logger) (Publisher, error)
+}
+
+// SubscriberDriver creates the subscribers of one kind of broker. It is all the
+// broker source sees of a driver, so a source cannot publish. opts are the
+// driver's options from the component spec; the driver parses and validates
+// them.
+type SubscriberDriver interface {
 	// NewSubscriber connects; the consumer is attached by Open.
 	NewSubscriber(opts map[string]any, cfg SubscriberConfig, logger *slog.Logger) (Subscriber, error)
+}
+
+// Driver serves both sides of one kind of broker, sharing its connection
+// options. The conformance suite tests the round trip through one.
+type Driver interface {
+	PublisherDriver
+	SubscriberDriver
 }

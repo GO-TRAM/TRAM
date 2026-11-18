@@ -11,10 +11,6 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	contract "codeberg.org/eljoth/tram/internal/adapters/broker"
-	amqpdriver "codeberg.org/eljoth/tram/internal/adapters/broker/amqp"
-	kafkadriver "codeberg.org/eljoth/tram/internal/adapters/broker/kafka"
-	natsdriver "codeberg.org/eljoth/tram/internal/adapters/broker/nats"
 	"codeberg.org/eljoth/tram/internal/adapters/source/broker"
 	"codeberg.org/eljoth/tram/internal/adapters/source/generator"
 	"codeberg.org/eljoth/tram/internal/adapters/source/otlp"
@@ -24,26 +20,19 @@ import (
 type Factory struct {
 	validator *validator.Validate
 	logger    *slog.Logger
-	drivers   contract.Drivers
 }
 
 func NewFactory(logger *slog.Logger) *Factory {
-	v := validator.New(validator.WithRequiredStructEnabled())
 	return &Factory{
-		validator: v,
+		validator: validator.New(validator.WithRequiredStructEnabled()),
 		logger:    logger,
-		drivers: contract.Drivers{
-			amqpdriver.Name:  amqpdriver.New(v),
-			kafkadriver.Name: kafkadriver.New(v),
-			natsdriver.Name:  natsdriver.New(v),
-		},
 	}
 }
 
 func (f *Factory) New(spec domain.SourceSpec) (domain.Source, error) {
 	switch spec.Type {
 	case broker.Type:
-		return broker.New(spec, f.validator, f.logger, f.drivers)
+		return broker.New(spec, f.validator, f.logger)
 	case generator.Type:
 		return generator.New(spec, f.validator)
 	case otlp.Type:
