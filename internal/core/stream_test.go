@@ -127,16 +127,23 @@ func TestStreamHotSwappingBasic(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.Default()
 
+	const (
+		testStreamName      = "test-stream"
+		initialSourceName   = "initial-source"
+		initialSinkName     = "initial-sink"
+		updatedSinkName     = "updated-sink"
+	)
+
 	// Create initial stream spec
 	initialSpec := domain.StreamSpec{
-		Name: "test-stream",
+		Name: testStreamName,
 		Source: domain.SourceSpec{
 			Type: "mock",
-			Name: "initial-source",
+			Name: initialSourceName,
 		},
 		Stages: []domain.StageSpec{},
 		Sinks: []domain.SinkSpec{
-			{Type: "mock", Name: "initial-sink", From: "initial-source"},
+			{Type: "mock", Name: initialSinkName, From: initialSourceName},
 		},
 	}
 
@@ -162,14 +169,14 @@ func TestStreamHotSwappingBasic(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify stream was created
-	stream, err := core.GetStream(ctx, "test-stream")
+	stream, err := core.GetStream(ctx, testStreamName)
 	require.NoError(t, err)
-	assert.Equal(t, "test-stream", stream.Name)
+	assert.Equal(t, testStreamName, stream.Name)
 
 	// Update stream spec (hot swap)
 	updatedSpec := initialSpec
 	updatedSpec.Sinks = []domain.SinkSpec{
-		{Type: "mock", Name: "updated-sink", From: "initial-source"},
+		{Type: "mock", Name: updatedSinkName, From: initialSourceName},
 	}
 
 	// Upsert updated stream
@@ -177,9 +184,9 @@ func TestStreamHotSwappingBasic(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify stream was updated
-	stream, err = core.GetStream(ctx, "test-stream")
+	stream, err = core.GetStream(ctx, testStreamName)
 	require.NoError(t, err)
-	assert.Equal(t, "test-stream", stream.Name)
+	assert.Equal(t, testStreamName, stream.Name)
 }
 
 // TestStreamHotSwappingWithRunningSource tests hot swapping when source is running
@@ -189,16 +196,23 @@ func TestStreamHotSwappingWithRunningSource(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.Default()
 
+	const (
+		runningStreamName   = "running-stream"
+		runningSourceName   = "running-source"
+		runningSinkName     = "running-sink"
+		updatedSinkName     = "updated-sink"
+	)
+
 	// Create stream spec
 	spec := domain.StreamSpec{
-		Name: "running-stream",
+		Name: runningStreamName,
 		Source: domain.SourceSpec{
 			Type: "mock",
-			Name: "running-source",
+			Name: runningSourceName,
 		},
 		Stages: []domain.StageSpec{},
 		Sinks: []domain.SinkSpec{
-			{Type: "mock", Name: "running-sink", From: "running-source"},
+			{Type: "mock", Name: runningSinkName, From: runningSourceName},
 		},
 	}
 
@@ -226,7 +240,7 @@ func TestStreamHotSwappingWithRunningSource(t *testing.T) {
 	// Update stream spec
 	updatedSpec := spec
 	updatedSpec.Sinks = []domain.SinkSpec{
-		{Type: "mock", Name: "updated-sink", From: "running-source"},
+		{Type: "mock", Name: updatedSinkName, From: runningSourceName},
 	}
 
 	// Upsert updated stream
@@ -234,9 +248,9 @@ func TestStreamHotSwappingWithRunningSource(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify stream was updated
-	stream, err := core.GetStream(ctx, "running-stream")
+	stream, err := core.GetStream(ctx, runningStreamName)
 	require.NoError(t, err)
-	assert.Equal(t, "running-stream", stream.Name)
+	assert.Equal(t, runningStreamName, stream.Name)
 }
 
 // TestStreamHotSwappingErrorRecovery tests stream hot swapping with error recovery
@@ -246,16 +260,23 @@ func TestStreamHotSwappingErrorRecovery(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.Default()
 
+	const (
+		errorRecoveryStreamName = "error-recovery-stream"
+		initialSourceName       = "initial-source"
+		initialSinkName         = "initial-sink"
+		updatedSinkName         = "updated-sink"
+	)
+
 	// Create initial stream spec
 	initialSpec := domain.StreamSpec{
-		Name: "error-recovery-stream",
+		Name: errorRecoveryStreamName,
 		Source: domain.SourceSpec{
 			Type: "mock",
-			Name: "initial-source",
+			Name: initialSourceName,
 		},
 		Stages: []domain.StageSpec{},
 		Sinks: []domain.SinkSpec{
-			{Type: "mock", Name: "initial-sink", From: "initial-source"},
+			{Type: "mock", Name: initialSinkName, From: initialSourceName},
 		},
 	}
 
@@ -283,7 +304,7 @@ func TestStreamHotSwappingErrorRecovery(t *testing.T) {
 	// Update stream spec
 	updatedSpec := initialSpec
 	updatedSpec.Sinks = []domain.SinkSpec{
-		{Type: "mock", Name: "updated-sink", From: "initial-source"},
+		{Type: "mock", Name: updatedSinkName, From: initialSourceName},
 	}
 
 	// Upsert updated stream
@@ -291,9 +312,9 @@ func TestStreamHotSwappingErrorRecovery(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify stream was updated
-	stream, err := core.GetStream(ctx, "error-recovery-stream")
+	stream, err := core.GetStream(ctx, errorRecoveryStreamName)
 	require.NoError(t, err)
-	assert.Equal(t, "error-recovery-stream", stream.Name)
+	assert.Equal(t, errorRecoveryStreamName, stream.Name)
 }
 
 // TestStreamHotSwappingWithStages tests hot swapping with stages
@@ -303,18 +324,27 @@ func TestStreamHotSwappingWithStages(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.Default()
 
+	const (
+		stageStreamName    = "stage-stream"
+		stageSourceName    = "stage-source"
+		stage1Name         = "stage-1"
+		stage2Name         = "stage-2"
+		stageSinkName      = "stage-sink"
+		stageSinkUpdated   = "stage-sink-updated"
+	)
+
 	// Create initial stream spec with stages
 	initialSpec := domain.StreamSpec{
-		Name: "stage-stream",
+		Name: stageStreamName,
 		Source: domain.SourceSpec{
 			Type: "mock",
-			Name: "stage-source",
+			Name: stageSourceName,
 		},
 		Stages: []domain.StageSpec{
-			{Type: "mock", Name: "stage-1", From: "stage-source"},
+			{Type: "mock", Name: stage1Name, From: stageSourceName},
 		},
 		Sinks: []domain.SinkSpec{
-			{Type: "mock", Name: "stage-sink", From: "stage-1"},
+			{Type: "mock", Name: stageSinkName, From: stage1Name},
 		},
 	}
 
@@ -343,11 +373,11 @@ func TestStreamHotSwappingWithStages(t *testing.T) {
 	updatedSpec := initialSpec
 	updatedSpec.Stages = append(updatedSpec.Stages, domain.StageSpec{
 		Type: "mock",
-		Name: "stage-2",
-		From: "stage-1",
+		Name: stage2Name,
+		From: stage1Name,
 	})
 	updatedSpec.Sinks = []domain.SinkSpec{
-		{Type: "mock", Name: "stage-sink-updated", From: "stage-2"},
+		{Type: "mock", Name: stageSinkUpdated, From: stage2Name},
 	}
 
 	// Upsert updated stream
@@ -355,9 +385,9 @@ func TestStreamHotSwappingWithStages(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify stream was updated
-	stream, err := core.GetStream(ctx, "stage-stream")
+	stream, err := core.GetStream(ctx, stageStreamName)
 	require.NoError(t, err)
-	assert.Equal(t, "stage-stream", stream.Name)
+	assert.Equal(t, stageStreamName, stream.Name)
 }
 
 // TestStreamHotSwappingWithMultipleSinks tests hot swapping with multiple sinks
@@ -367,17 +397,22 @@ func TestStreamHotSwappingWithMultipleSinks(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.Default()
 
+	const (
+		multiSinkStreamName = "multi-sink-stream"
+		multiSinkSourceName = "multi-sink-source"
+	)
+
 	// Create initial stream spec with multiple sinks
 	initialSpec := domain.StreamSpec{
-		Name: "multi-sink-stream",
+		Name: multiSinkStreamName,
 		Source: domain.SourceSpec{
 			Type: "mock",
-			Name: "multi-sink-source",
+			Name: multiSinkSourceName,
 		},
 		Stages: []domain.StageSpec{},
 		Sinks: []domain.SinkSpec{
-			{Type: "mock", Name: "sink-1", From: "multi-sink-source"},
-			{Type: "mock", Name: "sink-2", From: "multi-sink-source"},
+			{Type: "mock", Name: "sink-1", From: multiSinkSourceName},
+			{Type: "mock", Name: "sink-2", From: multiSinkSourceName},
 		},
 	}
 
@@ -405,9 +440,9 @@ func TestStreamHotSwappingWithMultipleSinks(t *testing.T) {
 	// Update stream spec with different sinks
 	updatedSpec := initialSpec
 	updatedSpec.Sinks = []domain.SinkSpec{
-		{Type: "mock", Name: "updated-sink-1", From: "multi-sink-source"},
-		{Type: "mock", Name: "updated-sink-2", From: "multi-sink-source"},
-		{Type: "mock", Name: "updated-sink-3", From: "multi-sink-source"},
+		{Type: "mock", Name: "updated-sink-1", From: multiSinkSourceName},
+		{Type: "mock", Name: "updated-sink-2", From: multiSinkSourceName},
+		{Type: "mock", Name: "updated-sink-3", From: multiSinkSourceName},
 	}
 
 	// Upsert updated stream
@@ -415,9 +450,9 @@ func TestStreamHotSwappingWithMultipleSinks(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify stream was updated
-	stream, err := core.GetStream(ctx, "multi-sink-stream")
+	stream, err := core.GetStream(ctx, multiSinkStreamName)
 	require.NoError(t, err)
-	assert.Equal(t, "multi-sink-stream", stream.Name)
+	assert.Equal(t, multiSinkStreamName, stream.Name)
 }
 
 // mockFactory implements ports.Factory for testing
