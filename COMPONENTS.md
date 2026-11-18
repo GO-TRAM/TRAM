@@ -123,6 +123,13 @@ Receives OTLP data from a message broker. The broker is chosen by `driver`, and 
 | `username`, `password` | string | No | - | Authenticate with SASL PLAIN; without them the connection uses SASL ANONYMOUS. In a `Stream` resource, take them from a secret with `valueFrom.secretKeyRef` |
 | `insecure_skip_verify` | bool | No | `false` | Skip the verification of the broker's certificate with `amqps`, for tests only |
 
+**Solace with the AMQP driver:** Solace PubSub+ brokers speak AMQP 1.0, so they are used through `driver: amqp`; Tram has no Solace driver of its own, because Solace's Go API needs cgo and Tram's image is a static binary.
+
+- Enable the AMQP service of the message VPN. Solace gives each message VPN its own AMQP port, plain text and TLS (`amqps://`); use that port in `url`
+- `username` and `password` are a client username of the message VPN; it needs permission to publish to the destinations of a sink and to consume from the queue of a source
+- A source's `address` is the name of a queue, set up outside Tram with consume permission for the client username. A retried message is returned as a failed delivery, so the queue's maximum redelivery count and its dead message queue apply. A sink's destinations are queue names, or topics in Solace's AMQP address syntax
+- This combination is not covered by Tram's automated tests: the Solace container needs a user ID that rootless Podman with the default subordinate ID range cannot map. The AMQP driver is tested against ActiveMQ Artemis; verify against your Solace version before relying on it
+
 **Example:**
 
 ```json
@@ -603,7 +610,7 @@ Sends OTLP data to a message broker. The broker is chosen by `driver`, and the d
 | `partition` | object | No | - | Spreads records over partitions, see [Partitioning](#broker-partitioning) |
 | `nats` | object | With `driver: nats` | - | Options of the NATS driver: `url` (required) |
 | `kafka` | object | With `driver: kafka` | - | Options of the Kafka driver: `brokers` (required), `tls` and `sasl` as for the [Broker Source](#broker-source), and `max_message_bytes` (default 1 MiB), the largest message sent; keep it at or below the broker's `message.max.bytes` |
-| `amqp` | object | With `driver: amqp` | - | Options of the AMQP driver: `url` (required), `username`, `password` and `insecure_skip_verify` as for the [Broker Source](#broker-source), and `max_message_bytes`, the largest message sent (default: only the limit the broker announces per address) |
+| `amqp` | object | With `driver: amqp` | - | Options of the AMQP driver: `url` (required), `username`, `password` and `insecure_skip_verify` as for the [Broker Source](#broker-source) (which also covers Solace), and `max_message_bytes`, the largest message sent (default: only the limit the broker announces per address) |
 
 **CEL Expression Context:**
 
