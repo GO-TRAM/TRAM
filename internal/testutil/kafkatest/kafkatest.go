@@ -9,6 +9,7 @@ package kafkatest
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/testcontainers/testcontainers-go"
 	tckafka "github.com/testcontainers/testcontainers-go/modules/kafka"
@@ -16,6 +17,11 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"codeberg.org/eljoth/tram/internal/testutil/containertest"
+)
+
+const (
+	topicTimeout = 10 * time.Second
+	topicPoll    = 50 * time.Millisecond
 )
 
 // Image is the only image the testcontainers module supports, Kafka in KRaft
@@ -50,11 +56,23 @@ func CreateTopic(tb testing.TB, brokers []string, topic string, partitions int32
 		tb.Fatalf("connect to Kafka: %v", err)
 	}
 	defer cl.Close()
-	resp, err := kadm.NewClient(cl).CreateTopic(context.Background(), partitions, 1, nil, topic)
+	admin := kadm.NewClient(cl)
+	resp, err := admin.CreateTopic(context.Background(), partitions, 1, nil, topic)
 	if err == nil {
 		err = resp.Err
 	}
 	if err != nil {
 		tb.Fatalf("create topic %s: %v", topic, err)
 	}
+	// Kafka spreads a new topic's metadata with a delay; until then it looks
+	// missing to clients.
+	deadline := time.Now().Add(topicTimeout)
+	for time.Now().Before(deadline) {
+		topics, listErr := admin.ListTopics(context.Background(), topic)
+		if detail, ok := topics[topic]; listErr == nil && ok && detail.Err == nil {
+			return
+		}
+		time.Sleep(topicPoll)
+	}
+	tb.Fatalf("topic %s did not appear within %s", topic, topicTimeout)
 }
