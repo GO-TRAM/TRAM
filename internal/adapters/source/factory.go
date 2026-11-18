@@ -15,7 +15,6 @@ import (
 	natsdriver "codeberg.org/eljoth/tram/internal/adapters/broker/nats"
 	"codeberg.org/eljoth/tram/internal/adapters/source/broker"
 	"codeberg.org/eljoth/tram/internal/adapters/source/generator"
-	"codeberg.org/eljoth/tram/internal/adapters/source/nats"
 	"codeberg.org/eljoth/tram/internal/adapters/source/otlp"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
@@ -41,8 +40,6 @@ func (f *Factory) New(spec domain.SourceSpec) (domain.Source, error) {
 		return broker.New(spec, f.validator, f.logger, f.drivers)
 	case generator.Type:
 		return generator.New(spec, f.validator)
-	case nats.Type:
-		return nats.New(spec, f.validator, f.logger)
 	case otlp.Type:
 		return otlp.New(spec, f.validator, f.logger)
 	default:

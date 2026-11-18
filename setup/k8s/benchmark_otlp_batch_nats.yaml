@@ -17,16 +17,16 @@ spec:
       from: otlp_source
       spec:
         max_records: 1000
-        timeout: "10ms"
+        timeout: 10ms
   sinks:
-    - type: nats
+    - type: broker
       name: nats_sink
       from: batch_stage
       spec:
-        url: "nats://nats-server:4222"
-        stream: "tram-stream"
-        subject:
-          register: ["benchmark.*"]
+        driver: nats
+        nats:
+          url: "nats://nats-server:4222"
+        destination:
           logs: "'benchmark.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')"
           metrics: "'benchmark.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')"
           traces: "'benchmark.' + traces.resource_spans[0].resource.attributes.get_attr('service.name')"

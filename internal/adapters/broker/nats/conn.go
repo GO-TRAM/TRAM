@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 // SPDX-License-Identifier: MPL-2.0
 
-// Package natsconn connects the NATS sink and source so that they outlast any
-// NATS outage.
-package natsconn
+package nats
+
+// The connection of a publisher or subscriber outlasts any NATS outage.
 
 import (
 	"fmt"
@@ -30,13 +30,13 @@ const (
 	reconnectJitterTLS = 2 * time.Second
 )
 
-// Connect connects to url. A lost connection is retried until it is closed:
+// connect connects to url. A lost connection is retried until it is closed:
 // nats.go gives up after 60 attempts by default, about two minutes, and a
 // connection that gave up stays closed, so a longer outage, e.g. a cluster
-// update, would need a Tram restart. name identifies the connection in NATS'
+// update, would need a TRAM restart. name identifies the connection in NATS'
 // monitoring.
-func Connect(url, name string, logger *slog.Logger) (*nats.Conn, error) {
-	return connect(
+func connect(url, name string, logger *slog.Logger) (*nats.Conn, error) {
+	return connectWith(
 		url,
 		name,
 		logger,
@@ -44,7 +44,7 @@ func Connect(url, name string, logger *slog.Logger) (*nats.Conn, error) {
 	)
 }
 
-func connect(url, name string, logger *slog.Logger, t timing) (*nats.Conn, error) {
+func connectWith(url, name string, logger *slog.Logger, t timing) (*nats.Conn, error) {
 	nc, err := nats.Connect(url,
 		nats.Name("tram "+name),
 		nats.MaxReconnects(-1),
@@ -53,7 +53,7 @@ func connect(url, name string, logger *slog.Logger, t timing) (*nats.Conn, error
 		// Publishing while disconnected fails at once instead of buffering, so
 		// the sink's source answers 503 right away rather than after the ack
 		// timeout. The buffer would also hold up to 8 MB per connection, and a
-		// replica has many. Acks of the NATS source fail the same way, and
+		// replica has many. Acks of a subscriber fail the same way, and
 		// their messages are redelivered.
 		nats.ReconnectBufSize(-1),
 		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {

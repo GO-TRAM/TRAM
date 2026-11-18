@@ -14,7 +14,6 @@ Sources are the entry points of a pipeline that produce or receive data events.
 |------|------|-------------|
 | `broker` | `broker` | Receives OTLP data from a message broker through a driver (NATS JetStream) |
 | `generator` | `generator` | Emits empty events at a fixed interval, for testing pipelines |
-| `nats` | `nats` | **Deprecated**, use `broker` with `driver: nats`. Consumes events published by Tram's `nats` sink from NATS JetStream |
 | `otlp` | `otlp` | Receives protobuf-encoded OpenTelemetry Protocol (OTLP) data via HTTP |
 
 ### Generator Source
@@ -134,90 +133,6 @@ Receives OTLP data from a message broker. The broker is chosen by `driver`, and 
 - **NATS:** with large messages and many workers, NATS can have a lot of data to send to the source at once. If that exceeds what the server buffers for one connection (`max_pending`, 64 MB by default), the server disconnects the source as a slow consumer, and the messages it had sent come again after their acknowledgement deadline. Lower `workers`, or raise `max_pending` above `workers` × message size
 - **NATS:** a lost connection is retried every 2 seconds, with up to 1 second of jitter, for as long as the source runs. A stream that does not exist when the source starts fails the Tram stream, which is retried
 
-### NATS Source
-
-> **Deprecated:** use the [Broker Source](#broker-source) with `driver: nats`. Unlike this source, it reads messages without the `Tram-Signal` header and takes the signal from its spec.
-
-Consumes events from a NATS JetStream stream that were published by Tram's [NATS Sink](#nats-sink).
-
-**Type:** `nats`
-
-**Configuration:**
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `url` | string | Yes | - | NATS server URL (e.g., `"nats://localhost:4222"`) |
-| `stream` | string | Yes | - | JetStream stream to consume from. It must exist when the Tram stream is created; otherwise the source logs an error and stays idle until the Tram stream is updated |
-| `subject` | string | Yes | - | Subject filter of the consumer; wildcards like `logs.*` are allowed |
-| `durable` | string | No | - | Name of a durable consumer. Without it, a temporary consumer is created |
-| `workers` | int | No | `1` | Number of messages processed concurrently (1-10000) |
-| `partition` | object | No | - | Reads the stream of a key from streams partitioned by the NATS sink: `count` (1-1024) as in the sink, and the required `key` |
-
-**Example:**
-
-```json
-{
-  "name": "nats-consumer",
-  "type": "nats",
-  "spec": {
-    "url": "nats://localhost:4222",
-    "stream": "otlp-data",
-    "subject": "logs.*"
-  }
-}
-```
-
-**Example with durable consumer and multiple workers:**
-
-```json
-{
-  "name": "nats-consumer",
-  "type": "nats",
-  "spec": {
-    "url": "nats://localhost:4222",
-    "stream": "otlp-data",
-    "subject": "logs.*",
-    "durable": "tram-consumer",
-    "workers": 5
-  }
-}
-```
-
-**Behavior Notes:**
-- Only messages with a `Tram-Signal` header, which Tram's NATS sink sets, can be decoded. Other messages are terminated and not redelivered
-- Each message becomes one event
-- A message is acknowledged once all sinks have accepted it. If passing it on fails, it is redelivered after 5 seconds; data rejected by a stage is terminated instead
-- Delivery is at-least-once: when one branch of a stream fails, the redelivered message reaches all branches again
-- The consumer starts at the beginning of the stream. A durable consumer continues where it stopped; a temporary consumer starts from the beginning again whenever the source is created, i.e. when the Tram stream is created or its source is changed. Updates that only change stages or sinks keep the consumer
-- Up to `workers` messages are processed at the same time, each on its own. The source fetches only as many messages as workers are free, so no fetched message waits for a worker while its acknowledgement deadline runs
-- Messages are not processed in the order of the stream, unless `workers` is 1
-- A `batch` stage after the source holds up to `workers` messages, since every message waits for its batch to be delivered before it is acknowledged. To let batches fill up to `max_records` before their `timeout`, set `workers` to at least `max_records` divided by the records per message
-- The source sets the consumer's `MaxAckPending`, the unacknowledged messages JetStream hands out, to twice `workers` and at least 1,000, the JetStream default. The limit applies across all Tram replicas that share a durable consumer
-- The source asks for as many messages as it has `workers`, so with large messages and many workers NATS can have a lot of data to send to it at once. If that exceeds what the NATS server buffers for one connection (`max_pending`, 64 MB by default), the server disconnects the source as a slow consumer, and the messages it had sent come again after their acknowledgement deadline. The server logs `Slow Consumer Detected`; lower `workers`, or raise `max_pending` above `workers` × message size
-- Stopping or updating the source interrupts waiting for new messages right away; it only waits for messages that are being processed, which are still delivered and acknowledged
-- A lost connection to NATS is retried every 2 seconds, with up to 1 second of jitter, for as long as the source runs, so the source continues after any outage. Acknowledgements that fail while disconnected are not repeated; those messages are redelivered after their ack wait
-- With `partition`, the source computes the partition of `key` like the [NATS sink](#partitioning) and replaces `{partition}` in `stream` and `subject` with it, so a source per key reads only the stream that holds the key. `stream` must contain `{partition}`; without `partition`, neither field may contain it
-- `count` must match the sink's. The source refuses a stream whose metadata names another count or partition and stays idle like with a missing stream. With a wrong count, the key's stream may also not exist at all
-
-**Example with partitioning by tenant:**
-
-```json
-{
-  "name": "tenant-123",
-  "type": "nats",
-  "spec": {
-    "url": "nats://localhost:4222",
-    "stream": "audit-{partition}",
-    "subject": "audit.{partition}.tenant-123",
-    "durable": "tenant-123",
-    "partition": {
-      "count": 8,
-      "key": "tenant-123"
-    }
-  }
-}
-```
-
 ---
 
 ## 🔧 Stages
@@ -304,12 +219,12 @@ Keep only spans of one service:
 **Behavior Notes:**
 - Kept records are passed on in their original resource and scope; nothing is copied, and containers without remaining records are removed. If no record is kept, nothing is passed on
 - When splitting into branches, write the last branch as the negation of the others, so every record ends up in exactly one branch
-- An expression that fails for a record, e.g. by accessing a missing list index, rejects the whole event. The OTLP source answers with HTTP 422, the NATS source terminates the message instead of redelivering it
+- An expression that fails for a record, e.g. by accessing a missing list index, rejects the whole event. The OTLP source answers with HTTP 422, the Broker Source rejects the message instead of redelivering it
 - Place a batch stage before the filters to merge many small requests first; each branch then receives one filtered batch
 
 ### CEL Validator Stage
 
-Checks each incoming event as a whole with Common Expression Language (CEL) expressions and passes it on, drops it, or rejects it. An event is one delivery from the stage's parent: one OTLP request, one NATS message, or one batch. The stage never removes individual records; to keep only matching records, use the [CEL Filter Stage](#cel-filter-stage).
+Checks each incoming event as a whole with Common Expression Language (CEL) expressions and passes it on, drops it, or rejects it. An event is one delivery from the stage's parent: one OTLP request, one broker message, or one batch. The stage never removes individual records; to keep only matching records, use the [CEL Filter Stage](#cel-filter-stage).
 
 **Type:** `cel_validator`
 
@@ -329,7 +244,7 @@ Checks each incoming event as a whole with Common Expression Language (CEL) expr
 
 **On Mismatch Behavior:**
 - `drop` - Removes all data of the signal type whose expression returned false. Other signal types of the event are still passed on; if nothing is left, nothing is passed on
-- `reject` - Rejects the whole event with an error. The OTLP source answers with HTTP 422, the NATS source terminates the message instead of redelivering it
+- `reject` - Rejects the whole event with an error. The OTLP source answers with HTTP 422, the Broker Source rejects the message instead of redelivering it
 
 **Example:** reject log deliveries in which a resource has no `service.name`:
 
@@ -363,7 +278,7 @@ Reject trace deliveries that contain a span without a valid trace ID:
 }
 ```
 
-Reject log deliveries that contain a record whose `tenant.id` is not a lowercase UUID. `matches` takes an RE2 regular expression and finds it anywhere in the value, so anchor it with `^` and `$`. Checking a value that a [NATS Sink](#nats-sink) puts into its subjects keeps out dots, whitespace and wildcards, which would make the subject invalid or change its meaning:
+Reject log deliveries that contain a record whose `tenant.id` is not a lowercase UUID. `matches` takes an RE2 regular expression and finds it anywhere in the value, so anchor it with `^` and `$`. Checking a value that a [Broker Sink](#broker-sink) puts into its NATS subjects keeps out dots, whitespace and wildcards, which would make the subject invalid or change its meaning:
 ```json
 {
   "logs": "logs.resource_logs.all(r, r.scope_logs.all(s, s.log_records.all(record, record.attributes.exists(a, a.key == 'tenant.id' && a.value.string_value.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')))))",
@@ -373,7 +288,7 @@ Reject log deliveries that contain a record whose `tenant.id` is not a lowercase
 
 **Behavior Notes:**
 - The decision applies to the whole event. An expression like `log_records.exists(record, record.severity_text == 'ERROR')` passes on a delivery with one ERROR and many INFO records in full, including the INFO records
-- An expression that fails for an event, e.g. by accessing a missing list index, rejects the whole event regardless of `on_mismatch`. The OTLP source answers with HTTP 422, the NATS source terminates the message instead of redelivering it
+- An expression that fails for an event, e.g. by accessing a missing list index, rejects the whole event regardless of `on_mismatch`. The OTLP source answers with HTTP 422, the Broker Source rejects the message instead of redelivering it
 - Place validators with `on_mismatch: reject` before a batch stage, so one invalid delivery does not reject the deliveries batched with it
 
 ### Batch Stage
@@ -406,7 +321,7 @@ Merges events that arrive concurrently into one event, so downstream components 
 
 **Behavior Notes:**
 - Batching happens in memory only. Each caller waits until its batch has been delivered and receives the delivery result, so sources keep acknowledging or rejecting exactly what was delivered, and a slow downstream slows the sources down instead of growing the buffer
-- Batching only helps when events arrive concurrently, e.g. parallel OTLP requests or a NATS source with several `workers`. A source that sends one event at a time only adds `timeout` to its latency
+- Batching only helps when events arrive concurrently, e.g. parallel OTLP requests or a Broker Source with several `workers`. A source that sends one event at a time only adds `timeout` to its latency
 - Behind an OTLP source, `timeout` has to stay below the source's `delivery_timeout` (8s by default), together with the other `batch` and `delay` stages on the way to a sink; otherwise the stream is rejected, see [Hold Times](#hold-times)
 - If a caller's context is cancelled (e.g. the OTLP client disconnects or the OTLP source's `delivery_timeout` expires) before the batch flushes, its event is withdrawn and not delivered. Once the flush has started, the event is delivered and the caller waits for the result
 - A delivery error, including a rejection by a later stage, applies to every event in the batch. Place `cel_validator` stages with `on_mismatch: reject` before the batch, so one invalid event does not reject the others
@@ -526,7 +441,6 @@ Sinks are the terminal points of a pipeline that consume or export data.
 |------|------|-------------|
 | `broker` | `broker` | Sends OTLP data to a message broker through a driver (NATS JetStream), with the destination of each record computed by CEL |
 | `debug` | `debug` | Writes events to the log (stderr) for debugging and development |
-| `nats` | `nats` | **Deprecated**, use `broker` with `driver: nats`. Publishes OTLP-encoded events to NATS JetStream with dynamic subject mapping |
 | `otlp` | `otlp` | Sends OTLP-encoded events via HTTP to an OpenTelemetry endpoint |
 
 ### Debug Sink
@@ -611,7 +525,7 @@ Sends OpenTelemetry Protocol data via HTTP to an OTLP-compatible endpoint. Sends
 - Each signal type of an event is sent as a separate HTTP request to its endpoint. An event can hold several signal types, e.g. after a batch stage; if one request fails, the source retries the whole event, so the others may be sent twice
 - Uses protobuf encoding (`application/x-protobuf` content type) as required by OTLP/HTTP
 - The sink handles URL construction properly, so both `"http://host:4318"` and `"http://host:4318/"` work correctly
-- Non-2xx answers fail the delivery. Client errors that refuse the data itself (4xx except 408 and 429) reject the event, so the OTLP source answers with 422 and the NATS source terminates the message. Other errors, including 408, 429 and 5xx, can be retried by the source: the OTLP source answers with 503, the NATS source redelivers the message
+- Non-2xx answers fail the delivery. Client errors that refuse the data itself (4xx except 408 and 429) reject the event, so the OTLP source answers with 422 and the Broker Source rejects the message. Other errors, including 408, 429 and 5xx, can be retried by the source: the OTLP source answers with 503, the Broker Source has the message redelivered
 - Proxy settings are taken from the `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` environment variables
 - Connection pooling is used for better performance with multiple requests
 - Timeout applies to the entire request lifecycle, including connection establishment and reading the response
@@ -627,7 +541,7 @@ With `url_expression`, the sink sends each log record, metric data point and spa
 | `metrics` | string | One of `logs`, `metrics`, `traces` | - | CEL expression returning the URL of a metric data point |
 | `traces` | string | One of `logs`, `metrics`, `traces` | - | CEL expression returning the URL of a span |
 
-- The expressions have the same variables and `get_attr` function as the subject expressions of the [NATS Sink](#nats-sink), e.g. `record`, `resource` and `datapoint`. Metrics are split per data point the same way
+- The expressions have the same variables and `get_attr` function as the destination expressions of the [Broker Sink](#broker-sink), e.g. `record`, `resource` and `datapoint`. Metrics are split per data point the same way
 - A URL is the base URL like `url`; the sink appends `/v1/logs`, `/v1/metrics` or `/v1/traces`. It must be `http` or `https` and have a host. An expression that fails, does not return a string, or returns another URL rejects the event. `get_attr` returns `""` for a missing attribute, which is not a valid URL
 - Signals without an expression are sent to `url`. Without `url`, they are not sent
 - `headers`, `timeout` and `insecure` apply to every destination
@@ -718,168 +632,9 @@ With `partition`, the sink computes a partition per record from a key, e.g. the 
 | `metrics` | string | With `destination.metrics` | - | CEL expression returning the key of a metric data point |
 | `traces` | string | With `destination.traces` | - | CEL expression returning the key of a span |
 
-- The partition of a key is its 32-bit FNV-1a hash modulo `count`, the same as the NATS sink's. It never changes, so consumers can compute which partition holds a key; the [Broker Source](#broker-source) does so with its `partition` field
+- The partition of a key is its 32-bit FNV-1a hash modulo `count`, the same as the former NATS sink's. It never changes, so consumers can compute which partition holds a key; the [Broker Source](#broker-source) does so with its `partition` field
 - An expression for the key that fails or does not return a string rejects the event. A missing attribute gives the key `""`, which is a valid key like any other
 - Changing `count` moves keys to other partitions. Data already stored stays where it is, so changing it is a migration
-
-### NATS Sink
-
-> **Deprecated:** use the [Broker Sink](#broker-sink) with `driver: nats`. Unlike this sink, it writes no `Tram-Signal` header and creates no streams.
-
-Publishes OTLP-encoded events to NATS JetStream. Uses dynamic subject mapping with CEL expressions to route different telemetry data to appropriate subjects. Creates the specified stream if it does not exist, and otherwise only adds what the sink needs to it.
-
-**Type:** `nats`
-
-**Configuration:**
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `url` | string | Yes | - | NATS server URL (e.g., `"nats://localhost:4222"`) |
-| `stream` | string | Yes | - | JetStream stream name to publish to |
-| `subject` | object | Yes | - | Subject configuration for dynamic subject mapping |
-| `retention` | string | No | `"limits"` | Stream message retention policy: `"limits"` (retain until limits are reached), `"interest"` (remove when all consumers acknowledge), or `"workqueue"` (remove when first consumer acknowledges) |
-| `max_age` | string | No | - | Maximum age for messages in the stream as a Go duration (e.g., `"24h"`, `"168h"`; days are not supported) |
-| `size` | int | No | - | Maximum stream size in bytes |
-| `compression` | string | No | - | How JetStream compresses the stream on disk: `"s2"` or `"none"` |
-| `replicas` | int | No | - | How many NATS servers store the stream, from 1 to 5. A new stream without it gets the server's default, 1 |
-| `discard` | string | No | `"old"` | What JetStream does when the stream reaches `size` or another limit: `"old"` deletes the oldest messages, `"new"` refuses new ones |
-| `storage` | string | No | `"file"` | Where JetStream stores the stream: `"file"` or `"memory"`. Fixed once the stream exists |
-| `max_pending` | int | No | `256` | How many messages the sink publishes before it waits for their acknowledgements. Raise it to move more messages at once, e.g. `1024` or `2048`; the NATS server has to store them as they arrive |
-| `partition` | object | No | - | Spreads records over several streams, see [Partitioning](#partitioning) |
-
-**Subject Configuration:**
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `register` | array[string] | Yes | - | List of subject patterns to register with the stream |
-| `logs` | string | One of `logs`, `metrics`, `traces` | - | CEL expression to generate subject for log events. Must return a string. Has access to the `logs` variable |
-| `metrics` | string | One of `logs`, `metrics`, `traces` | - | CEL expression to generate subject for metric events. Must return a string. Has access to the `metrics` variable |
-| `traces` | string | One of `logs`, `metrics`, `traces` | - | CEL expression to generate subject for trace events. Must return a string. Has access to the `traces` variable |
-
-Signals without an expression are not published by this sink.
-
-**CEL Expression Context:**
-
-| Expression | Variables |
-|------------|-----------|
-| `logs` | `logs` (payload), `resource` (Resource), `scope` (InstrumentationScope), `record` (LogRecord) |
-| `metrics` | `metrics` (payload), `resource`, `scope`, `metric` (Metric), `datapoint` (the data point; its type depends on the metric type) |
-| `traces` | `traces` (payload), `resource`, `scope`, `span` (Span) |
-
-With [partitioning](#partitioning), subject expressions also have `partition` (int), the partition of the record, data point or span.
-
-- Each expression is evaluated once per log record, metric data point and span. The payload variable holds only the current log record, metric or span with its resource and scope, so `[0]` indexes address it, e.g. `logs.resource_logs[0].scope_logs[0].log_records[0]`. For metrics it holds the whole metric with all its data points
-- `resource` and `scope` are empty messages when the payload has none. Field names follow the OTLP protobuf definitions, e.g. `record.severity_text`, `datapoint.attributes`
-- Metrics are routed per data point: a metric whose data points resolve to different subjects is split into one metric per subject, each with the metric's name, description, unit, metadata and type-specific fields like a sum's temporality. A metric whose data points all resolve to the same subject is published as it is, so an expression that does not use `datapoint`, e.g. `metric.gauge.data_points[0].attributes.get_attr('team')`, keeps every metric whole
-- A metric without data points is evaluated once without `datapoint`; an expression that reads it fails for that metric and rejects the event
-- The custom function `get_attr(key)` on an attribute list returns the string value of an attribute, or `""` if it is missing, e.g. `logs.resource_logs[0].resource.attributes.get_attr('service.name')` or `datapoint.attributes.get_attr('tenant.id')`
-- Must return a string that will be used as the NATS subject
-
-**Example:**
-
-```json
-{
-  "name": "nats_sink",
-  "type": "nats",
-  "from": "cel_stage",
-  "spec": {
-    "url": "nats://localhost:4222",
-    "stream": "tram-stream",
-    "subject": {
-      "register": [
-        "logs.audit.*",
-        "metrics.*",
-        "traces.*"
-      ],
-      "logs": "'logs.audit.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
-      "metrics": "'metrics.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')",
-      "traces": "'traces.' + traces.resource_spans[0].resource.attributes.get_attr('service.name')"
-    }
-  }
-}
-```
-
-**Example with retention and max_age limits:**
-
-```json
-{
-  "name": "nats_sink_with_limits",
-  "type": "nats",
-  "from": "filter_stage",
-  "spec": {
-    "url": "nats://localhost:4222",
-    "stream": "tram-data",
-    "retention": "interest",
-    "max_age": "24h",
-    "size": 1073741824,
-    "subject": {
-      "register": ["logs.*", "metrics.*"],
-      "logs": "'logs.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
-      "metrics": "'metrics.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')"
-    }
-  }
-}
-```
-
-**Behavior Notes:**
-- When the stream is created in Tram, the sink creates a missing JetStream stream from `register`, `retention`, `max_age`, `size`, `compression`, `replicas`, `discard` and `storage`. An existing stream is only extended: `register` subjects it does not cover yet are added, and `retention`, `max_age`, `size`, `compression`, `replicas` and `discard` are applied if set. Other settings, limits that are not set, and the subjects of other sinks or writers are kept, so several sinks can share a stream and it can be configured outside Tram
-- JetStream cannot change the storage of an existing stream. If `storage` is set and the stream has another one, the sink is not created and the Tram stream fails with an error, instead of the sink writing to a stream that does not keep its messages the way it asks for
-- `replicas` above 1 needs a NATS cluster with at least that many JetStream servers; otherwise creating or updating the stream fails. Changing it on an existing stream makes JetStream add or remove copies
-- Subjects are never removed from a stream; removing one from `register` leaves it on the stream. Set `retention`, `size`, `compression`, `replicas` and `discard` in one sink only, since sinks with different values replace each other's when they start
-- With `discard: "old"`, a stream that reaches a limit deletes its oldest messages without telling anyone. With `"new"`, JetStream refuses the publish instead; the event fails and the source retries it, e.g. the OTLP source answers with `503`. Use `"new"` where no message may be lost to a limit, like audit logs
-- The `retention` policy controls when acknowledged messages are removed: `"limits"` (default) keeps all messages until stream limits like `max_age`, `max_bytes` or `max_msgs` are reached, `"interest"` removes messages when all consumers have acknowledged them, and `"workqueue"` removes messages when the first consumer acknowledges them. The `max_age` setting applies to all messages regardless of acknowledgment status
-- Compression saves disk space and costs CPU on the NATS server; how much it saves depends on the data. Changing it affects only data written afterwards. `size` counts the messages uncompressed
-- An event becomes one message per subject. The sink encodes and sends them one after another without waiting for acknowledgements in between, so JetStream stores the first ones while the rest are still being encoded; at most 256 messages per sink are unacknowledged at a time, and sending waits while that many are. It reports success once JetStream has acknowledged every message; if one cannot be sent or is not acknowledged within 10 seconds, the event fails and the source retries it, so messages already stored are stored again. A message that cannot be sent stops the rest of the event from being sent
-- Each sink has its own connection to NATS, which all events of the sink share
-- Records are grouped by their resolved subject and published as one OTLP message per subject and signal type, so different signal types may share a subject. Each message has a `Tram-Signal` header with the signal type, which the [NATS Source](#nats-source) needs to decode it
-- Records keep their resource and scope. If all records of a signal type resolve to the same subject, the payload is published unchanged. Resources that appear in several entries of an event, e.g. after a `batch` stage, stay separate entries in the message, which OTLP allows
-- The `register` subjects configure the stream, while the CEL expressions determine the subject of each record. JetStream stores each message in the stream whose subjects cover its subject, which need not be the sink's `stream`: a subject covered by another existing stream is stored there, and one covered by no stream fails to publish
-- JetStream reserves `size` on the NATS server for the whole stream when the stream is created, against the server's `max_file_store`. Large sizes on many streams can leave no room for more: creating a stream then fails with `insufficient storage`
-- An event is rejected if a subject expression fails for one of its records, or resolves to an invalid subject: one with an empty token, whitespace or a wildcard. `get_attr` returns `""` for a missing attribute, so `'logs.' + ...get_attr('team')` gives the invalid `logs.` for records without it. The OTLP source answers with HTTP 422, the NATS source terminates the message instead of redelivering it
-- If a CEL expression fails to evaluate or returns a non-string value, the whole event is dropped with an error log and nothing of it is published
-- If publishing fails, the error is reported back to the source, e.g. the NATS source redelivers the message
-- A lost connection to NATS is retried every 2 seconds, with up to 1 second of jitter, for as long as the sink runs. While disconnected, publishing fails at once instead of being buffered, so the OTLP source answers with `503` and clients retry until NATS is back
-
-#### Partitioning
-
-A stream slows down with many subjects, and all its writes go through one NATS server. With `partition`, the sink spreads records over `count` streams by a key, e.g. the tenant, so each stream holds a part of the subjects and the streams can be led by different servers.
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `count` | int | Yes | - | Number of streams, from 1 to 1024 |
-| `logs` | string | With `subject.logs` | - | CEL expression returning the key of a log record. Has the same variables as the subject expression, without `partition` |
-| `metrics` | string | With `subject.metrics` | - | CEL expression returning the key of a metric data point |
-| `traces` | string | With `subject.traces` | - | CEL expression returning the key of a span |
-
-- The partition of a key is its 32-bit FNV-1a hash modulo `count`. This never changes, so consumers can compute which stream holds a key. The [NATS Source](#nats-source) does so with its `partition` field
-- `{partition}` in `stream` and in every `register` subject is replaced by the partition number, so the sink sets up one stream per partition, e.g. `audit-0` to `audit-7` with the subjects `audit.0.>` to `audit.7.>`. Without `partition`, `{partition}` must not appear. All other stream settings, like `replicas` and `max_age`, apply to every stream
-- JetStream stores a message in the stream whose subjects cover it, so the subject expression has to put the partition into the subject, e.g. `'audit.' + string(partition) + '.' + ...`. An event with a subject that is not covered by its partition's `register` is rejected
-- An expression for the key that fails or does not return a string rejects the event. A missing attribute gives the key `""`, which is a valid key like any other
-- Each stream gets the metadata `tram.partition.count` and `tram.partition.index`. A sink refuses to start if a stream has metadata of another count or index, so streams of different partitionings are never mixed
-- Changing `count` moves keys to other streams. Data already stored stays in its old stream, where consumers of the new partitioning do not read it, so changing it is a migration. Choose `count` with room to grow
-
-**Example with partitioning by tenant:**
-
-```json
-{
-  "name": "audit_sink",
-  "type": "nats",
-  "from": "validator",
-  "spec": {
-    "url": "nats://localhost:4222",
-    "stream": "audit-{partition}",
-    "replicas": 3,
-    "partition": {
-      "count": 8,
-      "logs": "record.attributes.get_attr('tenant.id')"
-    },
-    "subject": {
-      "register": ["audit.{partition}.>"],
-      "logs": "'audit.' + string(partition) + '.' + record.attributes.get_attr('tenant.id')"
-    }
-  }
-}
-```
 
 ---
 
@@ -889,7 +644,7 @@ A stream slows down with many subjects, and all its writes go through one NATS s
 - **Component Type vs Name:** The `type` field in configuration refers to the component implementation type (e.g., `generator`, `cel_validator`), while the `name` field is a user-defined identifier for the component instance within a stream.
 - **Connections:** The `from` field in stages and sinks specifies which component they receive data from.
 - **Tree Structure:** Pipelines form a tree with the source as root, stages as intermediate nodes, and sinks as leaves.
-- **Delivery Guarantee:** Delivery is at-least-once, and Tram does not deduplicate. A sink can receive the same data again, e.g. when a client retries after a `503` although some sinks had already accepted the data, when a NATS message is redelivered after one branch of its stream failed, or when a publish succeeded but its acknowledgement was lost. Deduplicate at the destination where duplicates matter.
+- **Delivery Guarantee:** Delivery is at-least-once, and Tram does not deduplicate. A sink can receive the same data again, e.g. when a client retries after a `503` although some sinks had already accepted the data, when a broker message is redelivered after one branch of its stream failed, or when a publish succeeded but its acknowledgement was lost. Deduplicate at the destination where duplicates matter.
 
 ### Hold Times
 
@@ -899,4 +654,4 @@ A source like OTLP waits for a delivery only for a limited time, its `delivery_t
 stream spec is invalid: on the way to sink openobserve-traces, batch-traces (10s) can hold an event for 10s, but source otlp cancels deliveries after 8s
 ```
 
-An update that is rejected leaves the running stream unchanged. Shorten the `timeout` or `delay`, or raise the source's `delivery_timeout`, and keep that below the time the clients wait. Sources without such a limit, like NATS, are not checked.
+An update that is rejected leaves the running stream unchanged. Shorten the `timeout` or `delay`, or raise the source's `delivery_timeout`, and keep that below the time the clients wait. Sources without such a limit, like the Broker Source, are not checked.

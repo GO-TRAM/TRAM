@@ -8,6 +8,7 @@ package e2e_test
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,11 +19,12 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 	"sigs.k8s.io/yaml"
 
+	natsdriver "codeberg.org/eljoth/tram/internal/adapters/broker/nats"
+	sinkbroker "codeberg.org/eljoth/tram/internal/adapters/sink/broker"
 	sinkdebug "codeberg.org/eljoth/tram/internal/adapters/sink/debug"
-	sinknats "codeberg.org/eljoth/tram/internal/adapters/sink/nats"
 	sinkotlp "codeberg.org/eljoth/tram/internal/adapters/sink/otlp"
+	sourcebroker "codeberg.org/eljoth/tram/internal/adapters/source/broker"
 	"codeberg.org/eljoth/tram/internal/adapters/source/generator"
-	sourcenats "codeberg.org/eljoth/tram/internal/adapters/source/nats"
 	sourceotlp "codeberg.org/eljoth/tram/internal/adapters/source/otlp"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/batch"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/celfilter"
@@ -117,8 +119,8 @@ func parseSource(typ string, raw map[string]any) error {
 	switch typ {
 	case sourceotlp.Type:
 		return parse[sourceotlp.Spec](raw)
-	case sourcenats.Type:
-		return parse[sourcenats.Spec](raw)
+	case sourcebroker.Type:
+		return parseBroker[sourcebroker.Spec, natsdriver.SubscriberSpec](raw)
 	case generator.Type:
 		return parse[generator.Spec](raw)
 	default:
@@ -147,13 +149,31 @@ func parseSink(typ string, raw map[string]any) error {
 	switch typ {
 	case sinkdebug.Type:
 		return parse[sinkdebug.Spec](raw)
-	case sinknats.Type:
-		return parse[sinknats.Spec](raw)
+	case sinkbroker.Type:
+		return parseBroker[sinkbroker.Spec, natsdriver.PublisherSpec](raw)
 	case sinkotlp.Type:
 		return parse[sinkotlp.Spec](raw)
 	default:
 		return unknownType(typ)
 	}
+}
+
+// parseBroker checks a broker spec: the generic fields as T, the options of
+// the NATS driver, the only driver, as D.
+func parseBroker[T, D any](raw map[string]any) error {
+	if raw["driver"] != natsdriver.Name {
+		return fmt.Errorf("unknown broker driver %v", raw["driver"])
+	}
+	opts, ok := raw[natsdriver.Name].(map[string]any)
+	if !ok {
+		return fmt.Errorf("missing options of driver %s", natsdriver.Name)
+	}
+	generic := maps.Clone(raw)
+	delete(generic, natsdriver.Name)
+	if err := parse[T](generic); err != nil {
+		return err
+	}
+	return parse[D](opts)
 }
 
 func unknownType(typ string) error {

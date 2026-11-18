@@ -138,7 +138,7 @@ tasks:
   test:e2e:
     desc: Run the end-to-end pipeline tests that need no containers
     cmds:
-      - "{{.TESTCONTAINERS_ENV}} go test -race -skip '^TestNATS$' {{.CLI_ARGS}} ./internal/e2e/"
+      - "{{.TESTCONTAINERS_ENV}} go test -race -skip '^TestBrokerNATS$' {{.CLI_ARGS}} ./internal/e2e/"
 
   test:containers:
     desc: Run the end-to-end tests against NATS in a container (Testcontainers; needs Docker or Podman)
@@ -152,7 +152,7 @@ tasks:
       - sh: '{{.CONTAINER_TOOL}} info >/dev/null 2>&1'
         msg: '{{.CONTAINER_TOOL}} is not running; start it first (e.g. `podman machine start`)'
     cmds:
-      - "{{.TESTCONTAINERS_ENV}} go test -race -count=1 -run '^TestNATS$' {{.CLI_ARGS}} ./internal/e2e/"
+      - "{{.TESTCONTAINERS_ENV}} go test -race -count=1 -run '^TestBrokerNATS$' {{.CLI_ARGS}} ./internal/e2e/"
 
   test:envtest:
     desc: Run the Kubernetes operator tests against a real API server and etcd (envtest)

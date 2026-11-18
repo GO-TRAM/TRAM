@@ -203,6 +203,11 @@ func TestBrokerNATS(t *testing.T) {
 		}
 	})
 
+	t.Run("routing by record attribute", func(t *testing.T) {
+		t.Parallel()
+		testRoutingByRecordAttribute(t, n)
+	})
+
 	t.Run("workers fill a batch", func(t *testing.T) {
 		t.Parallel()
 

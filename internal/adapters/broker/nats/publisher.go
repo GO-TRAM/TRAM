@@ -16,7 +16,6 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"codeberg.org/eljoth/tram/internal/adapters/broker"
-	"codeberg.org/eljoth/tram/internal/adapters/natsconn"
 )
 
 // Without it, a publish whose acknowledgement is lost, e.g. while NATS
@@ -29,7 +28,7 @@ type publisher struct {
 }
 
 func newPublisher(spec *PublisherSpec, cfg broker.PublisherConfig, logger *slog.Logger) (*publisher, error) {
-	conn, err := natsconn.Connect(spec.URL, cfg.Name, logger)
+	conn, err := connect(spec.URL, cfg.Name, logger)
 	if err != nil {
 		return nil, err
 	}

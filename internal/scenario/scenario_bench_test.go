@@ -33,8 +33,6 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
-const signalHeader = "Tram-Signal"
-
 type scenario struct {
 	name   string
 	source string
@@ -166,16 +164,23 @@ func (e *env) stream(suffix string) string {
 	return name
 }
 
+// natsSink is a broker sink with the NATS driver. TRAM creates no streams, so
+// the benchmark sets its stream up first, like a deployment does.
 func (e *env) natsSink(name, from string) domain.SinkSpec {
 	stream := e.stream(name)
-	return domain.SinkSpec{Name: name, Type: "nats", From: from, Spec: map[string]any{
-		"url":       e.natsURL,
-		"stream":    stream,
-		"size":      float64(256 << 20),
-		"retention": "limits",
-		"max_age":   "1m",
-		"subject": map[string]any{
-			"register": []any{stream + ".>"},
+	if _, err := e.js.CreateStream(context.Background(), jetstream.StreamConfig{
+		Name:      stream,
+		Subjects:  []string{stream + ".>"},
+		MaxBytes:  256 << 20,
+		Retention: jetstream.LimitsPolicy,
+		MaxAge:    time.Minute,
+	}); err != nil {
+		e.b.Fatal(err)
+	}
+	return domain.SinkSpec{Name: name, Type: "broker", From: from, Spec: map[string]any{
+		"driver": "nats",
+		"nats":   map[string]any{"url": e.natsURL},
+		"destination": map[string]any{
 			"logs": fmt.Sprintf(
 				"'%s.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
 				stream,
@@ -274,11 +279,11 @@ func benchmarkNATS(b *testing.B, e *env, sc scenario, shape otlpgen.Shape, concu
 	); err != nil {
 		b.Fatal(err)
 	}
-	signal, payload, err := (&domain.Event{Logs: otlpgen.Logs(shape)}).MarshalOTLPData()
+	_, payload, err := (&domain.Event{Logs: otlpgen.Logs(shape)}).MarshalOTLPData()
 	if err != nil {
 		b.Fatal(err)
 	}
-	publish(b, e.js, input+".logs", signal, payload, b.N)
+	publish(b, e.js, input+".logs", payload, b.N)
 
 	stages, sinks := sc.build(e)
 	output := e.streams[len(e.streams)-1]
@@ -289,12 +294,11 @@ func benchmarkNATS(b *testing.B, e *env, sc scenario, shape otlpgen.Shape, concu
 	cpuStart := cpuTime()
 	// Building the stream is timed too, because it starts consuming at once.
 	// It takes milliseconds, against about a second of benchmark time.
-	startStream(b, domain.SourceSpec{Name: "in", Type: "nats", Spec: map[string]any{
-		"url":     e.natsURL,
-		"stream":  input,
-		"subject": input + ".logs",
-		"durable": input,
+	startStream(b, domain.SourceSpec{Name: "in", Type: "broker", Spec: map[string]any{
+		"driver":  "nats",
+		"signal":  "logs",
 		"workers": float64(concurrency),
+		"nats":    map[string]any{"url": e.natsURL, "stream": input, "subject": input + ".logs", "durable": input},
 	}}, stages, sinks)
 	waitForMessages(b, e.js, output, want)
 	cpu := cpuTime() - cpuStart
@@ -333,15 +337,12 @@ func freePort(b *testing.B) int {
 	return l.Addr().(*net.TCPAddr).Port
 }
 
-func publish(b *testing.B, js jetstream.JetStream, subject string, signal domain.Signal, payload []byte, n int) {
+// publish sends payload n times as plain OTLP, as the broker sink does.
+func publish(b *testing.B, js jetstream.JetStream, subject string, payload []byte, n int) {
 	b.Helper()
 	acks := make([]jetstream.PubAckFuture, 0, n)
 	for range n {
-		ack, err := js.PublishMsgAsync(&nats.Msg{
-			Subject: subject,
-			Data:    payload,
-			Header:  nats.Header{signalHeader: []string{string(signal)}},
-		})
+		ack, err := js.PublishMsgAsync(&nats.Msg{Subject: subject, Data: payload})
 		if err != nil {
 			b.Fatal(err)
 		}

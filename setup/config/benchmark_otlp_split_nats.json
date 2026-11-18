@@ -29,15 +29,14 @@
     "sinks": [
       {
         "name": "team_0_sink",
-        "type": "nats",
+        "type": "broker",
         "from": "team_0_filter",
         "spec": {
-          "url": "nats://localhost:4222",
-          "stream": "tram-stream",
-          "subject": {
-            "register": [
-              "benchmark.team-0.*"
-            ],
+          "driver": "nats",
+          "nats": {
+            "url": "nats://localhost:4222"
+          },
+          "destination": {
             "logs": "'benchmark.team-0.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
             "metrics": "'benchmark.team-0.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')",
             "traces": "'benchmark.team-0.' + traces.resource_spans[0].resource.attributes.get_attr('service.name')"
@@ -46,15 +45,14 @@
       },
       {
         "name": "other_teams_sink",
-        "type": "nats",
+        "type": "broker",
         "from": "other_teams_filter",
         "spec": {
-          "url": "nats://localhost:4222",
-          "stream": "tram-stream",
-          "subject": {
-            "register": [
-              "benchmark.other.*"
-            ],
+          "driver": "nats",
+          "nats": {
+            "url": "nats://localhost:4222"
+          },
+          "destination": {
             "logs": "'benchmark.other.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
             "metrics": "'benchmark.other.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')",
             "traces": "'benchmark.other.' + traces.resource_spans[0].resource.attributes.get_attr('service.name')"

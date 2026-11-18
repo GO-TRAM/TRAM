@@ -332,7 +332,7 @@ func (o *OTLP) send(ctx context.Context, r request) error {
 		err = fmt.Errorf("OTLP server %s returned status %d: %s", req.URL.Redacted(), resp.StatusCode, string(body))
 		if permanent(resp.StatusCode) {
 			// The same data gets the same answer again, so it is rejected
-			// instead of retried, e.g. by a NATS source redelivering it.
+			// instead of retried, e.g. by a broker source having it redelivered.
 			return fmt.Errorf("%w: %w", domain.ErrEventRejected, err)
 		}
 		return err

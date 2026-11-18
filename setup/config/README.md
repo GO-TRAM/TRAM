@@ -1,6 +1,6 @@
 # Tram Example Configurations
 
-This directory contains example JSON configurations for Tram streams. The examples demonstrate various pipeline patterns including OTLP sinks, NATS sources, and benchmark scenarios.
+This directory contains example JSON configurations for Tram streams. The examples demonstrate various pipeline patterns including OTLP sinks, broker sources over NATS, and benchmark scenarios.
 
 ## Quick Start
 
@@ -72,7 +72,7 @@ These examples demonstrate using the OTLP sink in Tram for various use cases.
 
 #### [`otlp_nats_bridge.json`](otlp_nats_bridge.json)
 **Purpose**: Bridges NATS JetStream to OTLP HTTP.
-- Consumes from NATS JetStream
+- Consumes OTLP logs from NATS JetStream with the broker source
 - Uses durable consumer with multiple workers
 - Batches messages for efficiency
 - Forwards to central OTLP collector
@@ -87,7 +87,7 @@ These examples demonstrate using the OTLP sink in Tram for various use cases.
 
 ### Benchmark Configurations
 
-These configurations match the exact scenarios used in the Tram benchmarks (see [BENCHMARK.md](../../BENCHMARK.md)). They demonstrate pipelines with OTLP sources, various processing stages, and NATS sinks.
+These configurations match the exact scenarios used in the Tram benchmarks (see [BENCHMARK.md](../../BENCHMARK.md)). They demonstrate pipelines with OTLP sources, various processing stages, and broker sinks over NATS. The JetStream streams have to exist, since Tram creates none.
 
 #### [`benchmark_otlp_nats.json`](benchmark_otlp_nats.json)
 **Purpose**: Exact configuration for the `otlp-nats` benchmark scenario: **OTLP → NATS**
@@ -135,19 +135,20 @@ The OTLP sink automatically uses the correct paths:
 - Nil events are handled gracefully
 - Empty events (no logs/metrics/traces) result in errors
 
-### NATS Source/Sink Reference
+### Broker Source/Sink Reference (NATS driver)
 
-**NATS Source Fields:**
-- `url`: NATS server URL
-- `stream`: JetStream stream name
-- `durable`: Durable consumer name
+Tram creates no streams: set them up before the stream starts, e.g. `nats stream add input-stream --subjects 'telemetry.>' --defaults`. See [COMPONENTS.md](../../COMPONENTS.md#broker-source) for all fields.
+
+**Broker Source Fields:**
+- `driver`: `nats`
+- `signal`: `logs`, `metrics` or `traces`; every message of the subject holds this signal
 - `workers`: Number of concurrent workers
-- `subject`: Subject to subscribe to (optional)
+- `nats.url`, `nats.subject` (consumer filter), `nats.stream` (optional), `nats.durable` (optional)
 
-**NATS Sink Fields:**
-- `url`: NATS server URL
-- `subject`: Subject to publish to
-- `headers`: NATS message headers (optional)
+**Broker Sink Fields:**
+- `driver`: `nats`
+- `nats.url`: NATS server URL
+- `destination.logs` / `.metrics` / `.traces`: CEL expressions that return the subject of each record
 
 ## Usage Patterns
 
@@ -178,25 +179,30 @@ The OTLP sink automatically uses the correct paths:
 }
 ```
 
-### NATS Source and Sink
+### Broker Source and Sink over NATS
 ```json
 {
-  "sources": [{
-    "type": "nats",
+  "source": {
+    "type": "broker",
     "name": "my_source",
     "spec": {
-      "url": "nats://nats-server:4222",
-      "stream": "input-stream",
-      "durable": "tram-consumer"
+      "driver": "nats",
+      "signal": "logs",
+      "nats": {
+        "url": "nats://nats-server:4222",
+        "subject": "input.logs",
+        "durable": "tram-consumer"
+      }
     }
-  }],
+  },
   "sinks": [{
-    "type": "nats",
+    "type": "broker",
     "name": "my_sink",
     "from": "my_source",
     "spec": {
-      "url": "nats://nats-server:4222",
-      "subject": "output.subject"
+      "driver": "nats",
+      "nats": { "url": "nats://nats-server:4222" },
+      "destination": { "logs": "'output.logs'" }
     }
   }]
 }

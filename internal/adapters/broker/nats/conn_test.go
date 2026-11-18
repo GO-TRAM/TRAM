@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 // SPDX-License-Identifier: MPL-2.0
 
-package natsconn_test
+package nats_test
 
 import (
 	"io"
@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"codeberg.org/eljoth/tram/internal/adapters/natsconn"
+	natsdriver "codeberg.org/eljoth/tram/internal/adapters/broker/nats"
 	"codeberg.org/eljoth/tram/internal/testutil/natstest"
 )
 
@@ -96,7 +96,7 @@ func TestConnectionOutlastsDefaultReconnectAttempts(t *testing.T) {
 	p := newProxy(t, server)
 
 	const wait = 10 * time.Millisecond
-	nc, err := natsconn.ConnectRetryingEvery("nats://"+p.addr, slog.New(slog.DiscardHandler), wait)
+	nc, err := natsdriver.ConnectRetryingEvery("nats://"+p.addr, slog.New(slog.DiscardHandler), wait)
 	require.NoError(t, err)
 	t.Cleanup(nc.Close)
 

@@ -8,7 +8,7 @@ Absolute numbers depend on the machine, its load and the network to NATS, so tre
 
 ## How to Read the Numbers
 
-- **Record:** a log record, metric data point or span. **Event:** one OTLP request or one NATS message, carrying one or more records.
+- **Record:** a log record, metric data point or span. **Event:** one OTLP request or one broker message, carrying one or more records.
 - **CPU per record:** CPU time (user and system) of the whole process, divided by the records processed. It includes garbage collection. For the OTLP scenarios it also includes the HTTP client that generates the load in the same process, so it is an upper bound. NATS runs in a container, and its CPU time is not included.
 - **Small events overstate CPU.** With 1 record per event, the process mostly waits for HTTP and NATS round trips, and the Go runtime uses CPU between those short requests as well. These rows therefore show far more CPU per record than the work itself costs (compare the per-event costs under [Where the Time Goes](#where-the-time-goes)). Use the rows with 100 or 1,000 records for sizing; treat single-record rows as a pessimistic bound
 - **Records/s per core:** how many records one fully used CPU core can process, derived from the CPU per record. This is the figure for sizing, as Tram is stateless and scales horizontally.
@@ -33,14 +33,14 @@ Absolute numbers depend on the machine, its load and the network to NATS, so tre
 
 ## Pipeline Scenarios
 
-Complete streams, built by the core from the real components, as `tram server` does. OTLP data is sent over HTTP; NATS runs in a local container. Each scenario runs with 1, 4 and 8 concurrent callers (for the NATS source: workers) and with events of 1, 100 and 1,000 records.
+Complete streams, built by the core from the real components, as `tram server` does. OTLP data is sent over HTTP; NATS runs in a local container. Each scenario runs with 1, 4 and 8 concurrent callers (for the broker source: workers) and with events of 1, 100 and 1,000 records.
 
 Configuration used in all scenarios:
 
-- **NATS sink:** one subject per service (`'<stream>.' + ...get_attr('service.name')`), so events with 10 services are published as 10 messages
+- **Broker sink (NATS driver):** one subject per service (`'<stream>.' + ...get_attr('service.name')`), so events with 10 services are published as 10 messages
 - **batch:** `max_records: 1000`, `timeout: "10ms"`
-- **Split:** two `cel_filter` stages, `team == 'team-0'` and its negation, each with its own NATS sink; the payload alternates between two teams
-- **NATS source:** durable consumer, `workers` equal to the number of callers; the messages are in the stream before the measurement starts
+- **Split:** two `cel_filter` stages, `team == 'team-0'` and its negation, each with its own broker sink; the payload alternates between two teams
+- **Broker source (NATS driver):** durable consumer, `workers` equal to the number of callers; the messages are in the stream before the measurement starts
 
 <!-- BEGIN benchreport:scenarios -->
 #### `otlp-nats`: OTLP → NATS
@@ -116,19 +116,19 @@ CPU needed for pure processing, from the CPU per record of the scenarios above. 
 
 Scaling out works because Tram keeps no state between events, with two conditions:
 
-- **NATS source:** set `durable`, so the pods share one consumer and split the messages. Without it, every pod receives every message
+- **Broker source:** set `durable`, so the pods share one consumer and split the messages. Without it, every pod receives every message
 - **NATS server:** all pods publish to the same JetStream streams. A stream is written by one NATS node, so at very high load NATS, not Tram, becomes the limit; spread the data over several streams
 
 ## Streams per Instance
 
-The cost of processing data is shared by the replicas, but the cost of a stream itself is not: every replica that runs a stream holds its connections, goroutines and memory, and its NATS sources keep asking the NATS server for messages even when there are none. This section measures that cost, so you can tell when to shard streams over several deployments with `--watch-namespace` or `--stream-selector` (see [the operator documentation](internal/adapters/k8scrd/README.md#selecting-streams)) instead of running every stream on every replica.
+The cost of processing data is shared by the replicas, but the cost of a stream itself is not: every replica that runs a stream holds its connections, goroutines and memory, and its broker sources keep asking the NATS server for messages even when there are none. This section measures that cost, so you can tell when to shard streams over several deployments with `--watch-namespace` or `--stream-selector` (see [the operator documentation](internal/adapters/k8scrd/README.md#selecting-streams)) instead of running every stream on every replica.
 
 `BenchmarkStreams` builds 10, 100 and 1,000 streams of one shape in one Tram core and observes them for 10 seconds without data. Values are per stream, measured against the process before the streams were built:
 
 - **Build:** time to create the stream through the core, including connecting to NATS
 - **Heap:** live heap after a garbage collection. RSS is higher; see [Sizing](#sizing)
-- **NATS connections:** client connections the NATS server sees. Every NATS source and sink has its own
-- **NATS messages/s, idle:** messages the NATS server receives from the idle stream, mostly the pull requests of the NATS source, which renews its request every 5 seconds
+- **NATS connections:** client connections the NATS server sees. Every broker source and sink has its own
+- **NATS messages/s, idle:** messages the NATS server receives from the idle stream, mostly the pull requests of the broker source, which renews its request every 5 seconds
 - **Idle CPU:** CPU the process uses for the idle stream, as a share of one core
 
 Idle CPU is shown for 1,000 streams only; for fewer streams it is below the noise of the process.
@@ -173,7 +173,7 @@ How to read it:
 
 - **Memory limits the streams per replica first.** Most of a stream's heap are the buffers of its NATS connections. Plan the memory request of a replica from the streams it runs, not only from its data rate
 - **Replicas multiply the load on NATS.** Doubling the replicas of a deployment that runs every stream doubles the connections and idle requests the NATS server handles, while each replica still holds all streams. Shard the streams when the per-replica heap or the NATS totals get too high, and scale replicas within a shard for the data rate
-- **Workers cost only while messages are in flight.** A NATS source has one pending pull request however many workers it has, and runs a goroutine per message being processed
+- **Workers cost only while messages are in flight.** A broker source has one pending pull request however many workers it has, and runs a goroutine per message being processed
 
 ## Where the Time Goes
 
@@ -213,10 +213,10 @@ Fixed costs per event, independent of its size. They dominate when events are sm
 
 ## Tuning
 
-- **Batch before the NATS sink.** The sink waits for JetStream to acknowledge the messages of an event. With small events that round trip dominates; batching spreads it over many records. Compare `otlp-nats` with 1 and with 1,000 records per event
+- **Batch before the broker sink.** The sink waits for JetStream to acknowledge the messages of an event. With small events that round trip dominates; batching spreads it over many records. Compare `otlp-nats` with 1 and with 1,000 records per event
 - **Batching needs concurrent callers.** Each caller of a `batch` stage waits for its batch to be delivered. With a single caller, batches never fill and every event waits for `timeout`; see `otlp-batch-nats` with 1 caller
-- **Keep the number of subjects per event low.** The NATS sink publishes one message per subject. It sends them all at once and waits for their acknowledgements together, so many subjects cost little time, but every message still costs CPU on Tram and the NATS server
-- **Give a NATS source enough workers.** `workers` is the number of messages processed at the same time, so a `batch` stage after the source holds at most that many messages. The source acknowledges a message once its batch is delivered, so a source with a `batch` stage handles at most `workers / timeout` messages per second: 20 workers and a timeout of 1 s cap it at 20 messages/s per replica, however fast the sink is
+- **Keep the number of subjects per event low.** The broker sink publishes one message per subject. It sends them all at once and waits for their acknowledgements together, so many subjects cost little time, but every message still costs CPU on Tram and the NATS server
+- **Give a broker source enough workers.** `workers` is the number of messages processed at the same time, so a `batch` stage after the source holds at most that many messages. The source acknowledges a message once its batch is delivered, so a source with a `batch` stage handles at most `workers / timeout` messages per second: 20 workers and a timeout of 1 s cap it at 20 messages/s per replica, however fast the sink is
 - **Prefer resource-level CEL expressions.** They are evaluated once per resource instead of once per record when used in `cel_validator`; per record, CEL costs about as much as decoding the record
 - **Many consumers filtering one stream make NATS the limit.** Each filtered consumer searches the stream for its next matching message. With hundreds of them on one stream, NATS spends its CPU on that search and, on slow storage, on reading blocks from disk; see [Load Test on Kubernetes](#load-test-on-kubernetes)
 - **Prefer `retention: interest` for streams that only pass data on.** NATS removes a message once every consumer acknowledged it, so the stream stays small while consumers keep up and still holds the backlog of one that falls behind, up to `max_age`

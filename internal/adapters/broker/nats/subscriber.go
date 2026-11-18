@@ -16,7 +16,6 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"codeberg.org/eljoth/tram/internal/adapters/broker"
-	"codeberg.org/eljoth/tram/internal/adapters/natsconn"
 )
 
 const (
@@ -51,7 +50,7 @@ type subscriber struct {
 }
 
 func newSubscriber(spec *SubscriberSpec, cfg broker.SubscriberConfig, logger *slog.Logger) (*subscriber, error) {
-	conn, err := natsconn.Connect(spec.URL, cfg.Name, logger)
+	conn, err := connect(spec.URL, cfg.Name, logger)
 	if err != nil {
 		return nil, err
 	}

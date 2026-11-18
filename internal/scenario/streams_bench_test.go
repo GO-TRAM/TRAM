@@ -48,12 +48,16 @@ func streamShapes() []streamShape {
 			build: func(e *streamsEnv, i int) domain.StreamSpec {
 				return domain.StreamSpec{
 					Name: fmt.Sprintf("s%d", i),
-					Source: domain.SourceSpec{Name: "in", Type: "nats", Spec: map[string]any{
-						"url":     e.natsURL,
-						"stream":  e.input,
-						"subject": fmt.Sprintf("%s.s%d", e.input, i),
-						"durable": fmt.Sprintf("%s-s%d", e.input, i),
+					Source: domain.SourceSpec{Name: "in", Type: "broker", Spec: map[string]any{
+						"driver":  "nats",
+						"signal":  "logs",
 						"workers": float64(workers),
+						"nats": map[string]any{
+							"url":     e.natsURL,
+							"stream":  e.input,
+							"subject": fmt.Sprintf("%s.s%d", e.input, i),
+							"durable": fmt.Sprintf("%s-s%d", e.input, i),
+						},
 					}},
 					Stages: []domain.StageSpec{{
 						Name: "filter", Type: "cel_filter", From: "in",
@@ -154,11 +158,14 @@ func newStreamsEnv(b *testing.B, server natstest.Server, js jetstream.JetStream,
 		input: prefix + "-in", output: prefix + "-out",
 	}
 	ctx := context.Background()
-	if _, err := js.CreateStream(
-		ctx,
-		jetstream.StreamConfig{Name: e.input, Subjects: []string{e.input + ".>"}},
-	); err != nil {
-		b.Fatal(err)
+	// TRAM creates no streams.
+	for _, name := range []string{e.input, e.output} {
+		if _, err := js.CreateStream(
+			ctx,
+			jetstream.StreamConfig{Name: name, Subjects: []string{name + ".>"}},
+		); err != nil {
+			b.Fatal(err)
+		}
 	}
 	b.Cleanup(func() {
 		_ = js.DeleteStream(context.Background(), e.input)
@@ -168,13 +175,10 @@ func newStreamsEnv(b *testing.B, server natstest.Server, js jetstream.JetStream,
 }
 
 func (e *streamsEnv) sink(i int, from string) domain.SinkSpec {
-	return domain.SinkSpec{Name: "out", Type: "nats", From: from, Spec: map[string]any{
-		"url":    e.natsURL,
-		"stream": e.output,
-		"subject": map[string]any{
-			"register": []any{e.output + ".>"},
-			"logs":     fmt.Sprintf("'%s.s%d'", e.output, i),
-		},
+	return domain.SinkSpec{Name: "out", Type: "broker", From: from, Spec: map[string]any{
+		"driver":      "nats",
+		"nats":        map[string]any{"url": e.natsURL},
+		"destination": map[string]any{"logs": fmt.Sprintf("'%s.s%d'", e.output, i)},
 	}}
 }
 

@@ -21,7 +21,7 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
-// Same shapes as the NATS sink's BenchmarkNotify, so both compare.
+// Publishes to NATS through the NATS driver.
 func BenchmarkNotify(b *testing.B) {
 	url := natstest.Start(b)
 	nc, err := nats.Connect(url)

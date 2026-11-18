@@ -80,7 +80,7 @@ These examples demonstrate using the OTLP sink in Tram for various use cases.
 
 #### [`otlp_nats_bridge.yaml`](otlp_nats_bridge.yaml)
 **Purpose**: Bridges NATS JetStream to OTLP HTTP
-- Consumes from NATS JetStream
+- Consumes OTLP logs from NATS JetStream with the broker source
 - Uses durable consumer with multiple workers
 - Batches messages for efficiency
 - Forwards to central OTLP collector
@@ -95,7 +95,7 @@ These examples demonstrate using the OTLP sink in Tram for various use cases.
 
 ### Benchmark Configurations
 
-These configurations match the exact scenarios used in the Tram benchmarks (see [BENCHMARK.md](../../BENCHMARK.md)). They demonstrate pipelines with OTLP sources, various processing stages, and NATS sinks.
+These configurations match the exact scenarios used in the Tram benchmarks (see [BENCHMARK.md](../../BENCHMARK.md)). They demonstrate pipelines with OTLP sources, various processing stages, and broker sinks over NATS. The JetStream streams have to exist, since Tram creates none.
 
 #### [`benchmark_otlp_nats.yaml`](benchmark_otlp_nats.yaml)
 **Purpose**: Exact configuration for the `otlp-nats` benchmark scenario: OTLP → NATS
@@ -135,17 +135,20 @@ spec:
 
 ### NATS Configuration
 
-For NATS-based examples, configure the NATS server connection:
+For NATS-based examples, configure the NATS driver of the broker source. The JetStream stream that holds the subject has to exist; Tram creates none:
 
 ```yaml
-sources:
-  - type: nats
-    name: my_source
-    spec:
+source:
+  type: broker
+  name: my_source
+  spec:
+    driver: nats
+    signal: logs
+    workers: 8
+    nats:
       url: "nats://nats-server:4222"
-      stream: "my-stream"
+      subject: "my-stream.logs"
       durable: "my-durable-consumer"
-      workers: 8
 ```
 
 ### Environment Variables
@@ -233,25 +236,31 @@ spec:
 
 ### NATS JetStream Integration
 
-For NATS-based pipelines:
+For NATS-based pipelines, use the broker source and sink with the NATS driver. Set up the streams first, e.g. `nats stream add input --subjects 'input.>' --defaults` and `nats stream add output --subjects 'output.>' --defaults`:
 
 ```yaml
-sources:
-  - type: nats
-    name: nats_source
-    spec:
+source:
+  type: broker
+  name: nats_source
+  spec:
+    driver: nats
+    signal: logs
+    workers: 4
+    nats:
       url: "nats://nats-server:4222"
-      stream: "input-stream"
+      subject: "input.logs"
       durable: "tram-consumer"
-      workers: 4
 
 sinks:
-  - type: nats
+  - type: broker
     name: nats_sink
     from: nats_source
     spec:
-      url: "nats://nats-server:4222"
-      subject: "output.subject"
+      driver: nats
+      nats:
+        url: "nats://nats-server:4222"
+      destination:
+        logs: "'output.logs'"
 ```
 
 ### Multi-Region Deployment

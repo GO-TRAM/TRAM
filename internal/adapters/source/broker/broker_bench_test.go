@@ -43,7 +43,7 @@ func (c *countingSubscriber) Notify(_ context.Context, e *domain.Event) error {
 	return nil
 }
 
-// Same shapes as the NATS source's BenchmarkConsume, so both compare.
+// Receives OTLP messages published to NATS beforehand.
 func BenchmarkConsume(b *testing.B) {
 	url := natstest.Start(b)
 	nc, err := nats.Connect(url)

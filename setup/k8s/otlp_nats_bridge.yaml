@@ -5,28 +5,31 @@ metadata:
   name: otlp-nats-bridge
 spec:
   source:
-    type: nats
+    type: broker
     name: nats
     spec:
-      url: "nats://nats-server:4222"
-      stream: "input-stream"
-      subject: "telemetry.*"
-      durable: "tram-otlp-bridge"
+      driver: nats
+      signal: logs
       workers: 4
+      nats:
+        url: "nats://nats-server:4222"
+        subject: "telemetry.*"
+        stream: input-stream
+        durable: tram-otlp-bridge
   stages:
     - type: batch
       name: batch
       from: nats
       spec:
         max_records: 2000
-        timeout: "1s"
+        timeout: 1s
   sinks:
     - type: otlp
       name: otlp_sink
       from: batch
       spec:
         url: "http://central-telemetry:4318"
-        timeout: "30s"
+        timeout: 30s
         headers:
-          X-Bridge: "nats-to-otlp"
-          X-Source-Stream: "input-stream"
+          X-Bridge: nats-to-otlp
+          X-Source-Stream: input-stream

@@ -7,14 +7,17 @@ metadata:
   name: benchmark-nats-filter-nats
 spec:
   source:
-    type: nats
+    type: broker
     name: nats_source
     spec:
-      url: "nats://nats-server:4222"
-      stream: "input-stream"
-      subject: "benchmark.*"
-      durable: "tram-benchmark-consumer"
+      driver: nats
+      signal: logs
       workers: 8
+      nats:
+        url: "nats://nats-server:4222"
+        subject: "benchmark.*"
+        stream: input-stream
+        durable: tram-benchmark-consumer
   stages:
     - type: cel_filter
       name: filter_stage
@@ -22,14 +25,14 @@ spec:
       spec:
         logs: "record.attributes.exists(attr, attr.key == 'service.name')"
   sinks:
-    - type: nats
+    - type: broker
       name: nats_sink
       from: filter_stage
       spec:
-        url: "nats://nats-server:4222"
-        stream: "filtered-stream"
-        subject:
-          register: ["filtered.*"]
+        driver: nats
+        nats:
+          url: "nats://nats-server:4222"
+        destination:
           logs: "'filtered.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')"
           metrics: "'filtered.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')"
           traces: "'filtered.' + traces.resource_spans[0].resource.attributes.get_attr('service.name')"

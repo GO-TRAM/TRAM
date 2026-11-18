@@ -3,13 +3,17 @@
     "name": "benchmark_nats_filter_nats",
     "source": {
       "name": "nats_source",
-      "type": "nats",
+      "type": "broker",
       "spec": {
-        "url": "nats://localhost:4222",
-        "stream": "input-stream",
-        "subject": "benchmark.*",
-        "durable": "tram-benchmark-consumer",
-        "workers": 8
+        "driver": "nats",
+        "signal": "logs",
+        "workers": 8,
+        "nats": {
+          "url": "nats://localhost:4222",
+          "subject": "benchmark.*",
+          "stream": "input-stream",
+          "durable": "tram-benchmark-consumer"
+        }
       }
     },
     "stages": [
@@ -25,15 +29,14 @@
     "sinks": [
       {
         "name": "nats_sink",
-        "type": "nats",
+        "type": "broker",
         "from": "filter_stage",
         "spec": {
-          "url": "nats://localhost:4222",
-          "stream": "filtered-stream",
-          "subject": {
-            "register": [
-              "filtered.*"
-            ],
+          "driver": "nats",
+          "nats": {
+            "url": "nats://localhost:4222"
+          },
+          "destination": {
             "logs": "'filtered.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')",
             "metrics": "'filtered.' + metrics.resource_metrics[0].resource.attributes.get_attr('service.name')",
             "traces": "'filtered.' + traces.resource_spans[0].resource.attributes.get_attr('service.name')"

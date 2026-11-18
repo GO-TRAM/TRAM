@@ -65,7 +65,7 @@ A `PUT` to an existing stream changes as little as possible:
 
 If an update fails, e.g. because of an invalid component spec, the request returns an error and the previous version of the stream keeps running. Delete and create a stream to restart it completely.
 
-If the source of a stream stops on its own, e.g. because its NATS stream does not exist yet, Tram restarts the stream after a delay that grows from 1 second to 1 minute while it keeps failing. A `PUT` of the unchanged stream restarts it right away.
+If the source of a stream stops on its own, e.g. because the NATS stream of a broker source does not exist yet, Tram restarts the stream after a delay that grows from 1 second to 1 minute while it keeps failing. A `PUT` of the unchanged stream restarts it right away.
 
 ### Metrics
 
@@ -76,7 +76,7 @@ If the source of a stream stops on its own, e.g. because its NATS stream does no
 | `tram_node_records_total` | Counter | `stream`, `node`, `kind`, `signal` | Records the node received: log records, metric data points and spans. `kind` is `source`, `stage` or `sink`, `signal` is `logs`, `metrics` or `traces` |
 | `tram_node_records_out_total` | Counter | `stream`, `node`, `kind`, `signal` | Records a source or stage passed on: log records, metric data points and spans. With several children, each record counts once, not once per child. Sinks pass nothing on |
 | `tram_node_duration_seconds` | Histogram | `stream`, `node`, `kind`, `outcome` | Time the node took to handle an event. `outcome` is `ok`, `rejected` (the event was refused for good, e.g. by a `cel_validator`), `cancelled` (the caller gave up, e.g. an OTLP client that closed its connection) or `error`. An expired `delivery_timeout` counts as `error`, since then Tram took too long |
-| `tram_source_request_size_bytes` | Histogram | `stream`, `node`, `kind`, `encoding`, `body` | Size of the requests a source decoded events from, such as the OTLP source. `body` is `received` (as sent, e.g. gzip-compressed) or `decoded` (after undoing the content encoding), `encoding` is `gzip` or `identity`. Sources that consume messages, like NATS, report nothing |
+| `tram_source_request_size_bytes` | Histogram | `stream`, `node`, `kind`, `encoding`, `body` | Size of the requests a source decoded events from, such as the OTLP source. `body` is `received` (as sent, e.g. gzip-compressed) or `decoded` (after undoing the content encoding), `encoding` is `gzip` or `identity`. Sources that consume messages, like the broker source, report nothing |
 
 The endpoint also serves the Go runtime (`go_*`) and process (`process_*`) metrics.
 
@@ -237,9 +237,9 @@ Source → [Stage] → Sink
 
 | Type | Components |
 |------|-------------|
-| **Sources** | `broker`, `generator`, `nats` (deprecated), `otlp` |
+| **Sources** | `broker`, `generator`, `otlp` |
 | **Stages** | `batch`, `cel_filter`, `cel_validator`, `delay`, `noop`, `value_map` |
-| **Sinks** | `broker`, `debug`, `nats` (deprecated), `otlp` |
+| **Sinks** | `broker`, `debug`, `otlp` |
 
 For detailed documentation on each component and its configuration, see [COMPONENTS.md](COMPONENTS.md).
 
@@ -272,13 +272,12 @@ curl -X PUT http://localhost:8080/v1/streams/fanout-example \
       },
       {
         "name": "archive",
-        "type": "nats",
+        "type": "broker",
         "from": "otlp-in",
         "spec": {
-          "url": "nats://localhost:4222",
-          "stream": "telemetry",
-          "subject": {
-            "register": ["logs.>"],
+          "driver": "nats",
+          "nats": { "url": "nats://localhost:4222" },
+          "destination": {
             "logs": "'logs.' + logs.resource_logs[0].resource.attributes.get_attr('service.name')"
           }
         }
@@ -289,7 +288,7 @@ curl -X PUT http://localhost:8080/v1/streams/fanout-example \
 EOF
 ```
 
-The `nats` sink needs a NATS server with JetStream enabled, e.g. `docker compose -f setup/nats/docker-compose.yaml up -d`.
+The `broker` sink with `driver: nats` needs a NATS server with JetStream enabled, e.g. `docker compose -f setup/nats/docker-compose.yaml up -d`, and a stream for its subjects, which Tram does not create: `nats stream add telemetry --subjects 'logs.>' --defaults`.
 
 ### Chained Stages
 

@@ -166,10 +166,11 @@ func (p *pipeline) postAll(t *testing.T, posts ...post) []int {
 
 // testRoutingByRecordAttribute routes the records of several customers that
 // arrive mixed in the same requests through one NATS stream to one consumer per
-// customer. Each consumer validates that it only gets records of its customer.
+// customer and signal. Each consumer validates that it only gets records of its
+// customer.
 func testRoutingByRecordAttribute(t *testing.T, n *natsServer) {
 	t.Helper()
-	stream := n.stream("routing")
+	stream := n.brokerStream(t, "routing")
 
 	ingest := newPipeline(t,
 		[]domain.StageSpec{
@@ -178,24 +179,21 @@ func testRoutingByRecordAttribute(t *testing.T, n *natsServer) {
 				"max_records": float64(1000), "timeout": "200ms",
 			}},
 		},
-		[]domain.SinkSpec{{Name: "out", Type: "nats", From: "batch", Spec: n.sinkSpec(stream, map[string]any{
+		[]domain.SinkSpec{{Name: "out", Type: "broker", From: "batch", Spec: n.brokerSinkSpec(map[string]any{
 			"logs":    fmt.Sprintf("'%s.logs.' + record.attributes.get_attr('%s')", stream, customerAttr),
 			"traces":  fmt.Sprintf("'%s.traces.' + span.attributes.get_attr('%s')", stream, customerAttr),
 			"metrics": fmt.Sprintf("'%s.metrics.' + datapoint.attributes.get_attr('%s')", stream, customerAttr),
 		})}})
 
-	consumers := map[string]*captureSink{}
+	// One source per customer and signal, since a source reads one signal.
+	consumers := map[string]customerSinks{}
 	for _, customer := range []string{"a", "b"} {
-		source := domain.SourceSpec{Name: "in", Type: "nats", Spec: map[string]any{
-			"url":     n.url,
-			"stream":  stream,
-			"subject": stream + ".*." + customer,
-			"durable": stream + "-" + customer,
-		}}
-		consumer := newStream(t, source,
-			[]domain.StageSpec{customerValidator("only-"+customer, "in", customer)},
-			[]domain.SinkSpec{captureSinkSpec("received", "only-"+customer)})
-		consumers[customer] = consumer.sinks.sink(t, "received")
+		for _, signal := range []string{"logs", "traces", "metrics"} {
+			consumer := newStream(t, n.brokerSource(stream, signal, stream+"."+signal+"."+customer),
+				[]domain.StageSpec{customerValidator("only-"+customer, "in", customer)},
+				[]domain.SinkSpec{captureSinkSpec("received", "only-"+customer)})
+			consumers[customer] = append(consumers[customer], consumer.sinks.sink(t, "received"))
+		}
 	}
 
 	// expect waits until each consumer received exactly its entries, and
@@ -258,17 +256,13 @@ func testRoutingByRecordAttribute(t *testing.T, n *natsServer) {
 		publish := func(logs *logspb.LogsData) {
 			data, err := proto.Marshal(logs)
 			require.NoError(t, err)
-			_, err = n.js.PublishMsg(t.Context(), &nats.Msg{
-				Subject: stream + ".logs.a",
-				Data:    data,
-				Header:  nats.Header{signalHeader: []string{string(domain.SignalLogs)}},
-			})
+			_, err = n.js.PublishMsg(t.Context(), &nats.Msg{Subject: stream + ".logs.a", Data: data})
 			require.NoError(t, err)
 		}
 		publish(request("intruder", rec{"foreign", "b"}))
 		publish(request("intruder", rec{"own", "a"}, rec{"mixed", "b"}))
 
-		cons, err := n.js.Consumer(t.Context(), stream, stream+"-a")
+		cons, err := n.js.Consumer(t.Context(), stream, stream+"_logs_a")
 		require.NoError(t, err)
 		require.Eventually(t, func() bool {
 			info, infoErr := cons.Info(t.Context())
@@ -280,4 +274,15 @@ func testRoutingByRecordAttribute(t *testing.T, n *natsServer) {
 			receivedEntries(consumers["a"].received()),
 			"neither the foreign message nor the mixed one reaches the sink")
 	})
+}
+
+// customerSinks are the capture sinks of one customer's sources.
+type customerSinks []*captureSink
+
+func (c customerSinks) received() []*domain.Event {
+	var events []*domain.Event
+	for _, s := range c {
+		events = append(events, s.received()...)
+	}
+	return events
 }

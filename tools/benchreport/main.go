@@ -543,8 +543,8 @@ type component struct{ label, pkg, name string }
 const (
 	pkgCore         = "internal/core"
 	pkgDomain       = "internal/core/domain"
-	pkgNATSSink     = "internal/adapters/sink/nats"
-	pkgNATSSource   = "internal/adapters/source/nats"
+	pkgBrokerSink   = "internal/adapters/sink/broker"
+	pkgBrokerSource = "internal/adapters/source/broker"
 	pkgOTLPSource   = "internal/adapters/source/otlp"
 	pkgSourceBase   = "internal/adapters/source/base"
 	pkgBatch        = "internal/adapters/stage/batch"
@@ -555,27 +555,22 @@ const (
 func perRecordComponents() []component {
 	return []component{
 		{
-			"NATS sink: group and publish, 10 subjects",
-			pkgNATSSink,
+			"Broker sink (NATS): group and publish, 10 subjects",
+			pkgBrokerSink,
 			"Notify/records=1000/resources=10/teams=10",
 		},
 		{
-			"NATS sink: group and publish, 1 subject",
-			pkgNATSSink,
+			"Broker sink (NATS): group and publish, 1 subject",
+			pkgBrokerSink,
 			"Notify/records=1000/resources=10/teams=1",
 		},
 		{
-			"NATS sink: grouping by subject only",
-			pkgNATSSink,
-			"GroupEventsBySubjects/records=1000/resources=10/teams=1",
-		},
-		{
-			"Serializing for NATS and back (logs)",
+			"Serializing OTLP data and back (logs)",
 			pkgDomain,
 			"OTLPDataRoundTrip/logs/records=1000/resources=10/teams=1",
 		},
-		{"NATS source, 1 worker", pkgNATSSource, "Consume/workers=1/records=1000/resources=10/teams=1"},
-		{"NATS source, 8 workers", pkgNATSSource, "Consume/workers=8/records=1000/resources=10/teams=1"},
+		{"Broker source (NATS), 1 worker", pkgBrokerSource, "Consume/workers=1/records=1000/resources=10/teams=1"},
+		{"Broker source (NATS), 8 workers", pkgBrokerSource, "Consume/workers=8/records=1000/resources=10/teams=1"},
 		{
 			"OTLP source: decoding a request",
 			pkgOTLPSource,
@@ -618,8 +613,8 @@ func perRecordComponents() []component {
 func perEventComponents() []component {
 	return []component{
 		{
-			"NATS sink: one record (waits for the acknowledgement)",
-			pkgNATSSink,
+			"Broker sink (NATS): one record (waits for the acknowledgement)",
+			pkgBrokerSink,
 			"Notify/records=1/resources=1/teams=1",
 		},
 		{

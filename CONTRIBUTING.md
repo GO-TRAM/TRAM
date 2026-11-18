@@ -44,7 +44,7 @@ go mod download
 # generated code was made with (see the versions in Taskfile.yml)
 task tools
 
-# Optional: NATS with JetStream for the nats source and sink
+# Optional: NATS with JetStream for the broker source and sink
 task nats:up
 ```
 
@@ -131,6 +131,7 @@ tram/
 ├── internal/                         # Private application code
 │   ├── adapters/
 │   │   ├── api/                      # gRPC API and HTTP gateway
+│   │   ├── broker/                   # Broker driver contract, drivers (nats/), conformance tests
 │   │   ├── configsync/               # File sync (--enable-file-sync)
 │   │   ├── k8scrd/                   # Kubernetes operator (--enable-k8s-operator)
 │   │   ├── source/                   # Sources, base/ and factory.go
@@ -167,7 +168,7 @@ Tram is designed to be easily extensible. Each component is a package in `intern
 Rules all components follow:
 
 - **Events are read-only.** One event is passed to all branches concurrently. To change data, build a new event, e.g. with `domain.FilterLogs`, `FilterMetrics` and `FilterSpans`, which share unchanged records instead of copying them
-- **`Notify` returns the delivery result.** Return an error wrapping `domain.ErrEventRejected` when retrying the same data cannot succeed; sources then reject it (OTLP: HTTP 422, NATS: terminate). Any other error is treated as temporary (OTLP: HTTP 503, NATS: redelivery)
+- **`Notify` returns the delivery result.** Return an error wrapping `domain.ErrEventRejected` when retrying the same data cannot succeed; sources then reject it (OTLP: HTTP 422, broker: reject the message). Any other error is treated as temporary (OTLP: HTTP 503, broker: redelivery)
 - **`Notify` may block** while it delivers the event downstream, or when waiting is its documented purpose (`batch`, `delay`). It has to return when `ctx` is done
 - **Lifecycle:** `New` may acquire resources such as connections. `Stop` is called exactly once and must release them; it may be called without `Run`, e.g. when building the stream failed. The core stops the source first, waits for its `Run` to return, and then stops stages and sinks from the root down
 - **Updates:** when an update changes only stages or sinks, the source keeps running. The core builds the new stages and sinks, switches the source over with `SetSubscribers`, which waits until no event is delivered to the old ones anymore, and then stops the old stages and sinks. Stages and sinks therefore have to be independent of a particular source instance
@@ -447,7 +448,7 @@ func (w *Webhook) Notify(ctx context.Context, event *domain.Event) error {
 
 	switch {
 	case resp.StatusCode >= 500:
-		// Temporary: the source may retry, e.g. the NATS source redelivers.
+		// Temporary: the source may retry, e.g. the broker source has the message redelivered.
 		return fmt.Errorf("send logs: %s", resp.Status)
 	case resp.StatusCode >= 400:
 		// Permanent: retrying the same data cannot succeed.
@@ -499,7 +500,7 @@ var _ domain.Sink = (*Webhook)(nil)
    task check
    ```
 
-4. **Test against NATS**: If you changed the NATS source or sink, also run the container tests
+4. **Test against NATS**: If you changed the broker source or sink or a driver, also run the container tests
    ```bash
    task test:containers
    ```
@@ -624,9 +625,13 @@ func TestMyFunction(t *testing.T) {
 
 `internal/e2e` tests complete pipelines without external dependencies: streams are built by the core from the real source and stage factories, OTLP data is sent over HTTP, and capturing sinks record exactly which records arrive where. They cover batching, splitting, cancelled requests, the status codes clients receive, and updates under load, and run with `go test ./...`.
 
-`TestNATS` in the same package runs pipelines against a NATS server in a container (see `internal/testutil/natstest`) and checks what actually ends up in JetStream: subjects, the `Tram-Signal` header, and records with their resource and scope. It also sends data from Tram's NATS sink through Tram's NATS source. It is skipped without Docker or Podman; with Podman on macOS, set the variables described under [Benchmarks](#benchmarks).
+`TestBrokerNATS` in the same package runs pipelines against a NATS server in a container (see `internal/testutil/natstest`) and checks what actually ends up in JetStream: subjects, plain OTLP bodies without headers, and records with their resource and scope. It also sends data from the broker sink through the broker source, reads plain OTLP that another producer published, and checks partitioning, buffering and the answers clients get. It is skipped without Docker or Podman; with Podman on macOS, set the variables described under [Benchmarks](#benchmarks).
 
 When adding a stage or changing how events flow, add a case there that checks which records arrive in which sink.
+
+### Broker Drivers
+
+A broker driver implements the contract in `internal/adapters/broker` and has to pass the conformance suite in `broker/brokertest` (`brokertest.Run`): publish and receive, acknowledge, retry after a delay, reject, a durable position across subscribers, cancellation, invalid destinations and the maximum message size. Run it against the broker in a container, as `broker/nats` does. Register the driver in the source and sink factories; its options sit under its name in the component spec. Unit tests of the broker source and sink use the in-memory driver of `brokertest` and need no container.
 
 ### Kubernetes Operator Tests
 
@@ -648,14 +653,13 @@ Benchmarks cover the per-event hot path:
 | `BenchmarkCELValidator` | `stage/celvalidator` | Expression evaluation per payload size |
 | `BenchmarkCELFilter` | `stage/celfilter` | Per-record filtering for different keep ratios |
 | `BenchmarkFilter` | `core/domain` | The record filtering helpers without CEL |
-| `BenchmarkGroupEventsBySubjects` | `sink/nats` | Splitting batches by subject |
-| `BenchmarkNotify` | `sink/nats` | Grouping and publishing to NATS (container) |
-| `BenchmarkConsume` | `source/nats` | Fetching, decoding and acknowledging from NATS (container) |
+| `BenchmarkNotify` | `sink/broker` | Grouping and publishing to NATS through the NATS driver (container) |
+| `BenchmarkConsume` | `source/broker` | Receiving, decoding and acknowledging from NATS through the NATS driver (container) |
 | `BenchmarkBatch` | `stage/batch` | Batch overhead and merging with concurrent callers |
 | `BenchmarkHandleLogs` | `source/otlp` | Reading and decoding OTLP requests |
-| `BenchmarkOTLPDataRoundTrip` | `core/domain` | Serializing events for NATS |
+| `BenchmarkOTLPDataRoundTrip` | `core/domain` | Serializing events as OTLP data, as the broker sink and source do |
 | `BenchmarkScenario` | `scenario` | Complete pipelines end to end: throughput, CPU per record, latency (container) |
-| `BenchmarkStreams` | `scenario` | Cost of idle streams for 10 to 1,000 streams per instance: build time, heap, goroutines, NATS connections and requests, idle CPU (container; each case takes about 20 seconds, run it with `-benchtime 1x`) |
+| `BenchmarkStreams` | `scenario` | Cost of idle streams for 10 to 1,000 streams per instance: build time, heap, goroutines, NATS connections and requests of the broker sources and sinks, idle CPU (container; each case takes about 20 seconds, run it with `-benchtime 1x`) |
 
 [BENCHMARK.md](BENCHMARK.md) presents these results. After performance-relevant changes, regenerate it with `task bench:report` (see the page for details); add new scenarios to `internal/scenario` and new components to the lists in `tools/benchreport`.
 
