@@ -545,8 +545,6 @@ const (
 	pkgDomain       = "internal/core/domain"
 	pkgNATSSink     = "internal/adapters/sink/nats"
 	pkgNATSSource   = "internal/adapters/source/nats"
-	pkgCESink       = "internal/adapters/sink/cloudevent"
-	pkgCESource     = "internal/adapters/source/cloudevent"
 	pkgOTLPSource   = "internal/adapters/source/otlp"
 	pkgSourceBase   = "internal/adapters/source/base"
 	pkgBatch        = "internal/adapters/stage/batch"
@@ -572,24 +570,12 @@ func perRecordComponents() []component {
 			"GroupEventsBySubjects/records=1000/resources=10/teams=1",
 		},
 		{
-			"CloudEvent sink (NATS): group and send, 10 subjects",
-			pkgCESink,
-			"Notify/records=1000/resources=10/teams=10",
-		},
-		{
-			"CloudEvent sink (NATS): group and send, 1 subject",
-			pkgCESink,
-			"Notify/records=1000/resources=10/teams=1",
-		},
-		{
 			"Serializing for NATS and back (logs)",
 			pkgDomain,
 			"OTLPDataRoundTrip/logs/records=1000/resources=10/teams=1",
 		},
 		{"NATS source, 1 worker", pkgNATSSource, "Consume/workers=1/records=1000/resources=10/teams=1"},
 		{"NATS source, 8 workers", pkgNATSSource, "Consume/workers=8/records=1000/resources=10/teams=1"},
-		{"CloudEvent source (NATS), 1 worker", pkgCESource, "Consume/workers=1/records=1000/resources=10/teams=1"},
-		{"CloudEvent source (NATS), 8 workers", pkgCESource, "Consume/workers=8/records=1000/resources=10/teams=1"},
 		{
 			"OTLP source: decoding a request",
 			pkgOTLPSource,
@@ -635,21 +621,6 @@ func perEventComponents() []component {
 			"NATS sink: one record (waits for the acknowledgement)",
 			pkgNATSSink,
 			"Notify/records=1/resources=1/teams=1",
-		},
-		{
-			"NATS sink: one record, 4 concurrent callers per CPU",
-			pkgNATSSink,
-			"Notify/parallel/records=1/resources=1/teams=1",
-		},
-		{
-			"CloudEvent sink (NATS): one record (waits for the acknowledgement)",
-			pkgCESink,
-			"Notify/records=1/resources=1/teams=1",
-		},
-		{
-			"CloudEvent sink (NATS): one record, 4 concurrent callers per CPU",
-			pkgCESink,
-			"Notify/parallel/records=1/resources=1/teams=1",
 		},
 		{
 			"OTLP source: request with one record",

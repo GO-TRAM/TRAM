@@ -6,7 +6,6 @@
 package nats_test
 
 import (
-	"context"
 	"log/slog"
 	"testing"
 
@@ -56,23 +55,5 @@ func BenchmarkNotify(b *testing.B) {
 			b.ReportMetric(float64(shape.Records*b.N)/b.Elapsed().Seconds(), "records/s")
 			b.ReportMetric(float64(shape.Teams*b.N)/b.Elapsed().Seconds(), "messages/s")
 		})
-		// Like a source with many workers: events are sent concurrently.
-		b.Run("parallel/"+shape.String(), func(b *testing.B) {
-			b.ReportAllocs()
-			b.SetParallelism(parallelNotifiers)
-			b.RunParallel(func(pb *testing.PB) {
-				for pb.Next() {
-					if notifyErr := sink.Notify(context.Background(), event); notifyErr != nil {
-						b.Error(notifyErr)
-						return
-					}
-				}
-			})
-			b.ReportMetric(float64(shape.Records*b.N)/b.Elapsed().Seconds(), "records/s")
-			b.ReportMetric(float64(shape.Teams*b.N)/b.Elapsed().Seconds(), "messages/s")
-		})
 	}
 }
-
-// Notifiers per GOMAXPROCS in the parallel benchmarks.
-const parallelNotifiers = 4
