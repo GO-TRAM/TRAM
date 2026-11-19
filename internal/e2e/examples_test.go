@@ -64,7 +64,7 @@ func TestExamplesAreValid(t *testing.T) {
 		})
 	}
 
-	manifests, err := filepath.Glob("../../setup/k8s/*.yaml")
+	manifests, err := filepath.Glob("../../setup/k8s/examples/*.yaml")
 	require.NoError(t, err)
 	require.NotEmpty(t, manifests)
 	for _, path := range manifests {
@@ -72,12 +72,16 @@ func TestExamplesAreValid(t *testing.T) {
 			t.Parallel()
 
 			var manifest struct {
+				Kind     string `json:"kind"`
 				Metadata struct {
 					Name string `json:"name"`
 				} `json:"metadata"`
 				Spec exampleStream `json:"spec"`
 			}
 			require.NoError(t, yaml.Unmarshal(readFile(t, path), &manifest))
+			if manifest.Kind != "Stream" {
+				t.Skipf("%s holds a %s, not a Stream", filepath.Base(path), manifest.Kind)
+			}
 			assert.Empty(t, validation.IsDNS1123Subdomain(manifest.Metadata.Name),
 				"Kubernetes rejects the name %q", manifest.Metadata.Name)
 			checkExample(t, manifest.Spec)

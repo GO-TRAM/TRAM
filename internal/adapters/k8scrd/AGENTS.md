@@ -6,13 +6,18 @@ This adapter embeds a controller-runtime operator into Tram. It was scaffolded w
 
 ```
 operator.go                                Creates and runs the controller manager inside Tram; limits its cache to the selected namespaces and labels
+manager.go                                 Creates and runs the controller manager of `tram manager` (leader election, runs no streams)
 api/v1/groupversion_info.go                API group io.tram.core/v1
 api/v1/stream_types.go                     Stream schema (+kubebuilder markers)
 api/v1/zz_generated.deepcopy.go            Generated (DO NOT EDIT)
+api/v1/engine_labels.go                    engine.tram.io/<name> labels derived from spec.engineRefs
+api/v1alpha1/                              API group io.tram.core/v1alpha1: Engine schema (+kubebuilder markers)
 internal/controller/stream_controller.go   Reconciliation logic and RBAC markers
 internal/controller/secrets.go             Resolves secret references in component specs
+internal/engines/                          Controllers of `tram manager`: Engines as Deployments, engine labels and status.engines of Streams
 config/crd/bases/                          Generated CRD (DO NOT EDIT)
 config/rbac/role.yaml                      Generated RBAC (DO NOT EDIT)
+config/rbac/manager/role.yaml              Generated RBAC of `tram manager` (DO NOT EDIT)
 hack/boilerplate.go.txt                    Header for generated files
 ```
 
@@ -46,6 +51,11 @@ Do not use `make manifests`, `make generate` or the `kubebuilder` CLI; they are 
 - **Selection:** `--watch-namespace` and `--stream-selector` only limit the manager's cache (`cacheOptions`). Read `Stream` resources through the manager's client, never an uncached reader, so a resource that leaves the selection is reconciled as deleted
 - **Permanent errors:** wrap errors that retrying cannot fix with `reconcile.TerminalError`; other errors are retried with backoff
 - **RBAC:** declare permissions with `+kubebuilder:rbac` markers on the reconciler and regenerate
+- **Manager RBAC:** markers in `internal/controller/` end up in the role of Tram instances, markers in `internal/engines/` in the role of `tram manager` (`config/rbac/manager/role.yaml`); keep them apart
+- **Engine labels:** only `tram manager` writes labels with the prefix `engine.tram.io/`, derived from `spec.engineRefs` with `tramv1.WithEngineLabels`. Tram instances only select them (`--engine`) and never write labels. The labels are just an index for the cache: the instances' reconciler checks `spec.engineRefs` (`Stream.RefersToEngine`) before running a Stream, so never rely on the label alone
+- **Status ownership:** Tram instances write `Stream.status.active`; `tram manager` writes `Stream.status.engines` and the whole `Engine.status`
+- **Engine resources:** apply them server-side with `client.Apply` and field owner `engines.FieldOwner`, built as apply configurations in `internal/engines/resources.go`. Every generated resource carries `engines.ManagedByLabel`, since the manager's cache only holds resources with it
+- **Replicas and autoscaling:** never drop `spec.replicas` from the Deployment's apply while the manager owns it alone; `EngineReconciler.replicas` hands it over to a second field manager first, or the API server resets it to 1
 
 ## API Design
 

@@ -15,3 +15,8 @@ func WithoutNameValidation(opts Options) Options {
 	opts.skipNameValidation = true
 	return opts
 }
+
+func ManagerWithoutNameValidation(opts ManagerOptions) ManagerOptions {
+	opts.skipNameValidation = true
+	return opts
+}

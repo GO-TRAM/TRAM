@@ -172,3 +172,36 @@ func TestToDomainMapsMetrics(t *testing.T) {
 		RequestSize: new(false),
 	}, spec.Metrics)
 }
+
+func TestReconcileRunsOnlyStreamsThatReferToTheEngine(t *testing.T) {
+	t.Parallel()
+
+	// The engine label set by hand, without a reference: the cache would hold
+	// the Stream, but it runs nothing.
+	labeled := newStream("default")
+	labeled.Labels = map[string]string{tramv1.EngineLabel("mapper"): ""}
+	r, core := newReconciler(t, labeled)
+	r.Engine = "mapper"
+
+	_, err := r.Reconcile(t.Context(), request("default"))
+	require.NoError(t, err)
+	assert.Empty(t, core.streams)
+
+	var stream tramv1.Stream
+	key := types.NamespacedName{Namespace: "default", Name: "s"}
+	require.NoError(t, r.Get(t.Context(), key, &stream))
+	assert.False(t, stream.Status.Active, "the status is left to the engines that run the Stream")
+
+	stream.Spec.EngineRefs = []tramv1.EngineReference{{Name: "mapper"}}
+	require.NoError(t, r.Update(t.Context(), &stream))
+	_, err = r.Reconcile(t.Context(), request("default"))
+	require.NoError(t, err)
+	assert.Contains(t, core.streams, "default.s", "a Stream that refers to the engine runs")
+
+	require.NoError(t, r.Get(t.Context(), key, &stream))
+	stream.Spec.EngineRefs = []tramv1.EngineReference{{Name: "routers"}}
+	require.NoError(t, r.Update(t.Context(), &stream))
+	_, err = r.Reconcile(t.Context(), request("default"))
+	require.NoError(t, err)
+	assert.Empty(t, core.streams, "a Stream that no longer refers to the engine stops, even with a stale label")
+}

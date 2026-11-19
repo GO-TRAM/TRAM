@@ -4,6 +4,8 @@ kind: Stream
 metadata:
   name: otlp-insecure-dev
 spec:
+  engineRefs:
+    - name: demo
   source:
     type: generator
     name: event_generator

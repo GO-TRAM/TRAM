@@ -4,11 +4,13 @@ kind: Stream
 metadata:
   name: otlp-batch
 spec:
+  engineRefs:
+    - name: demo
   source:
     type: otlp
     name: otlp
     spec:
-      http_port: 4318
+      http_port: 4319
   stages:
     - type: batch
       name: batch

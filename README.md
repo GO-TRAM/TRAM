@@ -360,6 +360,8 @@ kubectl apply -f internal/adapters/k8scrd/config/crd/bases/io.tram.core_streams.
 
 The operator watches `Stream` resources (`io.tram.core/v1`) and runs each as a stream named `<namespace>.<name>`. It uses the in-cluster configuration or the current kubeconfig context; `--kubeconfig` selects another file. By default every Tram instance runs every `Stream` resource in the cluster; `--watch-namespace` and `--stream-selector` limit an instance to some of them, e.g. to run different streams in several Tram deployments. See `setup/k8s/` for an example and [the operator documentation](internal/adapters/k8scrd/README.md) for details.
 
+Alternatively, `tram manager` runs `Engine` resources (`io.tram.core/v1alpha1`) as Deployments of Tram instances, and a `Stream` names the engines that run it in `spec.engineRefs`; see [Engines](internal/adapters/k8scrd/README.md#engines) and `setup/k8s/`.
+
 ---
 
 ## 🔒 Security

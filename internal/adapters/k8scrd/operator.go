@@ -5,7 +5,8 @@
 
 //go:generate controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./..."
 //go:generate controller-gen crd paths="./..." output:crd:dir=config/crd/bases
-//go:generate controller-gen rbac:roleName=manager-role paths="./..." output:rbac:dir=config/rbac
+//go:generate controller-gen rbac:roleName=manager-role paths="./internal/controller/..." output:rbac:dir=config/rbac
+//go:generate controller-gen rbac:roleName=tram-manager paths="./internal/engines/..." output:rbac:dir=config/rbac/manager
 
 package k8scrd
 
@@ -13,11 +14,13 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -38,10 +41,10 @@ type Operator struct {
 }
 
 type Options struct {
-	Kubeconfig     string
-	Namespaces     []string
-	StreamSelector string
-
+	Kubeconfig         string
+	Namespaces         []string
+	StreamSelector     string
+	Engine             string
 	skipNameValidation bool
 }
 
@@ -95,6 +98,7 @@ func New(core ports.Core, opts Options, logger *slog.Logger) (*Operator, error) 
 		Scheme:     mgr.GetScheme(),
 		Core:       core,
 		References: mgr.GetAPIReader(),
+		Engine:     opts.Engine,
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up controller: %w", err)
 	}
@@ -121,8 +125,12 @@ func cacheOptions(opts Options) (cache.Options, error) {
 		}
 	}
 
-	if opts.StreamSelector != "" {
-		selector, err := labels.Parse(opts.StreamSelector)
+	streamSelector, engineErr := withEngine(opts.StreamSelector, opts.Engine)
+	if engineErr != nil {
+		return cache.Options{}, engineErr
+	}
+	if streamSelector != "" {
+		selector, err := labels.Parse(streamSelector)
 		if err != nil {
 			return cache.Options{}, fmt.Errorf("%w: %w", ErrInvalidStreamSelector, err)
 		}
@@ -140,6 +148,22 @@ func cacheOptions(opts Options) (cache.Options, error) {
 	}
 
 	return cacheOpts, nil
+}
+
+// withEngine adds the label of engine to the stream selector, so the operator
+// runs only the Streams whose spec.engineRefs name the engine.
+func withEngine(streamSelector, engine string) (string, error) {
+	if engine == "" {
+		return streamSelector, nil
+	}
+	if errs := validation.IsDNS1123Label(engine); len(errs) > 0 {
+		return "", fmt.Errorf("%w %q: %s", ErrInvalidEngine, engine, strings.Join(errs, "; "))
+	}
+	engineSelector := tramv1.EngineLabel(engine)
+	if streamSelector == "" {
+		return engineSelector, nil
+	}
+	return streamSelector + "," + engineSelector, nil
 }
 
 func (o *Operator) Run(ctx context.Context) error {

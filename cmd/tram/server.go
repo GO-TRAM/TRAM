@@ -33,6 +33,7 @@ type serverOptions struct {
 	kubeconfig        string
 	watchNamespaces   []string
 	streamSelector    string
+	engine            string
 	enableFileSync    bool
 	pprofEndpoint     string
 }
@@ -59,6 +60,7 @@ func newServerCmd(logger *slog.Logger) *cobra.Command {
 		"Namespaces whose Stream resources the operator runs, comma-separated (default all)")
 	flags.StringVar(&opts.streamSelector, "stream-selector", "",
 		"Label selector for the Stream resources the operator runs, e.g. tram.io/validation=true")
+	flags.StringVar(&opts.engine, "engine", "", "Engine whose Stream resources the operator runs")
 	flags.StringVar(&opts.pprofEndpoint, "pprof-endpoint", "",
 		"Endpoint serving the Go profiles under /debug/pprof/, e.g. localhost:6060 (default disabled)")
 	return cmd
@@ -115,6 +117,7 @@ func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (er
 				Kubeconfig:     opts.kubeconfig,
 				Namespaces:     opts.watchNamespaces,
 				StreamSelector: opts.streamSelector,
+				Engine:         opts.engine,
 			}, logger)
 			if opErr != nil {
 				return opErr
