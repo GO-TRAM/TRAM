@@ -4,6 +4,8 @@ kind: Stream
 metadata:
   name: otlp-debug
 spec:
+  engineRefs:
+    - name: demo
   source:
     type: otlp
     name: otlp_source
