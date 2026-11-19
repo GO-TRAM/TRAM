@@ -47,7 +47,23 @@ type ReceiverSpec struct {
 	From string                `json:"from"`
 }
 
+// EngineReference refers to an Engine in the namespace of the Stream.
+type EngineReference struct {
+	// Name of the Engine.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=51
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	Name string `json:"name"`
+}
+
 type StreamSpec struct {
+	// EngineRefs are the Engines that run the stream.
+	// +optional
+	// +listType=map
+	// +listMapKey=name
+	// +kubebuilder:validation:MaxItems=16
+	EngineRefs []EngineReference `json:"engineRefs,omitempty"`
+
 	Source Spec           `json:"source"`
 	Stages []ReceiverSpec `json:"stages,omitempty"`
 	Sinks  []ReceiverSpec `json:"sinks"`
@@ -82,8 +98,30 @@ type NodeMetricsSpec struct {
 	Sinks *bool `json:"sinks,omitempty"`
 }
 
+// ConditionAccepted is the condition type of a Stream's engine entry that
+// tells whether the referenced Engine exists.
+const ConditionAccepted = "Accepted"
+
 type StreamStatus struct {
+	// Active tells whether the stream runs.
+	// +optional
 	Active bool `json:"active"`
+	// Engines reports, per entry of spec.engineRefs, whether the Engine
+	// accepts the Stream.
+	// +optional
+	// +listType=map
+	// +listMapKey=name
+	Engines []StreamEngineStatus `json:"engines,omitempty"`
+}
+
+// StreamEngineStatus is the status of a Stream on one of its Engines.
+type StreamEngineStatus struct {
+	// Name of the Engine.
+	Name string `json:"name"`
+	// +optional
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +genclient

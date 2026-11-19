@@ -4,6 +4,8 @@ kind: Stream
 metadata:
   name: otlp-nats-bridge
 spec:
+  engineRefs:
+    - name: demo
   source:
     type: broker
     name: nats

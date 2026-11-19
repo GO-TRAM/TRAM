@@ -358,7 +358,9 @@ kubectl apply -f internal/adapters/k8scrd/config/crd/bases/io.tram.core_streams.
 ./tram server --enable-k8s-operator
 ```
 
-The operator watches `Stream` resources (`io.tram.core/v1`) and runs each as a stream named `<namespace>.<name>`. It uses the in-cluster configuration or the current kubeconfig context; `--kubeconfig` selects another file. By default every Tram instance runs every `Stream` resource in the cluster; `--watch-namespace` and `--stream-selector` limit an instance to some of them, e.g. to run different streams in several Tram deployments. See `setup/k8s/` for an example and [the operator documentation](internal/adapters/k8scrd/README.md) for details.
+The operator watches `Stream` resources (`io.tram.core/v1`) and runs each as a stream named `<namespace>.<name>`. It uses the in-cluster configuration or the current kubeconfig context; `--kubeconfig` selects another file. By default every Tram instance runs every `Stream` resource in the cluster, including those that name engines. With `--watch-namespace` limits an instance to some namespaces, and `--engine` to the `Stream` resources of one Engine. See [the operator documentation](internal/adapters/k8scrd/README.md) for details.
+
+Alternatively, `tram manager` runs `Engine` resources (`io.tram.core/v1alpha1`) as Deployments of Tram instances, and a `Stream` names the engines that run it in `spec.engineRefs`; see [Engines](internal/adapters/k8scrd/README.md#engines) and `setup/k8s/`.
 
 ---
 
@@ -370,7 +372,7 @@ Tram has no authentication or authorization of its own. Whoever can create a str
 - **Profiling**: `--pprof-endpoint` serves the Go profiles under `/debug/pprof/` on their own endpoint, without authentication; it is off by default. Profiles reveal internals such as stack traces and command-line arguments, so bind it to `localhost` or a port that is not exposed, and reach it with `kubectl port-forward`. It also turns on mutex and block profiling, which costs a little on contended locks
 - **OTLP source**: listens on the configured port on all network interfaces, without TLS or authentication. Anyone who can reach the port can send data into the stream. Restrict it on the network level, or terminate TLS and authenticate in a proxy in front of it
 - **Sinks**: an OTLP sink sends data to any URL in its spec, and `insecure: true` turns off certificate checks. Keep credentials in sink specs, e.g. in `headers` or NATS URLs, out of version control; the file sync writes new files readable only by their owner
-- **Kubernetes operator**: watches `Stream` resources in all namespaces unless `--watch-namespace` is set, so everyone allowed to create a `Stream` in a watched namespace can open ports on the Tram pod and send data anywhere Tram can reach. A `Stream` can also refer to secrets and config maps in its namespace, which Tram reads and passes to the stream, so its author can send their values anywhere. Grant `create` on `streams.io.tram.core` only to users you would also trust with the Tram deployment and with the secrets and config maps of that namespace. `--stream-selector` is no access control: anyone who can create a `Stream` can set the matching labels
+- **Kubernetes operator**: watches `Stream` resources in all namespaces unless `--watch-namespace` is set, so everyone allowed to create a `Stream` in a watched namespace can open ports on the Tram pod and send data anywhere Tram can reach. A `Stream` can also refer to secrets and config maps in its namespace, which Tram reads and passes to the stream, so its author can send their values anywhere. Grant `create` on `streams.io.tram.core` only to users you would also trust with the Tram deployment and with the secrets and config maps of that namespace. `spec.engineRefs` is no access control either: anyone who can create a `Stream` in an Engine's namespace can run it on that Engine
 
 ---
 

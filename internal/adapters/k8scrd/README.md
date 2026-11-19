@@ -21,7 +21,7 @@ Lets Tram run streams described by `Stream` custom resources (`io.tram.core/v1`)
 3. Create a `Stream`, e.g. the example in `setup/k8s/`:
 
    ```sh
-   kubectl apply -f setup/k8s/generator_delay_debug.yaml
+   kubectl apply -f setup/k8s/examples/otlp_basic.yaml
    ```
 
 When Tram runs in a cluster, its service account needs the permissions in `config/rbac/role.yaml` (a `ClusterRole` named `manager-role`), bound with a `ClusterRoleBinding`. With `--watch-namespace`, a `RoleBinding` to that `ClusterRole` in each watched namespace is enough. The role includes reading `Secret` and `ConfigMap` resources, for [references to secrets](#secrets) and [config maps](#config-maps).
@@ -33,27 +33,91 @@ By default every Tram instance with the operator enabled runs every `Stream` res
 | Flag | Description |
 |------|-------------|
 | `--watch-namespace` | Comma-separated namespaces whose `Stream` resources the instance runs, e.g. `tram-validation,tram-bridge` |
-| `--stream-selector` | [Label selector](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors) the resources have to match, e.g. `tram.io/validation=true` |
+| `--engine` | [Engine](#engines) whose `Stream` resources the instance runs: those whose `spec.engineRefs` name it. `tram manager` sets it on the instances of each Engine |
 
-With several Tram deployments in one namespace, give each deployment its own label key. A `Stream` then runs on every deployment whose label it carries:
+- A resource that no instance selects runs nowhere, and its `status.active` is not set
+- With `--engine`, the instance watches only the resources labeled `engine.tram.io/<engine>`, which `tram manager` derives from `spec.engineRefs`, and runs only those whose `spec.engineRefs` still name the engine. Removing the reference stops the stream on the engine's instances; adding it starts the stream
+- `--engine` only assigns streams to instances, it is no access control. Anyone who can create a `Stream` in a watched namespace can name any engine. Use `--watch-namespace` and RBAC to restrict who can run streams on an instance
+
+## Engines
+
+An `Engine` (`io.tram.core/v1alpha1`) is a group of Tram instances that `tram manager` runs as a Deployment. A `Stream` names the engines that run it in `spec.engineRefs`, and every instance of each of them runs it:
 
 ```yaml
-# Deployment "validation": --stream-selector=tram.io/validation=true
-# Deployment "bridge":     --stream-selector=tram.io/bridge=true
+apiVersion: io.tram.core/v1alpha1
+kind: Engine
+metadata:
+  name: telemetry-hub-mapper
+  namespace: tram-nats-13
+spec:
+  replicas: 3                       # used while autoscaling is disabled
+  image: registry.example.com/tram:1.14.0   # optional, defaults to the manager's --engine-image
+  imagePullPolicy: IfNotPresent
+  resources:
+    requests: { cpu: "4", memory: 8Gi }
+    limits: { memory: 12Gi }
+  autoscaling:                      # optional
+    enabled: true                   # default false
+    minReplicas: 3                  # required while enabled
+    maxReplicas: 24                 # required while enabled, >= minReplicas
+    targetCPUUtilizationPercentage: 70   # default 80
+  disruptionBudget:                 # optional, one of minAvailable and maxUnavailable
+    maxUnavailable: 1
+  ports:                            # ports the HTTP sources of its Streams may listen on
+    - name: otlp-http
+      port: 4318
+  service:
+    type: ClusterIP                 # default
+  runtime:                          # maps to flags of tram server
+    logLevel: info                  # --log-level, default info
+    api:
+      httpPort: 8080                # --http-endpoint, also serves /metrics; default 8080
+      grpcPort: 50051               # --grpc-endpoint; default 50051
+    pprof:                          # optional, --pprof-endpoint on the pod's localhost
+      port: 6060
+  podTemplate:                      # pod-level settings only
+    metadata:
+      labels: { team: telemetry }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8080" }
+    spec:
+      terminationGracePeriodSeconds: 30
+      priorityClassName: telemetry-high
+      nodeSelector: { node-pool: telemetry }
+      tolerations: [...]
+      affinity: {...}
+      topologySpreadConstraints: [...]
+      securityContext: {...}
+      imagePullSecrets: [...]
+---
 apiVersion: io.tram.core/v1
 kind: Stream
 metadata:
-  name: shared
-  labels:
-    tram.io/validation: "true"   # runs on both deployments
-    tram.io/bridge: "true"
+  name: resource-to-router-audit
+  namespace: tram-nats-13
+spec:
+  engineRefs:
+    - name: telemetry-hub-mapper
+  source: ...
 ```
 
-Set-based selectors work as well, e.g. `tram.io/instance in (bridge,shared)`.
+`setup/k8s/manager.yaml` deploys the manager, and `setup/k8s/examples/` holds an Engine and Streams that run on it.
 
-- A resource that no instance selects runs nowhere, and its `status.active` is not set
-- Removing the matching label from a resource stops its stream on that instance; adding it starts the stream
-- The selector only assigns streams to instances, it is no access control. Anyone who can create a `Stream` in a watched namespace can set the labels. Use `--watch-namespace` and RBAC to restrict who can run streams on an instance
+### The Manager
+
+`tram manager` runs no streams. It runs one Deployment per `Engine`, and it labels every `Stream` `engine.tram.io/<name>` (with an empty value) for each engine its `spec.engineRefs` name; the instances of an engine select the key, e.g. `kubectl get streams -l engine.tram.io/engine-1`. Run it once per cluster, or as several replicas, of which one at a time works:
+
+```sh
+./tram manager --engine-image registry.example.com/tram:1.14.0
+```
+
+### RBAC
+
+| Role | File | Bound to |
+|------|------|----------|
+| `tram-manager` | `config/rbac/manager/role.yaml` | The manager's service account, with a `ClusterRoleBinding` (a `RoleBinding` per namespace with `--watch-namespace`). Engines, Streams, the generated resources, leader election, and `bind` on `manager-role` |
+| `manager-role` | `config/rbac/role.yaml` | Each Engine's service account, by the manager, in the Engine's namespace |
+
+Both `ClusterRole`s have to exist. With another `--engine-cluster-role`, grant the manager `bind` on that role instead.
 
 ## The Stream Resource
 
@@ -151,7 +215,7 @@ data:
 - **Changes:** the stream is created or updated when the resource's `spec`, a secret it refers to, or a config map it selects changes. Status updates and periodic resyncs do not restart it
 - **Status:** `status.active` is `true` once the stream runs, and `false` if building it failed, e.g. because of an invalid component spec. Failed builds are retried with increasing delays. If the stream's source stops later, Tram restarts the stream on its own; `status.active` stays `true` meanwhile
 - **Deletion:** deleting the resource deletes the stream
-- **Scope:** the operator watches `Stream` resources in all namespaces, or in the namespaces from `--watch-namespace`, that match `--stream-selector` if set; see [Selecting Streams](#selecting-streams). There is no leader election, so every Tram instance with the operator enabled runs every `Stream` resource it selects
+- **Scope:** the operator watches `Stream` resources in all namespaces, or in the namespaces from `--watch-namespace`, and with `--engine` only those whose `spec.engineRefs` name the engine; see [Selecting Streams](#selecting-streams). There is no leader election, so every Tram instance with the operator enabled runs every `Stream` resource it selects
 - **Access:** creating a `Stream` lets its author open ports on the Tram pod and send data anywhere Tram can reach, from any namespace. Its author can also have Tram read any secret or config map in the `Stream`'s namespace and send the value along, e.g. as a header to their own URL. Grant `create` on `streams.io.tram.core` only to users you would also trust with the Tram deployment and with the secrets and config maps of that namespace; see [Security](../../../README.md#-security)
 - **File sync:** with `--enable-file-sync`, streams created by the operator are also written to the configuration directory
 
@@ -161,9 +225,14 @@ data:
 |------|---------|
 | `api/v1/stream_types.go` | The `Stream` type and its kubebuilder markers |
 | `api/v1/zz_generated.deepcopy.go` | Generated |
+| `api/v1/engine_labels.go` | The engine labels derived from `spec.engineRefs` |
 | `internal/controller/stream_controller.go` | Reconciliation and the RBAC markers |
+| `api/v1alpha1/engine_types.go` | The `Engine` type and its kubebuilder markers |
+| `internal/engines/` | The controllers of `tram manager`: `engine_controller.go` runs Engines, `resources.go` builds their resources, `stream_controller.go` derives engine labels and `status.engines`; with their RBAC markers |
 | `config/crd/bases/`, `config/rbac/` | Generated CRD and RBAC manifests |
+| `config/rbac/manager/` | Generated RBAC of `tram manager` |
 | `operator.go` | Starts the controller manager inside Tram |
+| `manager.go` | Starts the controller manager of `tram manager`, with leader election; caches only the resources it generates |
 
 After changing types or markers, regenerate the deepcopy code and the manifests with [controller-gen](https://book.kubebuilder.io/reference/controller-gen) v0.22.0:
 

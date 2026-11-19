@@ -54,6 +54,11 @@ type StreamReconciler struct {
 	// e.g. the manager's API reader, so their values are not kept in the
 	// cache. The Client without it.
 	References client.Reader
+	// Engine, if set, runs only the Streams whose spec.engineRefs name it.
+	// The cache already holds only the Streams with its engine label, but the
+	// label is just an index for the API server's filter: a label set by hand
+	// runs nothing.
+	Engine string
 }
 
 // +kubebuilder:rbac:groups=io.tram.core,resources=streams,verbs=get;list;watch;create;update;patch;delete
@@ -77,6 +82,10 @@ func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 		log.Info("Deleted Stream from core", "stream", name)
 		return ctrl.Result{}, nil
+	}
+
+	if r.Engine != "" && !stream.RefersToEngine(r.Engine) {
+		return ctrl.Result{}, r.stopUnreferenced(ctx, name)
 	}
 
 	desired, err := toDomain(name, stream)
@@ -118,6 +127,21 @@ func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	return ctrl.Result{}, r.setActive(ctx, &stream, true)
+}
+
+// stopUnreferenced stops a Stream whose spec.engineRefs do not name the
+// engine. Its status is left to the engines that run it.
+func (r *StreamReconciler) stopUnreferenced(ctx context.Context, name string) error {
+	err := r.Core.DeleteStream(ctx, name)
+	if err == nil {
+		logf.FromContext(ctx).Info("Stopped Stream that does not refer to the engine",
+			"stream", name, "engine", r.Engine)
+		return nil
+	}
+	if errors.Is(err, domain.ErrStreamNotFound) {
+		return nil
+	}
+	return fmt.Errorf("delete from core: %w", err)
 }
 
 func (r *StreamReconciler) references() client.Reader {

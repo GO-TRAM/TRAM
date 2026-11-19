@@ -1,0 +1,36 @@
+# engine.yaml - Engine for running the demo streams
+apiVersion: io.tram.core/v1alpha1
+kind: Engine
+metadata:
+  name: demo
+spec:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+  ports:
+    - name: otlp-basic
+      port: 4318
+    - name: otlp-batch
+      port: 4319
+    - name: otlp-multi-sink
+      port: 4320
+    - name: otlp-secure
+      port: 4321
+    - name: otlp-filters
+      port: 4322
+    - name: otlp-validation
+      port: 4323
+    - name: bench-otlp-nats
+      port: 4324
+    - name: bench-batch
+      port: 4325
+    - name: bench-split
+      port: 4326
+    - name: otlp-debug
+      port: 4327
+  runtime:
+    logLevel: info

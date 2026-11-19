@@ -4,6 +4,8 @@ kind: Stream
 metadata:
   name: otlp-benchmark
 spec:
+  engineRefs:
+    - name: demo
   source:
     type: generator
     name: generator_source

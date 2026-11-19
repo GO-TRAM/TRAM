@@ -42,5 +42,6 @@ backends.`,
 	}
 	root.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level: debug, info, warn or error")
 	root.AddCommand(newServerCmd(logger))
+	root.AddCommand(newManagerCmd(logger))
 	return root
 }

@@ -635,7 +635,7 @@ A broker driver implements the contract in `internal/adapters/broker` and has to
 
 ### Kubernetes Operator Tests
 
-The `TestOperator*` tests in `internal/adapters/k8scrd` run the operator against a real kube-apiserver and etcd from [envtest](https://book.kubebuilder.io/reference/envtest), one per test. They check which `Stream` resources an instance runs with `--watch-namespace` and `--stream-selector`, and that the generated RBAC role works with a namespaced `RoleBinding`. They are skipped unless `KUBEBUILDER_ASSETS` is set; `task test:envtest` downloads the binaries with `setup-envtest` and sets it.
+The `TestOperator*` tests in `internal/adapters/k8scrd` run the operator against a real kube-apiserver and etcd from [envtest](https://book.kubebuilder.io/reference/envtest), one per test. They check which `Stream` resources an instance runs with `--watch-namespace` and `--engine`, and that the generated RBAC role works with a namespaced `RoleBinding`. They are skipped unless `KUBEBUILDER_ASSETS` is set; `task test:envtest` downloads the binaries with `setup-envtest` and sets it.
 
 ### Integration Tests
 
