@@ -131,3 +131,28 @@ func mmap[T, S any](in []T, f func(T) S) []S {
 	}
 	return out
 }
+
+func streamPlanToPB(plan *domain.StreamPlan) *v1.StreamPlan {
+	if plan == nil {
+		return nil
+	}
+	return &v1.StreamPlan{
+		Action:         streamPlanActionToPB(plan.Action),
+		SourceReplaced: plan.SourceReplaced,
+		CreatedNodes:   plan.CreatedNodes,
+		StoppedNodes:   plan.StoppedNodes,
+	}
+}
+
+func streamPlanActionToPB(action domain.StreamPlanAction) v1.StreamPlanAction {
+	switch action {
+	case domain.StreamPlanActionNoop:
+		return v1.StreamPlanAction_STREAM_PLAN_ACTION_NOOP
+	case domain.StreamPlanActionHotSwap:
+		return v1.StreamPlanAction_STREAM_PLAN_ACTION_HOT_SWAP
+	case domain.StreamPlanActionRebuild:
+		return v1.StreamPlanAction_STREAM_PLAN_ACTION_REBUILD
+	default:
+		return v1.StreamPlanAction_STREAM_PLAN_ACTION_UNSPECIFIED
+	}
+}

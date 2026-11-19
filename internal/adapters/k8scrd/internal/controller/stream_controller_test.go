@@ -40,6 +40,10 @@ func (c *fakeCore) UpsertResolvedStream(_ context.Context, s, resolved domain.St
 	return &s, nil
 }
 
+func (c *fakeCore) PlanStream(_ context.Context, s, _ domain.StreamSpec) (*domain.StreamPlan, error) {
+	return &domain.StreamPlan{Stream: s.Name, Action: domain.StreamPlanActionRebuild}, nil
+}
+
 func (c *fakeCore) DeleteStream(_ context.Context, name string) error {
 	if _, ok := c.streams[name]; !ok {
 		return domain.ErrStreamNotFound

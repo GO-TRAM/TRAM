@@ -163,6 +163,10 @@
               "$ref": "#/definitions/v1Metrics"
             }
           }
+        },
+        "dryRun": {
+          "type": "boolean",
+          "description": "When true, the stream is validated and planned but not applied; the\nresponse holds the plan instead of changing the running stream."
         }
       }
     },
@@ -267,6 +271,10 @@
       "properties": {
         "stream": {
           "$ref": "#/definitions/v1Stream"
+        },
+        "plan": {
+          "$ref": "#/definitions/v1StreamPlan",
+          "description": "Set when the request's dry_run is true."
         }
       }
     },
@@ -345,6 +353,44 @@
           "$ref": "#/definitions/v1Metrics"
         }
       }
+    },
+    "v1StreamPlan": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "$ref": "#/definitions/v1StreamPlanAction"
+        },
+        "sourceReplaced": {
+          "type": "boolean",
+          "description": "True when the source would be replaced, i.e. the action is REBUILD and\nthe stream already existed with another source."
+        },
+        "createdNodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Stages and sinks that would be created, by name."
+        },
+        "stoppedNodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Stages and sinks that would be stopped, by name."
+        }
+      },
+      "description": "The plan of an upsert, computed by a dry run. Node names are unique within\na stream."
+    },
+    "v1StreamPlanAction": {
+      "type": "string",
+      "enum": [
+        "STREAM_PLAN_ACTION_UNSPECIFIED",
+        "STREAM_PLAN_ACTION_NOOP",
+        "STREAM_PLAN_ACTION_HOT_SWAP",
+        "STREAM_PLAN_ACTION_REBUILD"
+      ],
+      "default": "STREAM_PLAN_ACTION_UNSPECIFIED",
+      "description": "What an upsert of a stream would do, without applying it.\n\n - STREAM_PLAN_ACTION_NOOP: The stream is unchanged, nothing would happen.\n - STREAM_PLAN_ACTION_HOT_SWAP: The source is unchanged and keeps running; its stages and sinks are\nreplaced below it (\"hot swap\").\n - STREAM_PLAN_ACTION_REBUILD: The stream is new, stopped, or its source changed: it is stopped and\nrebuilt completely."
     }
   }
 }
