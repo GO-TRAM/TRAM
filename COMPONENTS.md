@@ -190,6 +190,7 @@ Stages process, transform, or filter data between sources and sinks.
 |------|------|-------------|
 | `batch` | `batch` | Merges concurrently arriving events into larger batches |
 | `delay` | `delay` | Holds every event back for a fixed duration |
+| `encryption` | `encryption` | Encrypts log record bodies and selected attributes before the sinks |
 | `filter` | `filter` | Keeps only the records that match the rules of its driver, e.g. CEL |
 | `noop` | `noop` | Pass-through stage that does no processing (useful for testing) |
 | `validation` | `validation` | Accepts, drops or rejects whole events by the rules of its driver, e.g. CEL |
@@ -437,6 +438,71 @@ Holds every event back for a fixed duration; the caller waits meanwhile, concurr
 ??? note "Behavior"
 
     - Behind an OTLP source, the delay counts toward the source's `delivery_timeout` (8s by default). A stream in which the `delay` and `batch` stages on the way to a sink add up to the `delivery_timeout` or more is rejected, see [Hold Times](#hold-times). Raise the `delivery_timeout` for longer delays
+
+### Encryption Stage
+
+Encrypts the body of every log record and the record attributes listed in `attributes`, so sinks send them encrypted. Attributes it does not list — e.g. the ones a sink's destination expression routes by — stay in cleartext, as do metrics and traces. The key comes from a `driver`: `local` (a raw AES-256 key, in a Kubernetes `Stream` resource via `secretKeyRef`) or `stackit-kms` (envelope encryption against the STACKIT KMS, which wraps a per-stage data key once).
+
+**Type:** `encryption`
+
+**Configuration:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `driver` | string | Yes | - | Key source: `local` or `stackit-kms`; its options go under a key of the same name |
+| `algorithm` | string | No | `aes-256-gcm` | Payload encryption algorithm |
+| `attributes` | []string | No | - | Record attributes to encrypt besides the body (string values only) |
+| `local.key` | string | Yes* | - | Base64-encoded 32-byte key; exactly one of `key`, `key_env`, `key_file` |
+| `local.key_env` | string | Yes* | - | Environment variable holding the base64-encoded key |
+| `local.key_file` | string | Yes* | - | File holding the base64-encoded key |
+| `stackit-kms.project_id` | string | Yes** | - | STACKIT project UUID |
+| `stackit-kms.region` | string | Yes** | - | Region of the key ring, e.g. `eu01` |
+| `stackit-kms.keyring_id` | string | Yes** | - | Key ring UUID |
+| `stackit-kms.key_id` | string | Yes** | - | Key UUID |
+| `stackit-kms.key_version` | int | Yes** | - | Version of the key that wraps the data key |
+| `stackit-kms.endpoint` | string | No | `https://kms.api.<region>.stackit.cloud` | KMS API base URL |
+| `stackit-kms.token` | string | No | SDK default auth | Bearer token of a STACKIT service account |
+
+\* for `driver: local`, \*\* for `driver: stackit-kms`
+
+**Example:**
+
+```json
+{
+  "name": "encrypt",
+  "type": "encryption",
+  "from": "otlp",
+  "spec": {
+    "driver": "local",
+    "local": { "key": "<base64-encoded 32-byte key>" },
+    "attributes": ["user.email"]
+  }
+}
+```
+
+In a Kubernetes `Stream` resource, the key can come from a secret instead of the spec:
+
+```yaml
+spec:
+  stages:
+    - name: encrypt
+      type: encryption
+      from: otlp
+      spec:
+        driver: local
+        local:
+          key:
+            secretKeyRef: { name: tram-encryption-key, key: key }
+        attributes: ["user.email"]
+```
+
+??? note "Behavior"
+
+    - Every encrypted record carries the attributes `tram.encryption.algorithm`, `tram.encryption.key_id` and, for KMS drivers, `tram.encryption.wrapped_key` (base64), so consumers know how to decrypt: with `local`, the same key; with `stackit-kms`, KMS `Decrypt` on the wrapped data key, then local AES-256-GCM. The ciphertext is nonce + AES-256-GCM tag appended, base64-encoded in string fields
+    - Routing is unaffected as long as routing attributes are not listed in `attributes`: the broker and OTLP sinks evaluate their destination expressions on the encrypted event, and cleartext attributes resolve to the same subjects and URLs as without the stage. A listed attribute with a non-string value, or a body that is neither string nor bytes, rejects the event (the OTLP source answers with 422)
+    - The stage never modifies the incoming event; it forwards a copy, so sibling branches see the plaintext
+    - The stage holds no events back and does not count toward the [Hold Times](#hold-times)
+    - Metrics and traces pass through unchanged; only logs are encrypted
 
 ### No-op Stage
 

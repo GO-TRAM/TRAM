@@ -14,6 +14,7 @@ import (
 	"codeberg.org/eljoth/tram/internal/adapters/driver"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/batch"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/delay"
+	"codeberg.org/eljoth/tram/internal/adapters/stage/encryption"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/filter"
 	celfilter "codeberg.org/eljoth/tram/internal/adapters/stage/filter/cel"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/noop"
@@ -52,6 +53,8 @@ func (f *Factory) New(spec domain.StageSpec) (domain.Stage, error) {
 		return filter.New(spec, f.validator, f.logger, f.filterDrivers)
 	case delay.Type:
 		return delay.New(spec, f.validator, f.logger)
+	case encryption.Type:
+		return encryption.New(spec, f.validator, f.logger)
 	case batch.Type:
 		return batch.New(spec, f.validator, f.logger)
 	case valuemap.Type:

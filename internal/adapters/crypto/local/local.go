@@ -1,0 +1,147 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+// SPDX-License-Identifier: MPL-2.0
+
+// Package local is the crypto driver that encrypts with a raw AES-256 key
+// the spec provides directly, through an environment variable or a file.
+package local
+
+import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"os"
+
+	"github.com/go-playground/validator/v10"
+
+	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/ports"
+)
+
+// Name is the driver's name in a component spec's `driver` field.
+const Name = "local"
+
+// keySize is the size of an AES-256 key in bytes.
+const keySize = 32
+
+var (
+	// ErrInvalidKey is returned when the key is not exactly one of key,
+	// key_env and key_file, or does not decode to a 32-byte AES-256 key.
+	ErrInvalidKey = errors.New("invalid key")
+)
+
+// Spec holds the local driver's options, under `local:` in a component spec.
+// Exactly one of Key, KeyEnv and KeyFile has to be set. In a Kubernetes
+// Stream resource, Key can be a secretKeyRef, which the operator resolves.
+type Spec struct {
+	// Key is the base64-encoded 32-byte key.
+	Key string `json:"key,omitempty"`
+	// KeyEnv names the environment variable that holds the base64-encoded key.
+	KeyEnv string `json:"key_env,omitempty"`
+	// KeyFile points to a file that holds the base64-encoded key.
+	KeyFile string `json:"key_file,omitempty"`
+}
+
+// Driver creates crypters with a local key.
+type Driver struct{}
+
+var _ interface {
+	NewCrypter(map[string]any, *validator.Validate) (ports.Crypter, error)
+} = Driver{}
+
+// New returns the local driver.
+func New() Driver { return Driver{} }
+
+// NewCrypter creates a crypter from the driver's options.
+func (Driver) NewCrypter(opts map[string]any, validator *validator.Validate) (ports.Crypter, error) {
+	spec, err := domain.ParseSpec(opts, new(Spec))
+	if err != nil {
+		return nil, err
+	}
+	if err = validator.Struct(spec); err != nil {
+		return nil, err
+	}
+	key, err := readKey(spec)
+	if err != nil {
+		return nil, err
+	}
+	return newCrypter(key)
+}
+
+// readKey returns the key exactly one of the spec's fields provides.
+func readKey(spec *Spec) ([]byte, error) {
+	sources := []string{spec.Key, spec.KeyEnv, spec.KeyFile}
+	set := 0
+	for _, s := range sources {
+		if s != "" {
+			set++
+		}
+	}
+	if set != 1 {
+		return nil, fmt.Errorf("%w: exactly one of key, key_env and key_file has to be set", ErrInvalidKey)
+	}
+
+	encoded := spec.Key
+	if spec.KeyEnv != "" {
+		encoded = os.Getenv(spec.KeyEnv)
+		if encoded == "" {
+			return nil, fmt.Errorf("%w: environment variable %s is empty", ErrInvalidKey, spec.KeyEnv)
+		}
+	}
+	if spec.KeyFile != "" {
+		data, err := os.ReadFile(spec.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("%w: failed to read key file: %v", ErrInvalidKey, err)
+		}
+		encoded = string(data)
+	}
+
+	key, err := base64.StdEncoding.DecodeString(trimSpace(encoded))
+	if err != nil || len(key) != keySize {
+		return nil, fmt.Errorf("%w: the key must be base64-encoded and %d bytes long", ErrInvalidKey, keySize)
+	}
+	return key, nil
+}
+
+func trimSpace(s string) string {
+	for len(s) > 0 && (s[len(s)-1] == '\n' || s[len(s)-1] == '\r' || s[len(s)-1] == ' ' || s[len(s)-1] == '\t') {
+		s = s[:len(s)-1]
+	}
+	return s
+}
+
+// crypter encrypts with AES-256-GCM directly under the key.
+type crypter struct {
+	gcm   cipher.AEAD
+	keyID string
+}
+
+func newCrypter(key []byte) (*crypter, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidKey, err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidKey, err)
+	}
+	sum := sha256.Sum256(key)
+	return &crypter{gcm: gcm, keyID: "local:sha256:" + fmt.Sprintf("%x", sum[:8])}, nil
+}
+
+// Encrypt returns nonce and AES-256-GCM ciphertext of plaintext.
+func (c *crypter) Encrypt(plaintext []byte) ([]byte, error) {
+	nonce := make([]byte, c.gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, fmt.Errorf("failed to read nonce: %w", err)
+	}
+	return c.gcm.Seal(nonce, nonce, plaintext, nil), nil
+}
+
+func (c *crypter) KeyID() string      { return c.keyID }
+func (c *crypter) WrappedKey() []byte { return nil }
