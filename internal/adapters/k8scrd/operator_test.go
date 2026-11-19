@@ -44,71 +44,26 @@ func TestCacheOptionsRejectsEmptyNamespace(t *testing.T) {
 	require.ErrorIs(t, err, k8scrd.ErrEmptyNamespace)
 }
 
-func TestCacheOptionsRejectsInvalidSelector(t *testing.T) {
-	t.Parallel()
-
-	_, err := k8scrd.CacheOptions(k8scrd.Options{StreamSelector: "tram.io/instance in (a"})
-	require.ErrorIs(t, err, k8scrd.ErrInvalidStreamSelector)
-}
-
-func TestCacheOptionsSelectorAssignsStreams(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		selector string
-		labels   labels.Set
-		want     bool
-	}{
-		{"key per deployment matches own key", "tram.io/validation=true",
-			labels.Set{"tram.io/validation": "true"}, true},
-		{"key per deployment matches stream with both keys", "tram.io/bridge=true",
-			labels.Set{"tram.io/validation": "true", "tram.io/bridge": "true"}, true},
-		{"key per deployment ignores other key", "tram.io/bridge=true",
-			labels.Set{"tram.io/validation": "true"}, false},
-		{"set-based matches shared value", "tram.io/instance in (bridge,shared)",
-			labels.Set{"tram.io/instance": "shared"}, true},
-		{"set-based ignores other instance", "tram.io/instance in (bridge,shared)",
-			labels.Set{"tram.io/instance": "validation"}, false},
-		{"unlabeled stream is not run", "tram.io/validation=true",
-			labels.Set{}, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			opts, err := k8scrd.CacheOptions(k8scrd.Options{StreamSelector: tt.selector})
-			require.NoError(t, err)
-			assert.Equal(t, tt.want, opts.DefaultLabelSelector.Matches(tt.labels))
-		})
-	}
-}
-
 func TestCacheOptionsEngineSelectsItsStreams(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		selector string
-		labels   labels.Set
-		want     bool
+		name   string
+		labels labels.Set
+		want   bool
 	}{
-		{"stream of the engine", "", labels.Set{"engine.tram.io/mapper": ""}, true},
-		{"engine label with any value", "", labels.Set{"engine.tram.io/mapper": "yes"}, true},
-		{"stream of the engine and another", "",
+		{"stream of the engine", labels.Set{"engine.tram.io/mapper": ""}, true},
+		{"engine label with any value", labels.Set{"engine.tram.io/mapper": "yes"}, true},
+		{"stream of the engine and another",
 			labels.Set{"engine.tram.io/mapper": "", "engine.tram.io/routers": ""}, true},
-		{"stream of another engine", "", labels.Set{"engine.tram.io/routers": ""}, false},
-		{"stream without engine", "", labels.Set{"tram.io/validation": "true"}, false},
-		{"stream selector and engine both match", "team=telemetry",
-			labels.Set{"engine.tram.io/mapper": "", "team": "telemetry"}, true},
-		{"stream selector does not match", "team=telemetry",
-			labels.Set{"engine.tram.io/mapper": "", "team": "other"}, false},
+		{"stream of another engine", labels.Set{"engine.tram.io/routers": ""}, false},
+		{"stream without engine", labels.Set{"team": "telemetry"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			opts, err := k8scrd.CacheOptions(k8scrd.Options{StreamSelector: tt.selector, Engine: "mapper"})
+			opts, err := k8scrd.CacheOptions(k8scrd.Options{Engine: "mapper"})
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, opts.DefaultLabelSelector.Matches(tt.labels))
 			assert.Contains(t, opts.ByObject, client.Object(&metav1.PartialObjectMetadata{

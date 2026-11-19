@@ -220,16 +220,16 @@ func TestOperatorRunsOnlySelectedStreams(t *testing.T) {
 	c := startCluster(t)
 
 	watched, other := c.newNamespace(t), c.newNamespace(t)
-	selected := map[string]string{"tram.io/validation": "true"}
-	c.createStream(t, watched, "selected", selected)
-	c.createStream(t, watched, "unlabeled", nil)
-	c.createStream(t, other, "selected", selected)
+	selected := map[string]string{tramv1.EngineLabel("validation"): ""}
+	c.createEngineStream(t, watched, "selected", selected, "validation")
+	c.createEngineStream(t, watched, "unlabeled", nil, "validation")
+	c.createEngineStream(t, other, "selected", selected, "validation")
 
 	core := newSyncCore()
 	runOperator(t, core, k8scrd.Options{
-		Kubeconfig:     c.adminKubeconfig(t),
-		Namespaces:     []string{watched},
-		StreamSelector: "tram.io/validation=true",
+		Kubeconfig: c.adminKubeconfig(t),
+		Namespaces: []string{watched},
+		Engine:     "validation",
 	})
 
 	requireStreams(t, core, watched+".selected")
@@ -239,28 +239,6 @@ func TestOperatorRunsOnlySelectedStreams(t *testing.T) {
 	c.setLabels(t, watched, "unlabeled", selected)
 	requireStreams(t, core, watched+".unlabeled")
 	c.requireActive(t, watched, "unlabeled")
-}
-
-func TestOperatorsShareStreamsByLabelKeys(t *testing.T) {
-	t.Parallel()
-	c := startCluster(t)
-
-	ns := c.newNamespace(t)
-	c.createStream(t, ns, "only-validation", map[string]string{"tram.io/validation": "true"})
-	c.createStream(t, ns, "only-bridge", map[string]string{"tram.io/bridge": "true"})
-	c.createStream(t, ns, "shared", map[string]string{"tram.io/validation": "true", "tram.io/bridge": "true"})
-
-	cfg := c.adminKubeconfig(t)
-	validation, bridge := newSyncCore(), newSyncCore()
-	runOperator(t, validation, k8scrd.Options{
-		Kubeconfig: cfg, Namespaces: []string{ns}, StreamSelector: "tram.io/validation=true",
-	})
-	runOperator(t, bridge, k8scrd.Options{
-		Kubeconfig: cfg, Namespaces: []string{ns}, StreamSelector: "tram.io/bridge=true",
-	})
-
-	requireStreams(t, validation, ns+".only-validation", ns+".shared")
-	requireStreams(t, bridge, ns+".only-bridge", ns+".shared")
 }
 
 func TestOperatorNeedsOnlyRoleBindingInWatchedNamespace(t *testing.T) {
@@ -293,7 +271,7 @@ func TestOperatorNeedsOnlyRoleBindingInWatchedNamespace(t *testing.T) {
 }
 
 // The operator reads secrets with a role bound in the watched namespace only,
-// sees secrets without the stream selector's label, and applies a changed
+// sees secrets without the engine's label, and applies a changed
 // secret to the streams that refer to it.
 func TestOperatorAppliesSecrets(t *testing.T) {
 	t.Parallel()
@@ -319,8 +297,9 @@ func TestOperatorAppliesSecrets(t *testing.T) {
 	}
 	require.NoError(t, c.admin.Create(t.Context(), secret))
 	require.NoError(t, c.admin.Create(t.Context(), &tramv1.Stream{
-		Namespace: ns, Name: "s", Labels: map[string]string{"tram.io/validation": "true"},
+		Namespace: ns, Name: "s", Labels: map[string]string{tramv1.EngineLabel("validation"): ""},
 		Spec: tramv1.StreamSpec{
+			EngineRefs: engineRefs("validation"),
 			Source: tramv1.Spec{
 				Name: "in",
 				Type: "otlp",
@@ -336,9 +315,9 @@ func TestOperatorAppliesSecrets(t *testing.T) {
 
 	core := newSyncCore()
 	runOperator(t, core, k8scrd.Options{
-		Kubeconfig:     c.kubeconfig(t, envtest.User{Name: user}),
-		Namespaces:     []string{ns},
-		StreamSelector: "tram.io/validation=true",
+		Kubeconfig: c.kubeconfig(t, envtest.User{Name: user}),
+		Namespaces: []string{ns},
+		Engine:     "validation",
 	})
 
 	token := func() any {
@@ -367,7 +346,7 @@ func (c *syncCore) resolvedTable(name string) map[string]any {
 }
 
 // The operator merges the config maps a stream selects, with a role bound in
-// the watched namespace only and without the stream selector's label on them,
+// the watched namespace only and without the engine's label on them,
 // and applies created, changed, relabeled and conflicting config maps.
 func TestOperatorAppliesConfigMaps(t *testing.T) {
 	t.Parallel()
@@ -391,8 +370,9 @@ func TestOperatorAppliesConfigMaps(t *testing.T) {
 	a := &corev1.ConfigMap{Namespace: ns, Name: "routing-a", Labels: routing, Data: map[string]string{"t1": "r1"}}
 	require.NoError(t, c.admin.Create(t.Context(), a))
 	require.NoError(t, c.admin.Create(t.Context(), &tramv1.Stream{
-		Namespace: ns, Name: "s", Labels: map[string]string{"tram.io/mapper": "true"},
+		Namespace: ns, Name: "s", Labels: map[string]string{tramv1.EngineLabel("mapper"): ""},
 		Spec: tramv1.StreamSpec{
+			EngineRefs: engineRefs("mapper"),
 			Source: tramv1.Spec{
 				Name: "in",
 				Type: "otlp",
@@ -409,9 +389,9 @@ func TestOperatorAppliesConfigMaps(t *testing.T) {
 
 	core := newSyncCore()
 	runOperator(t, core, k8scrd.Options{
-		Kubeconfig:     c.kubeconfig(t, envtest.User{Name: user}),
-		Namespaces:     []string{ns},
-		StreamSelector: "tram.io/mapper=true",
+		Kubeconfig: c.kubeconfig(t, envtest.User{Name: user}),
+		Namespaces: []string{ns},
+		Engine:     "mapper",
 	})
 	requireTable := func(want map[string]any, msg string) {
 		t.Helper()

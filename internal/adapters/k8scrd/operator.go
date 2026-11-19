@@ -20,6 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/validation"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
@@ -43,7 +44,6 @@ type Operator struct {
 type Options struct {
 	Kubeconfig         string
 	Namespaces         []string
-	StreamSelector     string
 	Engine             string
 	skipNameValidation bool
 }
@@ -77,7 +77,7 @@ func New(core ports.Core, opts Options, logger *slog.Logger) (*Operator, error) 
 	}
 
 	logger.Info("Connecting to Kubernetes", slog.String("host", cfg.Host),
-		slog.Any("namespaces", opts.Namespaces), slog.String("stream_selector", opts.StreamSelector))
+		slog.Any("namespaces", opts.Namespaces), slog.String("engine", opts.Engine))
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:         scheme,
@@ -125,14 +125,10 @@ func cacheOptions(opts Options) (cache.Options, error) {
 		}
 	}
 
-	streamSelector, engineErr := withEngine(opts.StreamSelector, opts.Engine)
-	if engineErr != nil {
-		return cache.Options{}, engineErr
-	}
-	if streamSelector != "" {
-		selector, err := labels.Parse(streamSelector)
+	if opts.Engine != "" {
+		selector, err := engineSelector(opts.Engine)
 		if err != nil {
-			return cache.Options{}, fmt.Errorf("%w: %w", ErrInvalidStreamSelector, err)
+			return cache.Options{}, err
 		}
 		cacheOpts.DefaultLabelSelector = selector
 		// The selector chooses Stream resources, not the secrets and config
@@ -150,20 +146,17 @@ func cacheOptions(opts Options) (cache.Options, error) {
 	return cacheOpts, nil
 }
 
-// withEngine adds the label of engine to the stream selector, so the operator
-// runs only the Streams whose spec.engineRefs name the engine.
-func withEngine(streamSelector, engine string) (string, error) {
-	if engine == "" {
-		return streamSelector, nil
-	}
+// engineSelector selects the Streams that carry the label of engine, so the
+// operator runs only the Streams whose spec.engineRefs name the engine.
+func engineSelector(engine string) (labels.Selector, error) {
 	if errs := validation.IsDNS1123Label(engine); len(errs) > 0 {
-		return "", fmt.Errorf("%w %q: %s", ErrInvalidEngine, engine, strings.Join(errs, "; "))
+		return nil, fmt.Errorf("%w %q: %s", ErrInvalidEngine, engine, strings.Join(errs, "; "))
 	}
-	engineSelector := tramv1.EngineLabel(engine)
-	if streamSelector == "" {
-		return engineSelector, nil
+	exists, err := labels.NewRequirement(tramv1.EngineLabel(engine), selection.Exists, nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w %q: %w", ErrInvalidEngine, engine, err)
 	}
-	return streamSelector + "," + engineSelector, nil
+	return labels.NewSelector().Add(*exists), nil
 }
 
 func (o *Operator) Run(ctx context.Context) error {

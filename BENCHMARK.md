@@ -121,7 +121,7 @@ Scaling out works because Tram keeps no state between events, with two condition
 
 ## Streams per Instance
 
-The cost of processing data is shared by the replicas, but the cost of a stream itself is not: every replica that runs a stream holds its connections, goroutines and memory, and its broker sources keep asking the NATS server for messages even when there are none. This section measures that cost, so you can tell when to shard streams over several deployments with `--watch-namespace` or `--stream-selector` (see [the operator documentation](internal/adapters/k8scrd/README.md#selecting-streams)) instead of running every stream on every replica.
+The cost of processing data is shared by the replicas, but the cost of a stream itself is not: every replica that runs a stream holds its connections, goroutines and memory, and its broker sources keep asking the NATS server for messages even when there are none. This section measures that cost, so you can tell when to shard streams over several deployments with `--watch-namespace` or `--engine` (see [the operator documentation](internal/adapters/k8scrd/README.md#selecting-streams)) instead of running every stream on every replica.
 
 `BenchmarkStreams` builds 10, 100 and 1,000 streams of one shape in one Tram core and observes them for 10 seconds without data. Values are per stream, measured against the process before the streams were built:
 
