@@ -76,7 +76,7 @@ func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (er
 	}()
 
 	sourceFac := source.NewFactory(logger)
-	stageFac := stage.NewFactory()
+	stageFac := stage.NewFactory(logger)
 	sinkFac := sink.NewFactory(logger)
 
 	c := core.New(ctx, logger, sourceFac, stageFac, sinkFac)
@@ -108,7 +108,6 @@ func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (er
 	}
 
 	if opts.enableK8sOperator {
-		k8scrd.SetLogger(logger)
 		eg.Go(func() error {
 			op, opErr := k8scrd.New(c, k8scrd.Options{
 				Kubeconfig: opts.kubeconfig,

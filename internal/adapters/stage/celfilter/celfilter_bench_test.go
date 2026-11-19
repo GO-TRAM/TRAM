@@ -6,6 +6,7 @@
 package celfilter_test
 
 import (
+	"log/slog"
 	"testing"
 
 	"github.com/go-playground/validator/v10"
@@ -30,9 +31,11 @@ func BenchmarkCELFilter(b *testing.B) {
 	}
 
 	for _, expr := range expressions {
+		logger := slog.Default()
 		filter, err := celfilter.New(
 			domain.StageSpec{Name: "filter", Spec: map[string]any{"logs": expr.logs}},
 			validator.New(),
+			logger,
 		)
 		if err != nil {
 			b.Fatal(err)

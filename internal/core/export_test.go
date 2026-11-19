@@ -44,3 +44,8 @@ func Children(subscribers []domain.Subscriber) []domain.Subscriber {
 	}
 	return children
 }
+
+// NewFanout returns a fanout to children without metrics.
+func NewFanout(name string, children []domain.Subscriber) domain.Subscriber {
+	return &fanout{name: name, children: children}
+}

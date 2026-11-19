@@ -56,7 +56,6 @@ func runManager(ctx context.Context, logger *slog.Logger, opts managerOptions) e
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	k8scrd.SetLogger(logger)
 	m, err := k8scrd.NewManager(k8scrd.ManagerOptions{
 		Kubeconfig:              opts.kubeconfig,
 		Namespaces:              opts.watchNamespaces,

@@ -8,8 +8,8 @@ package core_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,307 +21,168 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
-// mockSubscriber implements domain.Subscriber for testing
-type mockSubscriber struct {
-	name       string
-	onNotify   func(ctx context.Context, event *domain.Event) error
-	onNotifyCh chan struct{}
-	errors     []error
-	mu         sync.Mutex
+// recorder is a branch of a fanout that records the events it receives. If
+// notify is set, it runs first and an error from it is returned instead.
+type recorder struct {
+	name   string
+	notify func(context.Context, *domain.Event) error
+
+	mu     sync.Mutex
+	events []*domain.Event
 }
 
-func newMockSubscriber(name string) *mockSubscriber {
-	return &mockSubscriber{
-		name:       name,
-		onNotifyCh: make(chan struct{}, 1),
-	}
-}
+func (r *recorder) Name() string { return r.name }
+func (r *recorder) From() string { return "" }
+func (r *recorder) Stop() error  { return nil }
 
-func (m *mockSubscriber) Name() string { return m.name }
-func (m *mockSubscriber) From() string { return "" }
-func (m *mockSubscriber) Stop() error { return nil }
-
-func (m *mockSubscriber) Notify(ctx context.Context, event *domain.Event) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.onNotify != nil {
-		err := m.onNotify(ctx, event)
-		if err != nil {
-			m.errors = append(m.errors, err)
+func (r *recorder) Notify(ctx context.Context, event *domain.Event) error {
+	if r.notify != nil {
+		if err := r.notify(ctx, event); err != nil {
 			return err
 		}
 	}
-
-	// Non-blocking send to avoid deadlocks
-	select {
-	case m.onNotifyCh <- struct{}{}:
-	default:
-		// Channel is full, skip the notification
-	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = append(r.events, event)
 	return nil
 }
 
-func (m *mockSubscriber) GetErrors() []error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return append([]error(nil), m.errors...)
+func (r *recorder) received() []*domain.Event {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]*domain.Event(nil), r.events...)
 }
 
-func (m *mockSubscriber) GetOnNotifyCh() <-chan struct{} {
-	return m.onNotifyCh
+func recorders(n int) ([]*recorder, []domain.Subscriber) {
+	recs := make([]*recorder, n)
+	subs := make([]domain.Subscriber, n)
+	for i := range recs {
+		recs[i] = &recorder{name: string(rune('a' + i))}
+		subs[i] = recs[i]
+	}
+	return recs, subs
 }
 
-// TestFanoutConcurrentDelivery tests that events are delivered to all child subscribers concurrently
-func TestFanoutConcurrentDelivery(t *testing.T) {
+func logEvent() *domain.Event {
+	return &domain.Event{Logs: otlpgen.Logs(otlpgen.Shape{Records: 1, Resources: 1, Teams: 1})}
+}
+
+func TestFanoutDeliversToBranchesConcurrently(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
-	shape := otlpgen.Shape{Records: 1, Resources: 1, Teams: 1}
-	event := &domain.Event{
-		Logs: otlpgen.Logs(shape),
-	}
+	// Every branch waits until all branches have the event. Delivering one
+	// branch after the other would never get past the first.
+	const branches = 3
+	var arrived sync.WaitGroup
+	arrived.Add(branches)
+	all := make(chan struct{})
+	go func() { arrived.Wait(); close(all) }()
 
-	subscribers := []domain.Subscriber{
-		newMockSubscriber("subscriber-1"),
-		newMockSubscriber("subscriber-2"),
-		newMockSubscriber("subscriber-3"),
-	}
-
-	fanout, err := core.NewFanout("test-fanout", subscribers)
-	require.NoError(t, err)
-
-	// Start a goroutine to notify the fanout
-	errCh := make(chan error, 1)
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-		errCh <- fanout.Notify(ctx, event)
-	}()
-
-	// Wait for all subscribers to be notified
-	var notified int
-	for range subscribers {
-		select {
-		case <-subscribers[notified].(*mockSubscriber).GetOnNotifyCh():
-			notified++
-		case <-time.After(2 * time.Second):
-			t.Fatal("timeout waiting for subscribers to be notified")
-		}
-	}
-
-	// Wait for the fanout to finish
-	err = <-errCh
-	wg.Wait()
-
-	require.NoError(t, err)
-	assert.Equal(t, 3, notified, "All subscribers should be notified")
-}
-
-// TestFanoutErrorIsolation tests that failure in one branch doesn't stop other branches
-func TestFanoutErrorIsolation(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	shape := otlpgen.Shape{Records: 1, Resources: 1, Teams: 1}
-	event := &domain.Event{
-		Logs: otlpgen.Logs(shape),
-	}
-
-	// Create subscribers: one that fails, two that succeed
-	failingSubscriber := newMockSubscriber("failing-subscriber")
-	failingSubscriber.onNotify = func(ctx context.Context, event *domain.Event) error {
-		return errors.New("simulated failure")
-	}
-
-	successSubscriber1 := newMockSubscriber("success-subscriber-1")
-	successSubscriber2 := newMockSubscriber("success-subscriber-2")
-
-	fanout, err := core.NewFanout("test-fanout-with-failure", []domain.Subscriber{failingSubscriber, successSubscriber1, successSubscriber2})
-	require.NoError(t, err)
-
-	// Notify the fanout
-	err = fanout.Notify(ctx, event)
-	require.Error(t, err, "Fanout should return an error when any subscriber fails")
-
-	// Check that the failing subscriber returned an error
-	failingErrors := failingSubscriber.GetErrors()
-	require.Len(t, failingErrors, 1, "Failing subscriber should have one error")
-	assert.Equal(t, "simulated failure", failingErrors[0].Error())
-
-	// Check that the successful subscribers were still notified
-	select {
-	case <-successSubscriber1.GetOnNotifyCh():
-		// Success
-	case <-time.After(1 * time.Second):
-		t.Error("First successful subscriber should have been notified despite failure")
-	}
-
-	select {
-	case <-successSubscriber2.GetOnNotifyCh():
-		// Success
-	case <-time.After(1 * time.Second):
-		t.Error("Second successful subscriber should have been notified despite failure")
-	}
-}
-
-// TestFanoutEventOrdering tests that events maintain their order within each branch
-func TestFanoutEventOrdering(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-
-	// Create ordered events
-	shape := otlpgen.Shape{Records: 1, Resources: 1, Teams: 1}
-	events := []*domain.Event{
-		{Logs: otlpgen.Logs(shape)},
-		{Logs: otlpgen.Logs(shape)},
-		{Logs: otlpgen.Logs(shape)},
-	}
-
-	// Track the order events are received
-	type receivedEvent struct {
-		subscriber string
-		eventIdx   int
-	}
-	received := make([]receivedEvent, 0)
-	mu := sync.Mutex{}
-
-	// Create subscribers that track event order
-	subscribers := []domain.Subscriber{
-		newMockSubscriber("order-tracker-1"),
-		newMockSubscriber("order-tracker-2"),
-	}
-
-	// Set up event order tracking
-	for i, sub := range subscribers {
-		j, s := i, sub
-		s.(*mockSubscriber).onNotify = func(ctx context.Context, event *domain.Event) error {
-			mu.Lock()
-			received = append(received, receivedEvent{
-				subscriber: fmt.Sprintf("order-tracker-%d", j+1),
-				eventIdx:   len(received), // Track the order of receipt
-			})
-			mu.Unlock()
-			return nil
-		}
-	}
-
-	fanout, err := core.NewFanout("test-fanout-ordering", subscribers)
-	require.NoError(t, err)
-
-	// Send events sequentially
-	for _, event := range events {
-		err := fanout.Notify(ctx, event)
-		require.NoError(t, err, "Fanout should not fail for valid events")
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	// Verify that each subscriber received all events
-	assert.Len(t, received, len(events)*len(subscribers), "All events should be received by all subscribers")
-
-	// Verify that events were received in order for each subscriber
-	for _, sub := range subscribers {
-		subName := sub.(*mockSubscriber).name
-		var subEvents []int
-		for _, re := range received {
-			if re.subscriber == subName {
-				subEvents = append(subEvents, re.eventIdx)
+	recs, subs := recorders(branches)
+	for _, r := range recs {
+		r.notify = func(context.Context, *domain.Event) error {
+			arrived.Done()
+			select {
+			case <-all:
+				return nil
+			case <-time.After(5 * time.Second):
+				return errors.New("the other branches did not get the event at the same time")
 			}
 		}
-		// Check that the event indices are sequential for this subscriber
-		// With 3 events to 2 subscribers, each subscriber gets events at indices 0,1,2,3,4,5
-		// But we need to verify they're in order, not that they're 0,1,2
-		for i := 1; i < len(subEvents); i++ {
-			assert.Less(t, subEvents[i-1], subEvents[i], "Events should be received in order for %s", subName)
-		}
+	}
+
+	require.NoError(t, core.NewFanout("fanout", subs).Notify(t.Context(), logEvent()))
+}
+
+func TestFanoutSharesTheEventWithEveryBranch(t *testing.T) {
+	t.Parallel()
+
+	recs, subs := recorders(3)
+	event := logEvent()
+	require.NoError(t, core.NewFanout("fanout", subs).Notify(t.Context(), event))
+
+	for _, r := range recs {
+		got := r.received()
+		require.Len(t, got, 1, r.name)
+		assert.Same(t, event, got[0], "branch %s gets the event itself, not a copy", r.name)
 	}
 }
 
-// TestFanoutResourceCleanup tests that resources are properly cleaned up when fanout encounters errors
-func TestFanoutResourceCleanup(t *testing.T) {
+func TestFanoutFailingBranchDoesNotStopTheOthers(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
-	shape := otlpgen.Shape{Records: 1, Resources: 1, Teams: 1}
-	event := &domain.Event{
-		Logs: otlpgen.Logs(shape),
-	}
+	errBranch := errors.New("branch failed")
+	recs, subs := recorders(3)
+	recs[1].notify = func(context.Context, *domain.Event) error { return errBranch }
 
-	// Create a subscriber that leaks resources
-	resourceLeakingSubscriber := newMockSubscriber("resource-leaking-subscriber")
-	var leakDetected bool
-	defer func() {
-		if !leakDetected {
-			// This would be detected by a proper resource tracking mechanism
-			t.Log("Resource leak detection would be implemented in production")
-		}
-	}()
+	err := core.NewFanout("fanout", subs).Notify(t.Context(), logEvent())
 
-	resourceLeakingSubscriber.onNotify = func(ctx context.Context, event *domain.Event) error {
-		// Simulate resource allocation
+	require.ErrorIs(t, err, errBranch, "the error of the branch reaches the source")
+	assert.Len(t, recs[0].received(), 1, "the branch before the failing one gets the event")
+	assert.Len(t, recs[2].received(), 1, "the branch after the failing one gets the event")
+	assert.Empty(t, recs[1].received())
+}
+
+// A source may reuse or release an event once Notify returns, so no branch
+// may still be working on it: a failing branch does not end Notify early.
+func TestFanoutReturnsOnlyAfterEveryBranch(t *testing.T) {
+	t.Parallel()
+
+	release := make(chan struct{})
+	var slowDone atomic.Bool
+	recs, subs := recorders(2)
+	recs[0].notify = func(context.Context, *domain.Event) error { return errors.New("failed at once") }
+	recs[1].notify = func(context.Context, *domain.Event) error {
+		<-release
+		slowDone.Store(true)
 		return nil
 	}
 
-	fanout, err := core.NewFanout("test-fanout-cleanup", []domain.Subscriber{resourceLeakingSubscriber})
-	require.NoError(t, err)
+	returned := make(chan error, 1)
+	go func() { returned <- core.NewFanout("fanout", subs).Notify(t.Context(), logEvent()) }()
 
-	// Notify the fanout
-	err = fanout.Notify(ctx, event)
-	require.NoError(t, err)
-
-	// In a real implementation, we would track resource allocation and ensure cleanup
-	// For now, we just verify that the fanout itself doesn't leak resources
-	assert.NotNil(t, fanout, "Fanout should still be accessible after notification")
-	leakDetected = true
-}
-
-// TestFanoutSingleChildOptimization tests that fanout optimizes for single child
-func TestFanoutSingleChildOptimization(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	shape := otlpgen.Shape{Records: 1, Resources: 1, Teams: 1}
-	event := &domain.Event{
-		Logs: otlpgen.Logs(shape),
-	}
-
-	singleSubscriber := newMockSubscriber("single-subscriber")
-
-	fanout, err := core.NewFanout("test-fanout-single-child", []domain.Subscriber{singleSubscriber})
-	require.NoError(t, err)
-
-	// Notify the fanout
-	err = fanout.Notify(ctx, event)
-	require.NoError(t, err)
-
-	// Verify the single subscriber was notified
 	select {
-	case <-singleSubscriber.GetOnNotifyCh():
-		// Success
-	case <-time.After(1 * time.Second):
-		t.Error("Single subscriber should have been notified")
+	case <-returned:
+		t.Fatal("Notify returned while a branch was still running")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	require.Error(t, <-returned)
+	assert.True(t, slowDone.Load(), "the slow branch finished before Notify returned")
+}
+
+func TestFanoutKeepsTheOrderOfEventsPerBranch(t *testing.T) {
+	t.Parallel()
+
+	recs, subs := recorders(3)
+	fanout := core.NewFanout("fanout", subs)
+	events := make([]*domain.Event, 50)
+	for i := range events {
+		events[i] = logEvent()
+		require.NoError(t, fanout.Notify(t.Context(), events[i]))
+	}
+
+	for _, r := range recs {
+		got := r.received()
+		require.Len(t, got, len(events), r.name)
+		for i := range events {
+			assert.Same(t, events[i], got[i], "branch %s, event %d", r.name, i)
+		}
 	}
 }
 
-// TestFanoutEmptyChildren tests fanout behavior with no children
-func TestFanoutEmptyChildren(t *testing.T) {
+func TestFanoutWithOneBranchPassesTheErrorOn(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
-	shape := otlpgen.Shape{Records: 1, Resources: 1, Teams: 1}
-	event := &domain.Event{
-		Logs: otlpgen.Logs(shape),
-	}
+	errBranch := errors.New("branch failed")
+	recs, subs := recorders(1)
+	recs[0].notify = func(context.Context, *domain.Event) error { return errBranch }
 
-	fanout, err := core.NewFanout("test-fanout-empty", []domain.Subscriber{})
-	require.NoError(t, err)
+	assert.Same(t, errBranch, core.NewFanout("fanout", subs).Notify(t.Context(), logEvent()))
+}
 
-	// Notify the fanout with no children should not error
-	err = fanout.Notify(ctx, event)
-	require.NoError(t, err, "Fanout with no children should not error")
+func TestFanoutWithoutBranches(t *testing.T) {
+	t.Parallel()
+
+	assert.NoError(t, core.NewFanout("fanout", nil).Notify(t.Context(), logEvent()))
 }

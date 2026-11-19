@@ -6,6 +6,7 @@
 package celvalidator_test
 
 import (
+	"log/slog"
 	"testing"
 
 	"github.com/go-playground/validator/v10"
@@ -36,10 +37,11 @@ func BenchmarkCELValidator(b *testing.B) {
 	}
 
 	for _, expr := range expressions {
+		logger := slog.Default()
 		cel, err := celvalidator.New(domain.StageSpec{
 			Name: "cel",
 			Spec: map[string]any{"logs": expr.logs, "on_mismatch": "drop"},
-		}, validator.New())
+		}, validator.New(), logger)
 		if err != nil {
 			b.Fatal(err)
 		}

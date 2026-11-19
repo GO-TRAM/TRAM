@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/cel-go/cel"
@@ -32,9 +33,10 @@ type CELFilter struct {
 	logs    cel.Program
 	metrics cel.Program
 	traces  cel.Program
+	logger  *slog.Logger
 }
 
-func New(stage domain.StageSpec, validator *validator.Validate) (*CELFilter, error) {
+func New(stage domain.StageSpec, validator *validator.Validate, logger *slog.Logger) (*CELFilter, error) {
 	base, err := base.New[Spec](stage.Name, stage.From, stage.Spec, validator)
 	if err != nil {
 		return nil, err
@@ -86,6 +88,7 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*CELFilter, err
 		logs:    logs,
 		metrics: metrics,
 		traces:  traces,
+		logger:  logger.With(slog.String("stage", stage.Name)),
 	}, nil
 }
 

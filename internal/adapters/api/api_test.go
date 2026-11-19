@@ -81,7 +81,7 @@ func TestListStreams(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.New(slog.DiscardHandler)
-	c := core.New(t.Context(), logger, source.NewFactory(logger), stage.NewFactory(), sink.NewFactory(logger))
+	c := core.New(t.Context(), logger, source.NewFactory(logger), stage.NewFactory(logger), sink.NewFactory(logger))
 	t.Cleanup(func() { assert.NoError(t, c.Close()) })
 	for _, name := range []string{"b", "a"} {
 		_, err := c.UpsertStream(t.Context(), domain.StreamSpec{

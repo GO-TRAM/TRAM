@@ -7,6 +7,7 @@ package delay
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -24,9 +25,10 @@ type Delay struct {
 	delay    time.Duration
 	shutdown chan struct{}
 	stopOnce sync.Once
+	logger   *slog.Logger
 }
 
-func New(stage domain.StageSpec, validator *validator.Validate) (*Delay, error) {
+func New(stage domain.StageSpec, validator *validator.Validate, logger *slog.Logger) (*Delay, error) {
 	base, err := base.New[Spec](stage.Name, stage.From, stage.Spec, validator)
 	if err != nil {
 		return nil, err
@@ -39,6 +41,7 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*Delay, error) 
 		Stage:    base,
 		delay:    delay,
 		shutdown: make(chan struct{}),
+		logger:   logger.With(slog.String("stage", stage.Name)),
 	}, nil
 }
 

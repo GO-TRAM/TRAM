@@ -14,12 +14,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"log/slog"
+
 	"codeberg.org/eljoth/tram/internal/adapters/stage/delay"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
 func TestNotifyReturnsEarly(t *testing.T) {
 	t.Parallel()
+
+	logger := slog.Default()
 
 	cases := []struct {
 		name      string
@@ -42,7 +46,11 @@ func TestNotifyReturnsEarly(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			d, err := delay.New(domain.StageSpec{Name: "delay", Spec: map[string]any{"delay": "1h"}}, validator.New())
+			d, err := delay.New(
+				domain.StageSpec{Name: "delay", Spec: map[string]any{"delay": "1h"}},
+				validator.New(),
+				logger,
+			)
 			require.NoError(t, err)
 
 			ctx, cancel := context.WithCancel(t.Context())
@@ -65,7 +73,8 @@ func TestNotifyReturnsEarly(t *testing.T) {
 func TestStopIsIdempotent(t *testing.T) {
 	t.Parallel()
 
-	d, err := delay.New(domain.StageSpec{Name: "delay", Spec: map[string]any{"delay": "1h"}}, validator.New())
+	logger := slog.Default()
+	d, err := delay.New(domain.StageSpec{Name: "delay", Spec: map[string]any{"delay": "1h"}}, validator.New(), logger)
 	require.NoError(t, err)
 
 	assert.NoError(t, d.Stop())
@@ -75,7 +84,8 @@ func TestStopIsIdempotent(t *testing.T) {
 func TestMaxHold(t *testing.T) {
 	t.Parallel()
 
-	d, err := delay.New(domain.StageSpec{Name: "delay", Spec: map[string]any{"delay": "3s"}}, validator.New())
+	logger := slog.Default()
+	d, err := delay.New(domain.StageSpec{Name: "delay", Spec: map[string]any{"delay": "3s"}}, validator.New(), logger)
 	require.NoError(t, err)
 	assert.Equal(t, 3*time.Second, d.MaxHold(), "every event is held for the delay")
 }

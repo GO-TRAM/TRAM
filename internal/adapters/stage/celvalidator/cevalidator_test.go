@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"log/slog"
+
 	"codeberg.org/eljoth/tram/internal/adapters/stage/celvalidator"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 
@@ -410,7 +412,8 @@ func TestCELValidator(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			cel, err := celvalidator.New(c.spec, validator)
+			logger := slog.Default()
+			cel, err := celvalidator.New(c.spec, validator, logger)
 			require.ErrorIs(t, err, c.initErr)
 			assert.ErrorIs(t, cel.Notify(t.Context(), &c.event), c.validateErr)
 		})
@@ -419,6 +422,8 @@ func TestCELValidator(t *testing.T) {
 
 func TestCELValidatorEvaluationErrorRejects(t *testing.T) {
 	t.Parallel()
+
+	logger := slog.Default()
 
 	cases := []struct {
 		name       string
@@ -437,7 +442,7 @@ func TestCELValidatorEvaluationErrorRejects(t *testing.T) {
 					"logs":        c.expression,
 					"on_mismatch": "drop",
 				},
-			}, validator.New())
+			}, validator.New(), logger)
 			require.NoError(t, err)
 
 			err = cel.Notify(t.Context(), &domain.Event{Logs: &logspb.LogsData{}})
@@ -450,24 +455,26 @@ func TestCELValidatorEvaluationErrorRejects(t *testing.T) {
 func TestCELValidatorRejectsUnknownVariable(t *testing.T) {
 	t.Parallel()
 
+	logger := slog.Default()
 	_, err := celvalidator.New(domain.StageSpec{
 		Spec: map[string]any{
 			"logs":        "event.Logs != null",
 			"on_mismatch": "reject",
 		},
-	}, validator.New())
+	}, validator.New(), logger)
 	assert.ErrorIs(t, err, celvalidator.ErrCELInvalidLogsExpression)
 }
 
 func TestCELValidatorDropDoesNotMutateEvent(t *testing.T) {
 	t.Parallel()
 
+	logger := slog.Default()
 	cel, err := celvalidator.New(domain.StageSpec{
 		Spec: map[string]any{
 			"logs":        "false",
 			"on_mismatch": "drop",
 		},
-	}, validator.New())
+	}, validator.New(), logger)
 	assert.NoError(t, err)
 
 	logs := &logspb.LogsData{}

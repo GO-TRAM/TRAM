@@ -39,6 +39,23 @@ type registry struct {
 	sources     []*fakeSource
 	// sinkSpecs holds the spec of every sink created, by name.
 	sinkSpecs map[string][]map[string]any
+	// received counts the events each stage and sink accepted, by name.
+	received map[string]int
+}
+
+func (r *registry) receive(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.received == nil {
+		r.received = map[string]int{}
+	}
+	r.received[name]++
+}
+
+func (r *registry) receivedBy(name string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.received[name]
 }
 
 func (r *registry) source(i int) *fakeSource {
@@ -82,7 +99,9 @@ type fakeSource struct {
 	name     string
 	shutdown chan struct{}
 	crash    chan struct{}
-	subs     []domain.Subscriber
+	// started is closed when Run starts, after the source was subscribed to.
+	started chan struct{}
+	subs    []domain.Subscriber
 }
 
 func (s *fakeSource) Name() string { return s.name }
@@ -94,6 +113,7 @@ func (s *fakeSource) SetSubscribers(subs []domain.Subscriber) {
 	s.subs = subs
 }
 func (s *fakeSource) Run(ctx context.Context) error {
+	close(s.started)
 	select {
 	case <-s.shutdown:
 	case <-ctx.Done():
@@ -126,6 +146,9 @@ func (s *fakeSink) Notify(ctx context.Context, _ *domain.Event) error {
 		<-ctx.Done()
 		return ctx.Err()
 	}
+	if s.err == nil {
+		s.reg.receive(s.name)
+	}
 	return s.err
 }
 func (s *fakeSink) Stop() error { s.reg.stop(s.name); return nil }
@@ -147,7 +170,9 @@ func (f sourceFactory) New(spec domain.SourceSpec) (domain.Source, error) {
 	}
 	f.reg.liveSources++
 	f.reg.created = append(f.reg.created, spec.Name)
-	src := &fakeSource{reg: f.reg, name: spec.Name, shutdown: make(chan struct{}), crash: make(chan struct{})}
+	src := &fakeSource{reg: f.reg, name: spec.Name, shutdown: make(chan struct{}), crash: make(chan struct{}),
+		started: make(chan struct{}),
+	}
 	f.reg.sources = append(f.reg.sources, src)
 	if limit, ok := spec.Spec["delivery_timeout"].(string); ok {
 		timeout, err := time.ParseDuration(limit)

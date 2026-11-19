@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/go-playground/validator/v10"
@@ -56,9 +57,10 @@ type ValueMap struct {
 	level   string
 	table   map[string]string
 	metrics lookupMetrics
+	logger  *slog.Logger
 }
 
-func New(stage domain.StageSpec, validator *validator.Validate) (*ValueMap, error) {
+func New(stage domain.StageSpec, validator *validator.Validate, logger *slog.Logger) (*ValueMap, error) {
 	base, err := base.New[Spec](stage.Name, stage.From, stage.Spec, validator)
 	if err != nil {
 		return nil, err
@@ -86,6 +88,7 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*ValueMap, erro
 		level:      level,
 		table:      table,
 		metrics:    newLookupMetrics(stage.Name),
+		logger:     logger.With(slog.String("stage", stage.Name)),
 	}, nil
 }
 

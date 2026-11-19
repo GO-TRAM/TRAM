@@ -6,478 +6,114 @@
 package core_test
 
 import (
-	"context"
-	"log/slog"
-	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"codeberg.org/eljoth/tram/internal/core"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
-const updatedSink = "updated-sink"
+// Hot swapping: an update that keeps the source replaces only the stages and
+// sinks, while the source keeps running.
 
-// mockSource implements domain.Source for testing
-type mockSource struct {
-	name        string
-	onRun       func(ctx context.Context) error
-	subscribers []domain.Subscriber
-	subMu       sync.Mutex
-}
-
-func newMockSource(name string) *mockSource {
-	return &mockSource{name: name}
-}
-
-func (m *mockSource) Name() string { return m.name }
-func (m *mockSource) From() string { return "" }
-func (m *mockSource) Stop() error  { return nil }
-
-func (m *mockSource) Subscribe(subscriber domain.Subscriber) error {
-	m.subMu.Lock()
-	defer m.subMu.Unlock()
-	m.subscribers = append(m.subscribers, subscriber)
-	return nil
-}
-
-func (m *mockSource) Run(ctx context.Context) error {
-	if m.onRun != nil {
-		return m.onRun(ctx)
-	}
-	return nil
-}
-
-func (m *mockSource) SetSubscribers(subscribers []domain.Subscriber) {
-	m.subMu.Lock()
-	defer m.subMu.Unlock()
-	m.subscribers = subscribers
-}
-
-// mockStage implements domain.Stage for testing
-type mockStage struct {
-	name        string
-	onNotify    func(ctx context.Context, event *domain.Event) error
-	subscribers []domain.Subscriber
-	subMu       sync.Mutex
-}
-
-func newMockStage(name string) *mockStage {
-	return &mockStage{name: name}
-}
-
-func (m *mockStage) Name() string { return m.name }
-func (m *mockStage) From() string { return "" }
-func (m *mockStage) Stop() error  { return nil }
-
-func (m *mockStage) Subscribe(subscriber domain.Subscriber) error {
-	m.subMu.Lock()
-	defer m.subMu.Unlock()
-	m.subscribers = append(m.subscribers, subscriber)
-	return nil
-}
-
-func (m *mockStage) Notify(ctx context.Context, event *domain.Event) error {
-	if m.onNotify != nil {
-		return m.onNotify(ctx, event)
-	}
-	return nil
-}
-
-// mockSink implements domain.Sink for testing
-type mockSink struct {
-	name     string
-	onNotify func(ctx context.Context, event *domain.Event) error
-	received []*domain.Event
-	recvMu   sync.Mutex
-}
-
-func newMockSink(name string) *mockSink {
-	return &mockSink{name: name}
-}
-
-func (m *mockSink) Name() string { return m.name }
-func (m *mockSink) From() string { return "" }
-func (m *mockSink) Stop() error  { return nil }
-
-func (m *mockSink) Notify(ctx context.Context, event *domain.Event) error {
-	m.recvMu.Lock()
-	defer m.recvMu.Unlock()
-
-	if m.onNotify != nil {
-		if err := m.onNotify(ctx, event); err != nil {
-			return err
-		}
-	}
-
-	m.received = append(m.received, event)
-	return nil
-}
-
-func (m *mockSink) GetReceived() []*domain.Event {
-	m.recvMu.Lock()
-	defer m.recvMu.Unlock()
-	return append([]*domain.Event(nil), m.received...)
-}
-
-// TestStreamHotSwappingBasic tests basic stream hot swapping functionality
-func TestStreamHotSwappingBasic(t *testing.T) {
+func TestHotSwapRoutesEventsToTheNewSinks(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
-	logger := slog.Default()
-
-	const (
-		testStreamName    = "test-stream"
-		initialSourceName = "initial-source"
-		initialSinkName   = "initial-sink"
-		updatedSinkName   = updatedSink
-	)
-
-	// Create initial stream spec
-	initialSpec := domain.StreamSpec{
-		Name: testStreamName,
-		Source: domain.SourceSpec{
-			Type: "mock",
-			Name: initialSourceName,
-		},
-		Stages: []domain.StageSpec{},
-		Sinks: []domain.SinkSpec{
-			{Type: "mock", Name: initialSinkName, From: initialSourceName},
-		},
-	}
-
-	// Create factories
-	sourceFactory := newMockFactory[domain.SourceSpec, domain.Source](
-		func(spec domain.SourceSpec) (domain.Source, error) {
-			return newMockSource(spec.Name), nil
-		},
-	)
-
-	stageFactory := newMockFactory[domain.StageSpec, domain.Stage](func(spec domain.StageSpec) (domain.Stage, error) {
-		return newMockStage(spec.Name), nil
-	})
-
-	sinkFactory := newMockFactory[domain.SinkSpec, domain.Sink](func(spec domain.SinkSpec) (domain.Sink, error) {
-		return newMockSink(spec.Name), nil
-	})
-
-	// Create core
-	core := core.New(ctx, logger, sourceFactory, stageFactory, sinkFactory)
-	defer core.Close()
-
-	// Upsert initial stream
-	_, err := core.UpsertStream(ctx, initialSpec)
+	c, reg := newCore(t)
+	_, err := c.UpsertStream(t.Context(), streamSpec(1, sink("old", "fake")))
 	require.NoError(t, err)
+	require.NoError(t, deliver(t, reg, logs(1)))
 
-	// Verify stream was created
-	stream, err := core.GetStream(ctx, testStreamName)
+	_, err = c.UpsertStream(t.Context(), streamSpec(1, sink("new", "fake")))
 	require.NoError(t, err)
-	assert.Equal(t, testStreamName, stream.Name)
+	require.NoError(t, deliver(t, reg, logs(1)))
+	require.NoError(t, deliver(t, reg, logs(1)))
 
-	// Update stream spec (hot swap)
-	updatedSpec := initialSpec
-	updatedSpec.Sinks = []domain.SinkSpec{
-		{Type: "mock", Name: updatedSinkName, From: initialSourceName},
-	}
-
-	// Upsert updated stream
-	_, err = core.UpsertStream(ctx, updatedSpec)
-	require.NoError(t, err)
-
-	// Verify stream was updated
-	stream, err = core.GetStream(ctx, testStreamName)
-	require.NoError(t, err)
-	assert.Equal(t, testStreamName, stream.Name)
+	assert.Equal(t, 1, reg.sourceCount(), "the running source is kept")
+	assert.Equal(t, 1, reg.receivedBy("old"), "the old sink got only the event before the swap")
+	assert.Equal(t, 2, reg.receivedBy("new"), "the new sink gets every event after the swap")
+	assert.Equal(t, []string{"old"}, reg.stoppedNames(), "only the replaced sink is stopped")
 }
 
-// TestStreamHotSwappingWithRunningSource tests hot swapping when source is running
-func TestStreamHotSwappingWithRunningSource(t *testing.T) {
+func TestHotSwapRoutesEventsThroughNewStagesToEveryBranch(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
-	logger := slog.Default()
+	c, reg := newCore(t)
+	_, err := c.UpsertStream(t.Context(), streamSpec(1, sink("old", "fake")))
+	require.NoError(t, err)
 
-	const (
-		runningStreamName = "running-stream"
-		runningSourceName = "running-source"
-		runningSinkName   = "running-sink"
-		updatedSinkName   = updatedSink
+	update := streamSpec(1,
+		domain.SinkSpec{Name: "a", Type: "fake", From: "forward"},
+		domain.SinkSpec{Name: "b", Type: "fake", From: "forward"},
+		sink("direct", "fake"),
 	)
+	update.Stages = []domain.StageSpec{{Name: "forward", Type: forwardingType, From: "source"}}
+	_, err = c.UpsertStream(t.Context(), update)
+	require.NoError(t, err)
+	require.NoError(t, deliver(t, reg, logs(1)))
 
-	// Create stream spec
-	spec := domain.StreamSpec{
-		Name: runningStreamName,
-		Source: domain.SourceSpec{
-			Type: "mock",
-			Name: runningSourceName,
-		},
-		Stages: []domain.StageSpec{},
-		Sinks: []domain.SinkSpec{
-			{Type: "mock", Name: runningSinkName, From: runningSourceName},
-		},
+	assert.Equal(t, 1, reg.sourceCount())
+	for _, name := range []string{"a", "b", "direct"} {
+		assert.Equal(t, 1, reg.receivedBy(name), "sink %s", name)
 	}
-
-	// Create factories
-	sourceFactory := newMockFactory[domain.SourceSpec, domain.Source](
-		func(spec domain.SourceSpec) (domain.Source, error) {
-			return newMockSource(spec.Name), nil
-		},
-	)
-
-	stageFactory := newMockFactory[domain.StageSpec, domain.Stage](func(spec domain.StageSpec) (domain.Stage, error) {
-		return newMockStage(spec.Name), nil
-	})
-
-	sinkFactory := newMockFactory[domain.SinkSpec, domain.Sink](func(spec domain.SinkSpec) (domain.Sink, error) {
-		return newMockSink(spec.Name), nil
-	})
-
-	// Create core
-	core := core.New(ctx, logger, sourceFactory, stageFactory, sinkFactory)
-	defer core.Close()
-
-	// Upsert stream
-	_, err := core.UpsertStream(ctx, spec)
-	require.NoError(t, err)
-
-	// Update stream spec
-	updatedSpec := spec
-	updatedSpec.Sinks = []domain.SinkSpec{
-		{Type: "mock", Name: updatedSinkName, From: runningSourceName},
-	}
-
-	// Upsert updated stream
-	_, err = core.UpsertStream(ctx, updatedSpec)
-	require.NoError(t, err)
-
-	// Verify stream was updated
-	stream, err := core.GetStream(ctx, runningStreamName)
-	require.NoError(t, err)
-	assert.Equal(t, runningStreamName, stream.Name)
+	assert.Zero(t, reg.receivedBy("old"))
 }
 
-// TestStreamHotSwappingErrorRecovery tests stream hot swapping with error recovery
-func TestStreamHotSwappingErrorRecovery(t *testing.T) {
+func TestFailedHotSwapKeepsDeliveringToTheOldSinks(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
-	logger := slog.Default()
-
-	const (
-		errorRecoveryStreamName = "error-recovery-stream"
-		initialSourceName       = "initial-source"
-		initialSinkName         = "initial-sink"
-		updatedSinkName         = updatedSink
-	)
-
-	// Create initial stream spec
-	initialSpec := domain.StreamSpec{
-		Name: errorRecoveryStreamName,
-		Source: domain.SourceSpec{
-			Type: "mock",
-			Name: initialSourceName,
-		},
-		Stages: []domain.StageSpec{},
-		Sinks: []domain.SinkSpec{
-			{Type: "mock", Name: initialSinkName, From: initialSourceName},
-		},
-	}
-
-	// Create factories
-	sourceFactory := newMockFactory[domain.SourceSpec, domain.Source](
-		func(spec domain.SourceSpec) (domain.Source, error) {
-			return newMockSource(spec.Name), nil
-		},
-	)
-
-	stageFactory := newMockFactory[domain.StageSpec, domain.Stage](func(spec domain.StageSpec) (domain.Stage, error) {
-		return newMockStage(spec.Name), nil
-	})
-
-	sinkFactory := newMockFactory[domain.SinkSpec, domain.Sink](func(spec domain.SinkSpec) (domain.Sink, error) {
-		return newMockSink(spec.Name), nil
-	})
-
-	// Create core
-	core := core.New(ctx, logger, sourceFactory, stageFactory, sinkFactory)
-	defer core.Close()
-
-	// Upsert initial stream
-	_, err := core.UpsertStream(ctx, initialSpec)
+	c, reg := newCore(t)
+	_, err := c.UpsertStream(t.Context(), streamSpec(1, sink("old", "fake")))
 	require.NoError(t, err)
 
-	// Update stream spec
-	updatedSpec := initialSpec
-	updatedSpec.Sinks = []domain.SinkSpec{
-		{Type: "mock", Name: updatedSinkName, From: initialSourceName},
-	}
+	_, err = c.UpsertStream(t.Context(), streamSpec(1, sink("new", "fake"), sink("broken", brokenType)))
+	require.ErrorIs(t, err, domain.ErrStreamBuildFailed)
+	require.NoError(t, deliver(t, reg, logs(1)))
 
-	// Upsert updated stream
-	_, err = core.UpsertStream(ctx, updatedSpec)
-	require.NoError(t, err)
-
-	// Verify stream was updated
-	stream, err := core.GetStream(ctx, errorRecoveryStreamName)
-	require.NoError(t, err)
-	assert.Equal(t, errorRecoveryStreamName, stream.Name)
+	assert.Equal(t, 1, reg.sourceCount(), "the source is kept")
+	assert.Equal(t, 1, reg.receivedBy("old"), "events still reach the old sink")
+	assert.Zero(t, reg.receivedBy("new"), "the sink of the failed update never gets an event")
+	assert.Equal(t, []string{"new"}, reg.stoppedNames(), "the sink built for the failed update is stopped")
 }
 
-// TestStreamHotSwappingWithStages tests hot swapping with stages
-func TestStreamHotSwappingWithStages(t *testing.T) {
+// The swapped stream keeps the source's lifecycle: when the source crashes,
+// the stream is restarted with the stages and sinks of the update.
+func TestHotSwappedStreamIsRestartedWithTheNewSinks(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
-	logger := slog.Default()
+	c, reg := newCore(t)
+	c.SetRestartDelays(10*time.Millisecond, 50*time.Millisecond)
+	_, err := c.UpsertStream(t.Context(), streamSpec(1, sink("old", "fake")))
+	require.NoError(t, err)
+	_, err = c.UpsertStream(t.Context(), streamSpec(1, sink("new", "fake")))
+	require.NoError(t, err)
 
-	const (
-		stageStreamName  = "stage-stream"
-		stageSourceName  = "stage-source"
-		stage1Name       = "stage-1"
-		stage2Name       = "stage-2"
-		stageSinkName    = "stage-sink"
-		stageSinkUpdated = "stage-sink-updated"
-	)
-
-	// Create initial stream spec with stages
-	initialSpec := domain.StreamSpec{
-		Name: stageStreamName,
-		Source: domain.SourceSpec{
-			Type: "mock",
-			Name: stageSourceName,
-		},
-		Stages: []domain.StageSpec{
-			{Type: "mock", Name: stage1Name, From: stageSourceName},
-		},
-		Sinks: []domain.SinkSpec{
-			{Type: "mock", Name: stageSinkName, From: stage1Name},
-		},
+	close(reg.source(0).crash)
+	require.Eventually(t, func() bool { return reg.sourceCount() == 2 }, 5*time.Second, 5*time.Millisecond)
+	select {
+	case <-reg.source(1).started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the restarted source did not run")
 	}
+	require.NoError(t, deliver(t, reg, logs(1)))
 
-	// Create factories
-	sourceFactory := newMockFactory[domain.SourceSpec, domain.Source](
-		func(spec domain.SourceSpec) (domain.Source, error) {
-			return newMockSource(spec.Name), nil
-		},
-	)
-
-	stageFactory := newMockFactory[domain.StageSpec, domain.Stage](func(spec domain.StageSpec) (domain.Stage, error) {
-		return newMockStage(spec.Name), nil
-	})
-
-	sinkFactory := newMockFactory[domain.SinkSpec, domain.Sink](func(spec domain.SinkSpec) (domain.Sink, error) {
-		return newMockSink(spec.Name), nil
-	})
-
-	// Create core
-	core := core.New(ctx, logger, sourceFactory, stageFactory, sinkFactory)
-	defer core.Close()
-
-	// Upsert initial stream
-	_, err := core.UpsertStream(ctx, initialSpec)
-	require.NoError(t, err)
-
-	// Update stream spec with additional stage and corresponding sink
-	updatedSpec := initialSpec
-	updatedSpec.Stages = append(updatedSpec.Stages, domain.StageSpec{
-		Type: "mock",
-		Name: stage2Name,
-		From: stage1Name,
-	})
-	updatedSpec.Sinks = []domain.SinkSpec{
-		{Type: "mock", Name: stageSinkUpdated, From: stage2Name},
-	}
-
-	// Upsert updated stream
-	_, err = core.UpsertStream(ctx, updatedSpec)
-	require.NoError(t, err)
-
-	// Verify stream was updated
-	stream, err := core.GetStream(ctx, stageStreamName)
-	require.NoError(t, err)
-	assert.Equal(t, stageStreamName, stream.Name)
+	assert.Equal(t, 1, reg.receivedBy("new"), "the restarted stream delivers to the sink of the update")
+	assert.Zero(t, reg.receivedBy("old"))
 }
 
-// TestStreamHotSwappingWithMultipleSinks tests hot swapping with multiple sinks
-func TestStreamHotSwappingWithMultipleSinks(t *testing.T) {
+func TestDeletingAHotSwappedStreamStopsTheNewComponents(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
-	logger := slog.Default()
-
-	const (
-		multiSinkStreamName = "multi-sink-stream"
-		multiSinkSourceName = "multi-sink-source"
-	)
-
-	// Create initial stream spec with multiple sinks
-	initialSpec := domain.StreamSpec{
-		Name: multiSinkStreamName,
-		Source: domain.SourceSpec{
-			Type: "mock",
-			Name: multiSinkSourceName,
-		},
-		Stages: []domain.StageSpec{},
-		Sinks: []domain.SinkSpec{
-			{Type: "mock", Name: "sink-1", From: multiSinkSourceName},
-			{Type: "mock", Name: "sink-2", From: multiSinkSourceName},
-		},
-	}
-
-	// Create factories
-	sourceFactory := newMockFactory[domain.SourceSpec, domain.Source](
-		func(spec domain.SourceSpec) (domain.Source, error) {
-			return newMockSource(spec.Name), nil
-		},
-	)
-
-	stageFactory := newMockFactory[domain.StageSpec, domain.Stage](func(spec domain.StageSpec) (domain.Stage, error) {
-		return newMockStage(spec.Name), nil
-	})
-
-	sinkFactory := newMockFactory[domain.SinkSpec, domain.Sink](func(spec domain.SinkSpec) (domain.Sink, error) {
-		return newMockSink(spec.Name), nil
-	})
-
-	// Create core
-	core := core.New(ctx, logger, sourceFactory, stageFactory, sinkFactory)
-	defer core.Close()
-
-	// Upsert initial stream
-	_, err := core.UpsertStream(ctx, initialSpec)
+	c, reg := newCore(t)
+	_, err := c.UpsertStream(t.Context(), streamSpec(1, sink("old", "fake")))
+	require.NoError(t, err)
+	_, err = c.UpsertStream(t.Context(), streamSpec(1, sink("new", "fake")))
 	require.NoError(t, err)
 
-	// Update stream spec with different sinks
-	updatedSpec := initialSpec
-	updatedSpec.Sinks = []domain.SinkSpec{
-		{Type: "mock", Name: "updated-sink-1", From: multiSinkSourceName},
-		{Type: "mock", Name: "updated-sink-2", From: multiSinkSourceName},
-		{Type: "mock", Name: "updated-sink-3", From: multiSinkSourceName},
-	}
+	require.NoError(t, c.DeleteStream(t.Context(), "stream"))
 
-	// Upsert updated stream
-	_, err = core.UpsertStream(ctx, updatedSpec)
-	require.NoError(t, err)
-
-	// Verify stream was updated
-	stream, err := core.GetStream(ctx, multiSinkStreamName)
-	require.NoError(t, err)
-	assert.Equal(t, multiSinkStreamName, stream.Name)
-}
-
-// mockFactory implements ports.Factory for testing
-type mockFactory[Spec any, Component any] struct {
-	createFunc func(spec Spec) (Component, error)
-}
-
-func newMockFactory[Spec any, Component any](
-	createFunc func(spec Spec) (Component, error),
-) *mockFactory[Spec, Component] {
-	return &mockFactory[Spec, Component]{createFunc: createFunc}
-}
-
-func (f *mockFactory[Spec, Component]) New(spec Spec) (Component, error) {
-	return f.createFunc(spec)
+	assert.Equal(t, []string{"old", "source", "new"}, reg.stoppedNames(),
+		"every component is stopped once, the replaced sink at the swap")
 }

@@ -7,6 +7,7 @@ package stage
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/go-playground/validator/v10"
 
@@ -21,28 +22,30 @@ import (
 
 type Factory struct {
 	validator *validator.Validate
+	logger    *slog.Logger
 }
 
-func NewFactory() *Factory {
+func NewFactory(logger *slog.Logger) *Factory {
 	return &Factory{
 		validator: validator.New(validator.WithRequiredStructEnabled()),
+		logger:    logger,
 	}
 }
 
 func (f *Factory) New(spec domain.StageSpec) (domain.Stage, error) {
 	switch spec.Type {
 	case noop.Type:
-		return noop.New(spec, f.validator)
+		return noop.New(spec, f.validator, f.logger)
 	case celvalidator.Type:
-		return celvalidator.New(spec, f.validator)
+		return celvalidator.New(spec, f.validator, f.logger)
 	case celfilter.Type:
-		return celfilter.New(spec, f.validator)
+		return celfilter.New(spec, f.validator, f.logger)
 	case delay.Type:
-		return delay.New(spec, f.validator)
+		return delay.New(spec, f.validator, f.logger)
 	case batch.Type:
-		return batch.New(spec, f.validator)
+		return batch.New(spec, f.validator, f.logger)
 	case valuemap.Type:
-		return valuemap.New(spec, f.validator)
+		return valuemap.New(spec, f.validator, f.logger)
 	default:
 		return nil, fmt.Errorf("%w: %q", domain.ErrInvalidStageType, spec.Type)
 	}

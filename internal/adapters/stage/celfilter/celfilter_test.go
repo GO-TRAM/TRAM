@@ -19,6 +19,8 @@ import (
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/proto"
 
+	"log/slog"
+
 	"codeberg.org/eljoth/tram/internal/adapters/stage/celfilter"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
@@ -36,7 +38,8 @@ func (c *capture) Notify(_ context.Context, e *domain.Event) error {
 
 func newFilter(t *testing.T, spec map[string]any) (*celfilter.CELFilter, *capture) {
 	t.Helper()
-	f, err := celfilter.New(domain.StageSpec{Name: "filter", From: "source", Spec: spec}, validator.New())
+	logger := slog.Default()
+	f, err := celfilter.New(domain.StageSpec{Name: "filter", From: "source", Spec: spec}, validator.New(), logger)
 	require.NoError(t, err)
 	c := &capture{}
 	require.NoError(t, f.Subscribe(c))
@@ -122,7 +125,7 @@ func TestNew(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := celfilter.New(domain.StageSpec{Name: "filter", Spec: c.spec}, validator.New())
+			_, err := celfilter.New(domain.StageSpec{Name: "filter", Spec: c.spec}, validator.New(), slog.Default())
 			if !c.expectErr {
 				assert.NoError(t, err)
 				return

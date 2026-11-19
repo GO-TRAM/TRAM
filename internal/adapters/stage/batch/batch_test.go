@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"log/slog"
+
 	"codeberg.org/eljoth/tram/internal/adapters/stage/batch"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
@@ -52,7 +54,8 @@ func (r *recorder) delivered() []int {
 
 func newBatch(t *testing.T, spec map[string]any, rec *recorder) *batch.Batch {
 	t.Helper()
-	b, err := batch.New(domain.StageSpec{Name: "batch", From: "source", Spec: spec}, validator.New())
+	logger := slog.Default()
+	b, err := batch.New(domain.StageSpec{Name: "batch", From: "source", Spec: spec}, validator.New(), logger)
 	require.NoError(t, err)
 	require.NoError(t, b.Subscribe(rec))
 	t.Cleanup(func() { _ = b.Stop() })
@@ -126,7 +129,7 @@ func TestNew(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			b, err := batch.New(domain.StageSpec{Name: "batch", Spec: c.spec}, validator.New())
+			b, err := batch.New(domain.StageSpec{Name: "batch", Spec: c.spec}, validator.New(), slog.Default())
 			if c.expectErr {
 				assert.Error(t, err)
 				if c.expectErrIs != nil {
@@ -204,11 +207,15 @@ func TestEventLargerThanMaxRecordsIsFlushedWhole(t *testing.T) {
 func TestNewMaxBytes(t *testing.T) {
 	t.Parallel()
 
-	b, err := batch.New(domain.StageSpec{Name: "batch", Spec: map[string]any{"max_bytes": 1000}}, validator.New())
+	b, err := batch.New(
+		domain.StageSpec{Name: "batch", Spec: map[string]any{"max_bytes": 1000}},
+		validator.New(),
+		slog.Default(),
+	)
 	require.NoError(t, err)
 	assert.Equal(t, 1000, batch.MaxBytes(b))
 
-	b, err = batch.New(domain.StageSpec{Name: "batch"}, validator.New())
+	b, err = batch.New(domain.StageSpec{Name: "batch"}, validator.New(), slog.Default())
 	require.NoError(t, err)
 	assert.Zero(t, batch.MaxBytes(b), "no limit by default")
 }
@@ -272,6 +279,8 @@ func TestEventLargerThanMaxBytesIsSentAlone(t *testing.T) {
 	require.NoError(t, receive(t, notifyAsync(t.Context(), b, logs(5))))
 	require.NoError(t, receive(t, notifyAsync(t.Context(), b, logs(3))))
 	assert.Equal(t, []int{5, 3}, rec.delivered())
+
+	require.NoError(t, b.Stop())
 }
 
 func TestCancelWithdrawsBytes(t *testing.T) {

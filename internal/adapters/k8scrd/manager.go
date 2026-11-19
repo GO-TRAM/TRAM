@@ -68,6 +68,7 @@ type Manager struct {
 }
 
 func NewManager(opts ManagerOptions, logger *slog.Logger) (*Manager, error) {
+	setLogger(logger)
 	cacheOpts := managerCacheOptions()
 	for _, ns := range opts.Namespaces {
 		// An empty name would stand for all namespaces and silently undo the

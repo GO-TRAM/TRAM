@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -43,6 +44,8 @@ const captureType = "capture"
 type captureSink struct {
 	name, from string
 	fail       string
+	// failFirst is how many deliveries fail temporarily before the sink works.
+	failFirst atomic.Int64
 
 	hold     chan struct{}
 	released sync.Once
@@ -62,6 +65,9 @@ func (s *captureSink) release() {
 func (s *captureSink) Notify(_ context.Context, e *domain.Event) error {
 	if s.hold != nil {
 		<-s.hold
+	}
+	if s.failFirst.Add(-1) >= 0 {
+		return errors.New("sink unavailable for now")
 	}
 	switch s.fail {
 	case "temporary":
@@ -94,6 +100,9 @@ func (f *captureFactory) New(spec domain.SinkSpec) (domain.Sink, error) {
 	}
 	fail, _ := spec.Spec["fail"].(string)
 	s := &captureSink{name: spec.Name, from: spec.From, fail: fail}
+	if n, ok := spec.Spec["fail_first"].(float64); ok {
+		s.failFirst.Store(int64(n))
+	}
 	if hold, _ := spec.Spec["hold"].(bool); hold {
 		s.hold = make(chan struct{})
 	}
@@ -138,7 +147,13 @@ func newStream(t *testing.T, in domain.SourceSpec, stages []domain.StageSpec, si
 		sinks: &captureFactory{real: sink.NewFactory(discard()), sinks: map[string]*captureSink{}},
 		in:    in,
 	}
-	p.core = core.New(context.Background(), discard(), source.NewFactory(discard()), stage.NewFactory(), p.sinks)
+	p.core = core.New(
+		context.Background(),
+		discard(),
+		source.NewFactory(discard()),
+		stage.NewFactory(discard()),
+		p.sinks,
+	)
 	t.Cleanup(func() { _ = p.core.Close() })
 	p.update(t, stages, sinks)
 	return p

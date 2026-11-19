@@ -7,6 +7,7 @@ package noop
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/go-playground/validator/v10"
 
@@ -18,15 +19,18 @@ const Type = "noop"
 
 type NoOp struct {
 	*base.Stage[Spec]
+
+	logger *slog.Logger
 }
 
-func New(stage domain.StageSpec, validator *validator.Validate) (*NoOp, error) {
+func New(stage domain.StageSpec, validator *validator.Validate, logger *slog.Logger) (*NoOp, error) {
 	base, err := base.New[Spec](stage.Name, stage.From, stage.Spec, validator)
 	if err != nil {
 		return nil, err
 	}
 	return &NoOp{
-		Stage: base,
+		Stage:  base,
+		logger: logger.With(slog.String("stage", stage.Name)),
 	}, nil
 }
 

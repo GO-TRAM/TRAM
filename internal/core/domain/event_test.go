@@ -6,6 +6,9 @@
 package domain_test
 
 import (
+	"fmt"
+	"slices"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -213,153 +216,80 @@ func TestUnmarshalOTLPDataUnknownSignal(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TestEventReferenceSharing tests that events are passed by reference and not copied
-func TestEventReferenceSharing(t *testing.T) {
+// An event is shared by reference between the branches of a stream, which
+// read it at the same time. Reading must not write to it: run with -race.
+func TestEventCanBeReadConcurrently(t *testing.T) {
 	t.Parallel()
 
-	// Create an event with logs
-	shape := otlpgen.Shape{Records: 5, Resources: 2, Teams: 1}
-	originalEvent := &domain.Event{
-		Logs: otlpgen.Logs(shape),
+	shape := otlpgen.Shape{Records: 20, Resources: 3, Teams: 2}
+	event := &domain.Event{
+		Logs:    otlpgen.Logs(shape),
+		Metrics: otlpgen.Metrics(shape),
+		Traces:  otlpgen.Traces(shape),
+	}
+	want := &domain.Event{
+		Logs:    proto.Clone(event.Logs).(*logspb.LogsData),
+		Metrics: proto.Clone(event.Metrics).(*metricspb.MetricsData),
+		Traces:  proto.Clone(event.Traces).(*tracepb.TracesData),
 	}
 
-	// Make a copy of the event reference
-	copiedEvent := originalEvent
+	wantLogs, wantMetrics, wantTraces := want.RecordCounts()
+	require.Positive(t, wantLogs*wantMetrics*wantTraces)
 
-	// Verify that both references point to the same underlying data
-	assert.Equal(t, originalEvent, copiedEvent, "Copied event should be identical to original")
-	assert.True(t, proto.Equal(originalEvent.Logs, copiedEvent.Logs), "Log data should be identical")
+	const readers = 8
+	errs := make(chan error, readers)
+	var wg sync.WaitGroup
+	for range readers {
+		wg.Go(func() { errs <- readRepeatedly(event, want, []int{wantLogs, wantMetrics, wantTraces}) })
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
 
-	// Verify record counts are the same
-	assert.Equal(t, originalEvent.RecordCount(), copiedEvent.RecordCount(), "Record counts should match")
+	assert.True(t, proto.Equal(want.Logs, event.Logs), "reading leaves the logs unchanged")
+	assert.True(t, proto.Equal(want.Metrics, event.Metrics), "reading leaves the metrics unchanged")
+	assert.True(t, proto.Equal(want.Traces, event.Traces), "reading leaves the traces unchanged")
 }
 
-// TestEventReferenceSharingWithModification tests that modifications to event data are visible across references
-func TestEventReferenceSharingWithModification(t *testing.T) {
-	t.Parallel()
-
-	// Create an event with logs
-	shape := otlpgen.Shape{Records: 3, Resources: 1, Teams: 1}
-	originalEvent := &domain.Event{
-		Logs: otlpgen.Logs(shape),
+// readRepeatedly reads event like a branch does and compares what it reads
+// with want.
+func readRepeatedly(event, want *domain.Event, counts []int) error {
+	for range 20 {
+		logs, metrics, traces := event.RecordCounts()
+		if got := []int{logs, metrics, traces}; !slices.Equal(counts, got) {
+			return fmt.Errorf("record counts %v, want %v", got, counts)
+		}
+		payloads, err := event.MarshalOTLPPayloads()
+		if err != nil {
+			return err
+		}
+		if len(payloads) != len(counts) {
+			return fmt.Errorf("%d payloads, want one per signal", len(payloads))
+		}
+		for _, p := range payloads {
+			decoded, decodeErr := domain.UnmarshalOTLPData(p.Signal, p.Data)
+			if decodeErr != nil {
+				return decodeErr
+			}
+			if !sameSignal(want, decoded) {
+				return fmt.Errorf("the %s payload decodes to other data", p.Signal)
+			}
+		}
 	}
-
-	// Create multiple references to the same event
-	reference1 := originalEvent
-	reference2 := originalEvent
-	reference3 := originalEvent
-
-	// Verify all references have the same record count initially
-	assert.Equal(t, 3, originalEvent.RecordCount())
-	assert.Equal(t, 3, reference1.RecordCount())
-	assert.Equal(t, 3, reference2.RecordCount())
-	assert.Equal(t, 3, reference3.RecordCount())
+	return nil
 }
 
-// TestEventReferenceSharingInFanout tests event reference sharing in a fanout scenario
-func TestEventReferenceSharingInFanout(t *testing.T) {
-	t.Parallel()
-
-	// Create an event with logs
-	shape := otlpgen.Shape{Records: 7, Resources: 1, Teams: 1}
-	originalEvent := &domain.Event{
-		Logs: otlpgen.Logs(shape),
+// sameSignal reports whether the one signal decoded holds equals it in want.
+func sameSignal(want, decoded *domain.Event) bool {
+	switch {
+	case decoded.Logs != nil:
+		return proto.Equal(want.Logs, decoded.Logs)
+	case decoded.Metrics != nil:
+		return proto.Equal(want.Metrics, decoded.Metrics)
+	case decoded.Traces != nil:
+		return proto.Equal(want.Traces, decoded.Traces)
 	}
-
-	// Simulate fanout by creating multiple references
-	subscriberEvents := make([]*domain.Event, 3)
-	for i := range subscriberEvents {
-		subscriberEvents[i] = originalEvent
-	}
-
-	// Verify all subscriber events reference the same data
-	for _, event := range subscriberEvents {
-		assert.Equal(t, originalEvent, event, "All subscriber events should reference the original")
-		assert.Equal(t, originalEvent.RecordCount(), event.RecordCount(), "Record counts should match")
-	}
-}
-
-// TestEventReferenceSharingWithNilEvent tests reference sharing with nil events
-func TestEventReferenceSharingWithNilEvent(t *testing.T) {
-	t.Parallel()
-
-	var nilEvent *domain.Event
-	copiedEvent := nilEvent
-
-	// Both should be nil
-	assert.Nil(t, nilEvent)
-	assert.Nil(t, copiedEvent)
-
-	// Record count should be 0 for nil events
-	assert.Equal(t, 0, nilEvent.RecordCount())
-	assert.Equal(t, 0, copiedEvent.RecordCount())
-}
-
-// TestEventReferenceSharingWithEmptyEvent tests reference sharing with empty events
-func TestEventReferenceSharingWithEmptyEvent(t *testing.T) {
-	t.Parallel()
-
-	emptyEvent := &domain.Event{}
-	copiedEvent := emptyEvent
-
-	// Both should be non-nil but empty
-	assert.NotNil(t, emptyEvent)
-	assert.NotNil(t, copiedEvent)
-
-	// Record count should be 0 for empty events
-	assert.Equal(t, 0, emptyEvent.RecordCount())
-	assert.Equal(t, 0, copiedEvent.RecordCount())
-}
-
-// TestEventReferenceSharingWithMultipleSignals tests reference sharing with events containing multiple signals
-func TestEventReferenceSharingWithMultipleSignals(t *testing.T) {
-	t.Parallel()
-
-	logsShape := otlpgen.Shape{Records: 10, Resources: 1, Teams: 1}
-	metricsShape := otlpgen.Shape{Records: 15, Resources: 1, Teams: 1}
-	tracesShape := otlpgen.Shape{Records: 20, Resources: 1, Teams: 1}
-
-	originalEvent := &domain.Event{
-		Logs:    otlpgen.Logs(logsShape),
-		Metrics: otlpgen.Metrics(metricsShape),
-		Traces:  otlpgen.Traces(tracesShape),
-	}
-
-	// Create multiple references
-	reference1 := originalEvent
-	reference2 := originalEvent
-
-	// Verify all references have the same data
-	assert.Equal(t, originalEvent.RecordCount(), reference1.RecordCount())
-	assert.Equal(t, originalEvent.RecordCount(), reference2.RecordCount())
-
-	// Verify individual signal counts match
-	logs1, metrics1, traces1 := reference1.RecordCounts()
-	logs2, metrics2, traces2 := reference2.RecordCounts()
-	assert.Equal(t, logs1, logs2)
-	assert.Equal(t, metrics1, metrics2)
-	assert.Equal(t, traces1, traces2)
-}
-
-// TestEventReferenceSharingConcurrency tests that event references work correctly in concurrent scenarios
-func TestEventReferenceSharingConcurrency(t *testing.T) {
-	t.Parallel()
-
-	// Create an event with logs
-	shape := otlpgen.Shape{Records: 100, Resources: 5, Teams: 2}
-	originalEvent := &domain.Event{
-		Logs: otlpgen.Logs(shape),
-	}
-
-	// Create multiple references (simulating concurrent subscribers)
-	subscriberEvents := make([]*domain.Event, 10)
-	for i := range subscriberEvents {
-		subscriberEvents[i] = originalEvent
-	}
-
-	// Verify all references point to the same event
-	for i, event := range subscriberEvents {
-		assert.Equal(t, originalEvent, event, "Subscriber %d should reference the original event", i)
-		assert.Equal(t, originalEvent.RecordCount(), event.RecordCount(), "Record count should match for subscriber %d", i)
-	}
+	return false
 }

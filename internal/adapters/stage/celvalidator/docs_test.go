@@ -17,6 +17,8 @@ import (
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 
+	"log/slog"
+
 	"codeberg.org/eljoth/tram/internal/adapters/stage/celvalidator"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
@@ -181,7 +183,7 @@ func TestDocumentedBehavior(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			cel, err := celvalidator.New(domain.StageSpec{Name: "cel", Spec: c.spec}, validator.New())
+			cel, err := celvalidator.New(domain.StageSpec{Name: "cel", Spec: c.spec}, validator.New(), slog.Default())
 			require.NoError(t, err)
 			sub := &captureSubscriber{}
 			require.NoError(t, cel.Subscribe(sub))

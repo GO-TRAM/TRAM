@@ -191,7 +191,13 @@ func (e *env) natsSink(name, from string) domain.SinkSpec {
 
 func startStream(b *testing.B, in domain.SourceSpec, stages []domain.StageSpec, sinks []domain.SinkSpec) {
 	logger := slog.New(slog.DiscardHandler)
-	c := core.New(context.Background(), logger, source.NewFactory(logger), stage.NewFactory(), sink.NewFactory(logger))
+	c := core.New(
+		context.Background(),
+		logger,
+		source.NewFactory(logger),
+		stage.NewFactory(logger),
+		sink.NewFactory(logger),
+	)
 	b.Cleanup(func() { _ = c.Close() })
 	_, err := c.UpsertStream(
 		context.Background(),

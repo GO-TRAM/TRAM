@@ -144,7 +144,7 @@ func pipeline(b *testing.B, spec domain.StreamSpec, sinks int, shape otlpgen.Sha
 		b.Context(),
 		slog.New(slog.DiscardHandler),
 		benchSourceFactory{src},
-		stage.NewFactory(),
+		stage.NewFactory(slog.New(slog.DiscardHandler)),
 		countingSinkFactory{&records},
 	)
 	b.Cleanup(func() { _ = c.Close() })

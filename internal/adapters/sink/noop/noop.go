@@ -21,7 +21,7 @@ type NoOp struct {
 	*base.Sink[Spec]
 }
 
-func New(stage domain.SinkSpec, validator *validator.Validate, logger *slog.Logger) (*NoOp, error) {
+func New(stage domain.SinkSpec, validator *validator.Validate, _ *slog.Logger) (*NoOp, error) {
 	base, err := base.New[Spec](stage.Name, stage.From, stage.Spec, validator)
 	if err != nil {
 		return nil, err
@@ -31,6 +31,6 @@ func New(stage domain.SinkSpec, validator *validator.Validate, logger *slog.Logg
 	}, nil
 }
 
-func (o *NoOp) Notify(ctx context.Context, event *domain.Event) error {
+func (o *NoOp) Notify(_ context.Context, _ *domain.Event) error {
 	return nil
 }

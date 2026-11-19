@@ -8,6 +8,7 @@ package batch
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -43,6 +44,7 @@ type Batch struct {
 	current *batch
 	stopped bool
 	flushes sync.WaitGroup
+	logger  *slog.Logger
 }
 
 type batch struct {
@@ -63,7 +65,7 @@ type entry struct {
 	err       error
 }
 
-func New(stage domain.StageSpec, validator *validator.Validate) (*Batch, error) {
+func New(stage domain.StageSpec, validator *validator.Validate, logger *slog.Logger) (*Batch, error) {
 	base, err := base.New[Spec](stage.Name, stage.From, stage.Spec, validator)
 	if err != nil {
 		return nil, err
@@ -90,6 +92,7 @@ func New(stage domain.StageSpec, validator *validator.Validate) (*Batch, error) 
 		maxRecords: maxRecords,
 		maxBytes:   base.Spec().MaxBytes,
 		timeout:    timeout,
+		logger:     logger.With(slog.String("stage", stage.Name)),
 	}, nil
 }
 

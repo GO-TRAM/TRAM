@@ -48,11 +48,15 @@ type Options struct {
 	skipNameValidation bool
 }
 
-func SetLogger(logger *slog.Logger) {
+// setLogger sets the global logger of controller-runtime. Its package-level
+// loggers, like those of the client config, cache and sources, use it instead
+// of the manager's logger.
+func setLogger(logger *slog.Logger) {
 	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
 }
 
 func New(core ports.Core, opts Options, logger *slog.Logger) (*Operator, error) {
+	setLogger(logger)
 	cacheOpts, err := cacheOptions(opts)
 	if err != nil {
 		return nil, err

@@ -6,6 +6,7 @@
 package valuemap_test
 
 import (
+	"log/slog"
 	"testing"
 
 	"github.com/go-playground/validator/v10"
@@ -60,9 +61,11 @@ func BenchmarkNotifyLogs(b *testing.B) {
 	}
 
 	for _, source := range sources {
+		logger := slog.Default()
 		mapper, err := valuemap.New(
 			domain.StageSpec{Name: "mapper", From: "source", Spec: source.spec},
 			validator.New(),
+			logger,
 		)
 		if err != nil {
 			b.Fatal(err)

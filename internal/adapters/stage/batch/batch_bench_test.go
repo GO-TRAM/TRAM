@@ -7,6 +7,7 @@ package batch_test
 
 import (
 	"context"
+	"log/slog"
 	"sync/atomic"
 	"testing"
 
@@ -31,7 +32,8 @@ func (c *countingSubscriber) Notify(context.Context, *domain.Event) error {
 
 func newBenchBatch(b *testing.B, spec map[string]any) (*batch.Batch, *countingSubscriber) {
 	b.Helper()
-	batch, err := batch.New(domain.StageSpec{Name: "batch", From: "source", Spec: spec}, validator.New())
+	logger := slog.Default()
+	batch, err := batch.New(domain.StageSpec{Name: "batch", From: "source", Spec: spec}, validator.New(), logger)
 	if err != nil {
 		b.Fatal(err)
 	}
