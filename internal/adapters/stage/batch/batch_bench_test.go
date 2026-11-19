@@ -44,32 +44,34 @@ func newBenchBatch(b *testing.B, spec map[string]any) (*batch.Batch, *countingSu
 func BenchmarkBatch(b *testing.B) {
 	for _, shape := range otlpgen.Shapes() {
 		event := &domain.Event{Logs: otlpgen.Logs(shape)}
-
-		b.Run("flush-per-event/"+shape.String(), func(b *testing.B) {
-			batch, _ := newBenchBatch(b, map[string]any{"max_records": shape.Records, "timeout": "1h"})
-			b.ReportAllocs()
-			for b.Loop() {
-				if err := batch.Notify(b.Context(), event); err != nil {
-					b.Fatal(err)
-				}
-			}
-			b.ReportMetric(float64(shape.Records*b.N)/b.Elapsed().Seconds(), "records/s")
-		})
-
-		b.Run("parallel-8-events/"+shape.String(), func(b *testing.B) {
-			batch, sub := newBenchBatch(b, map[string]any{"max_records": 8 * shape.Records, "timeout": "1ms"})
-			b.SetParallelism(8)
-			b.ReportAllocs()
-			b.RunParallel(func(pb *testing.PB) {
-				for pb.Next() {
-					if err := batch.Notify(context.Background(), event); err != nil {
-						b.Error(err)
-						return
-					}
-				}
-			})
-			b.ReportMetric(float64(shape.Records*b.N)/b.Elapsed().Seconds(), "records/s")
-			b.ReportMetric(float64(b.N)/float64(max(1, sub.batches.Load())), "events/batch")
-		})
+		b.Run("flush-per-event/"+shape.String(), func(b *testing.B) { benchFlushPerEvent(b, shape, event) })
+		b.Run("parallel-8-events/"+shape.String(), func(b *testing.B) { benchParallelEvents(b, shape, event) })
 	}
+}
+
+func benchFlushPerEvent(b *testing.B, shape otlpgen.Shape, event *domain.Event) {
+	batch, _ := newBenchBatch(b, map[string]any{"max_records": shape.Records, "timeout": "1h"})
+	b.ReportAllocs()
+	for b.Loop() {
+		if err := batch.Notify(b.Context(), event); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ReportMetric(float64(shape.Records*b.N)/b.Elapsed().Seconds(), "records/s")
+}
+
+func benchParallelEvents(b *testing.B, shape otlpgen.Shape, event *domain.Event) {
+	batch, sub := newBenchBatch(b, map[string]any{"max_records": 8 * shape.Records, "timeout": "1ms"})
+	b.SetParallelism(8)
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			if err := batch.Notify(context.Background(), event); err != nil {
+				b.Error(err)
+				return
+			}
+		}
+	})
+	b.ReportMetric(float64(shape.Records*b.N)/b.Elapsed().Seconds(), "records/s")
+	b.ReportMetric(float64(b.N)/float64(max(1, sub.batches.Load())), "events/batch")
 }

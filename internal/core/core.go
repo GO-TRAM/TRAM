@@ -111,17 +111,9 @@ func (c *Core) UpsertResolvedStream(
 		return nil, domain.ErrCoreClosed
 	}
 
-	if err := domain.ValidateStreamName(spec.Name); err != nil {
-		return nil, errors.Join(domain.ErrStreamBuildFailed, err)
-	}
-	if resolved.Name != spec.Name {
-		return nil, fmt.Errorf("%w: resolved stream %s is not stream %s",
-			domain.ErrStreamBuildFailed, resolved.Name, spec.Name)
-	}
-
-	tree, err := newTree(resolved)
+	tree, err := newResolvedTree(spec, resolved)
 	if err != nil {
-		return nil, errors.Join(domain.ErrStreamBuildFailed, err)
+		return nil, err
 	}
 
 	old, exists := c.streams[spec.Name]
@@ -160,6 +152,22 @@ func (c *Core) UpsertResolvedStream(
 	c.notify(domain.StreamSpecWatchEventTypeUpsert, spec)
 
 	return &c.streams[spec.Name].spec, nil
+}
+
+// newResolvedTree validates that resolved belongs to spec and builds its tree.
+func newResolvedTree(spec, resolved domain.StreamSpec) (*domain.Tree, error) {
+	if err := domain.ValidateStreamName(spec.Name); err != nil {
+		return nil, errors.Join(domain.ErrStreamBuildFailed, err)
+	}
+	if resolved.Name != spec.Name {
+		return nil, fmt.Errorf("%w: resolved stream %s is not stream %s",
+			domain.ErrStreamBuildFailed, resolved.Name, spec.Name)
+	}
+	tree, err := newTree(resolved)
+	if err != nil {
+		return nil, errors.Join(domain.ErrStreamBuildFailed, err)
+	}
+	return tree, nil
 }
 
 func (c *Core) DeleteStream(ctx context.Context, name string) error {

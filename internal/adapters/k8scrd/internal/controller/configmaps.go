@@ -54,13 +54,13 @@ type configMapSelector struct {
 func configMapSelectorOf(value any) (*configMapSelector, error) {
 	raw, err := json.Marshal(value)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidConfigMapSelector, err)
+		return nil, invalidSelector(err)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	var selector metav1.LabelSelector
 	if err = decoder.Decode(&selector); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidConfigMapSelector, err)
+		return nil, invalidSelector(err)
 	}
 	// An empty selector would merge every config map of the namespace.
 	if len(selector.MatchLabels) == 0 && len(selector.MatchExpressions) == 0 {
@@ -68,7 +68,7 @@ func configMapSelectorOf(value any) (*configMapSelector, error) {
 	}
 	parsed, err := metav1.LabelSelectorAsSelector(&selector)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidConfigMapSelector, err)
+		return nil, invalidSelector(err)
 	}
 	return &configMapSelector{Selector: parsed}, nil
 }
@@ -156,4 +156,8 @@ func selectsAny(selectors []*configMapSelector, labelSets []map[string]string) b
 		}
 	}
 	return false
+}
+
+func invalidSelector(err error) error {
+	return fmt.Errorf("%w: %w", ErrInvalidConfigMapSelector, err)
 }

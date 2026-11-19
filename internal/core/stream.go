@@ -61,10 +61,10 @@ func (c *Core) createAll(tree *domain.Tree) error {
 	spec := tree.Spec
 	source, err := c.sourceFactory.New(spec.Source)
 	if err != nil {
-		return errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, spec.Source.Name), err)
+		return invalidSpec(spec.Source.Name, err)
 	}
 	if err = tree.Root().AddSource(source); err != nil {
-		return errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, spec.Source.Name), err)
+		return invalidSpec(spec.Source.Name, err)
 	}
 	return c.createReceivers(tree)
 }
@@ -94,20 +94,20 @@ func (c *Core) createReceivers(tree *domain.Tree) error {
 	for _, stageSpec := range tree.Spec.Stages {
 		stage, err := c.stageFactory.New(stageSpec)
 		if err != nil {
-			return errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, stageSpec.Name), err)
+			return invalidSpec(stageSpec.Name, err)
 		}
 		if err = tree.GetNode(stageSpec.Name).AddStage(stage); err != nil {
-			return errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, stageSpec.Name), err)
+			return invalidSpec(stageSpec.Name, err)
 		}
 	}
 
 	for _, sinkSpec := range tree.Spec.Sinks {
 		sink, err := c.sinkFactory.New(sinkSpec)
 		if err != nil {
-			return errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, sinkSpec.Name), err)
+			return invalidSpec(sinkSpec.Name, err)
 		}
 		if err = tree.GetNode(sinkSpec.Name).AddSink(sink); err != nil {
-			return errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, sinkSpec.Name), err)
+			return invalidSpec(sinkSpec.Name, err)
 		}
 	}
 	return nil
@@ -347,4 +347,9 @@ func stopNodes(tree *domain.Tree, includeSource bool) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// invalidSpec reports that the spec of the named node is invalid.
+func invalidSpec(name string, err error) error {
+	return errors.Join(fmt.Errorf("%w: %s", domain.ErrInvalidStreamSpec, name), err)
 }

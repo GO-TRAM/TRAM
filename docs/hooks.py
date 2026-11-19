@@ -21,15 +21,20 @@ REPO = Path(__file__).resolve().parent.parent
 ASSETS = REPO / "docs" / "assets"
 SOURCE_URL = "https://codeberg.org/eljoth/tram/src/branch/main/"
 
+GETTING_STARTED = "guide/getting-started.md"
+PIPELINES = "guide/pipelines.md"
+API = "guide/api.md"
+COMPONENTS_INDEX = "components/index.md"
+
 # Title of every generated page, in the order of the navigation.
 TITLES = {
-    "guide/getting-started.md": "Getting Started",
-    "guide/pipelines.md": "Pipelines",
-    "guide/api.md": "HTTP API",
+    GETTING_STARTED: "Getting Started",
+    PIPELINES: "Pipelines",
+    API: "HTTP API",
     "guide/configuration.md": "Configuration Sources",
     "guide/metrics.md": "Metrics",
     "guide/security.md": "Security",
-    "components/index.md": "Components",
+    COMPONENTS_INDEX: "Components",
     "components/sources.md": "Sources",
     "components/stages.md": "Stages",
     "components/sinks.md": "Sinks",
@@ -46,26 +51,26 @@ UNWRAP = True
 SECTIONS = {
     "README.md": {
         "Tram: A Lightweight, Extensible Data Pipeline Framework": None,
-        "Quick Start": ("guide/getting-started.md", UNWRAP),
-        "API Endpoints": ("guide/api.md", False),
-        "Updating a Stream": ("guide/api.md", False),
+        "Quick Start": (GETTING_STARTED, UNWRAP),
+        "API Endpoints": (API, False),
+        "Updating a Stream": (API, False),
         "Metrics": ("guide/metrics.md", UNWRAP),
-        "Example API Usage": ("guide/getting-started.md", False),
-        "Core Concepts": ("guide/pipelines.md", UNWRAP),
-        "Available Components": ("guide/pipelines.md", False),
-        "Advanced Configuration": ("guide/pipelines.md", UNWRAP),
+        "Example API Usage": (GETTING_STARTED, False),
+        "Core Concepts": (PIPELINES, UNWRAP),
+        "Available Components": (PIPELINES, False),
+        "Advanced Configuration": (PIPELINES, UNWRAP),
         "Configuration Sources": ("guide/configuration.md", UNWRAP),
         "Security": ("guide/security.md", UNWRAP),
     },
     "COMPONENTS.md": {
-        "Components Documentation": ("components/index.md", UNWRAP),
+        "Components Documentation": (COMPONENTS_INDEX, UNWRAP),
         "Sources": ("components/sources.md", UNWRAP),
-        "Available Sources": ("components/index.md", False),
+        "Available Sources": (COMPONENTS_INDEX, False),
         "Stages": ("components/stages.md", UNWRAP),
-        "Available Stages": ("components/index.md", False),
+        "Available Stages": (COMPONENTS_INDEX, False),
         "Sinks": ("components/sinks.md", UNWRAP),
-        "Available Sinks": ("components/index.md", False),
-        "Notes": ("components/index.md", False),
+        "Available Sinks": (COMPONENTS_INDEX, False),
+        "Notes": (COMPONENTS_INDEX, False),
     },
     "internal/adapters/k8scrd/README.md": {
         "Kubernetes Operator": ("kubernetes.md", UNWRAP),
@@ -118,50 +123,63 @@ def split_all():
     return chunks, anchors
 
 
+class Splitter:
+    """Collects the parts of one document per page while reading its lines."""
+
+    def __init__(self, source, sections, anchors):
+        self.source, self.sections, self.anchors = source, sections, anchors
+        # Stack of enclosing sections: (level, page, shift of heading levels).
+        self.stack, self.page, self.shift = [], None, 0
+        self.current, self.parts = [], []
+
+    def flush(self):
+        if self.page and self.current:
+            self.parts.append((self.page, "".join(self.current)))
+        self.current.clear()
+
+    def place(self, level, title):
+        """Returns the page of a heading, the shift of its heading levels and
+        whether it is unwrapped."""
+        if title in self.sections:
+            target = self.sections[title]
+            page, unwrap = target if target else (None, False)
+            return page, (1 if unwrap else 2) - level, unwrap
+        if self.stack:
+            return self.stack[-1][1], self.stack[-1][2], False
+        return None, 0, False
+
+    def heading(self, level, title):
+        while self.stack and self.stack[-1][0] >= level:
+            self.stack.pop()
+        page, shift, unwrap = self.place(level, title)
+        self.stack.append((level, page, shift))
+
+        if page != self.page:
+            self.flush()
+            self.page = page
+        self.shift = shift
+        if not self.page:
+            return
+        # An unwrapped heading leaves no anchor; links to it go to the page.
+        self.anchors.setdefault((self.source, slugify(title, "-")), (self.page, not unwrap))
+        if not unwrap:
+            self.current.append("#" * (level + self.shift) + " " + title + "\n")
+
+
 def split(source, text, sections, anchors):
-    # Stack of enclosing sections: (level, page, shift of heading levels).
-    stack, page, shift, in_fence = [], None, 0, False
-    current, parts = [], []
-
-    def flush():
-        if page and current:
-            parts.append((page, "".join(current)))
-        current.clear()
-
+    splitter, in_fence = Splitter(source, sections, anchors), False
     for line in text.splitlines(keepends=True):
         heading = None if in_fence else HEADING.match(line)
         if FENCE.match(line):
             in_fence = not in_fence
         elif heading:
-            level, title = len(heading[1]), EMOJI.sub("", heading[2])
-            while stack and stack[-1][0] >= level:
-                stack.pop()
-            parent_page, parent_shift = (stack[-1][1], stack[-1][2]) if stack else (None, 0)
-
-            unwrap = False
-            if title in sections:
-                target = sections[title]
-                new_page, unwrap = target if target else (None, False)
-                new_shift = (1 if unwrap else 2) - level
-            else:
-                new_page, new_shift = parent_page, parent_shift
-            stack.append((level, new_page, new_shift))
-
-            if new_page != page:
-                flush()
-                page, shift = new_page, new_shift
-            shift = new_shift
-            if page:
-                # An unwrapped heading leaves no anchor; links to it go to the page.
-                anchors.setdefault((source, slugify(title, "-")), (page, not unwrap))
-            if page and not unwrap:
-                current.append("#" * (level + shift) + " " + title + "\n")
+            splitter.heading(len(heading[1]), EMOJI.sub("", heading[2]))
             continue
         elif RULE.match(line):
             continue
-        current.append(line)
-    flush()
-    return parts
+        splitter.current.append(line)
+    splitter.flush()
+    return splitter.parts
 
 
 def rewrite(source, page, text, anchors):

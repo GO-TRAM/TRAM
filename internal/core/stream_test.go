@@ -18,10 +18,12 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
+const updatedSink = "updated-sink"
+
 // mockSource implements domain.Source for testing
 type mockSource struct {
-	name       string
-	onRun      func(ctx context.Context) error
+	name        string
+	onRun       func(ctx context.Context) error
 	subscribers []domain.Subscriber
 	subMu       sync.Mutex
 }
@@ -32,7 +34,7 @@ func newMockSource(name string) *mockSource {
 
 func (m *mockSource) Name() string { return m.name }
 func (m *mockSource) From() string { return "" }
-func (m *mockSource) Stop() error { return nil }
+func (m *mockSource) Stop() error  { return nil }
 
 func (m *mockSource) Subscribe(subscriber domain.Subscriber) error {
 	m.subMu.Lock()
@@ -56,8 +58,8 @@ func (m *mockSource) SetSubscribers(subscribers []domain.Subscriber) {
 
 // mockStage implements domain.Stage for testing
 type mockStage struct {
-	name       string
-	onNotify   func(ctx context.Context, event *domain.Event) error
+	name        string
+	onNotify    func(ctx context.Context, event *domain.Event) error
 	subscribers []domain.Subscriber
 	subMu       sync.Mutex
 }
@@ -68,7 +70,7 @@ func newMockStage(name string) *mockStage {
 
 func (m *mockStage) Name() string { return m.name }
 func (m *mockStage) From() string { return "" }
-func (m *mockStage) Stop() error { return nil }
+func (m *mockStage) Stop() error  { return nil }
 
 func (m *mockStage) Subscribe(subscriber domain.Subscriber) error {
 	m.subMu.Lock()
@@ -86,10 +88,10 @@ func (m *mockStage) Notify(ctx context.Context, event *domain.Event) error {
 
 // mockSink implements domain.Sink for testing
 type mockSink struct {
-	name       string
-	onNotify   func(ctx context.Context, event *domain.Event) error
-	received   []*domain.Event
-	recvMu     sync.Mutex
+	name     string
+	onNotify func(ctx context.Context, event *domain.Event) error
+	received []*domain.Event
+	recvMu   sync.Mutex
 }
 
 func newMockSink(name string) *mockSink {
@@ -98,7 +100,7 @@ func newMockSink(name string) *mockSink {
 
 func (m *mockSink) Name() string { return m.name }
 func (m *mockSink) From() string { return "" }
-func (m *mockSink) Stop() error { return nil }
+func (m *mockSink) Stop() error  { return nil }
 
 func (m *mockSink) Notify(ctx context.Context, event *domain.Event) error {
 	m.recvMu.Lock()
@@ -128,10 +130,10 @@ func TestStreamHotSwappingBasic(t *testing.T) {
 	logger := slog.Default()
 
 	const (
-		testStreamName      = "test-stream"
-		initialSourceName   = "initial-source"
-		initialSinkName     = "initial-sink"
-		updatedSinkName     = "updated-sink"
+		testStreamName    = "test-stream"
+		initialSourceName = "initial-source"
+		initialSinkName   = "initial-sink"
+		updatedSinkName   = updatedSink
 	)
 
 	// Create initial stream spec
@@ -148,9 +150,11 @@ func TestStreamHotSwappingBasic(t *testing.T) {
 	}
 
 	// Create factories
-	sourceFactory := newMockFactory[domain.SourceSpec, domain.Source](func(spec domain.SourceSpec) (domain.Source, error) {
-		return newMockSource(spec.Name), nil
-	})
+	sourceFactory := newMockFactory[domain.SourceSpec, domain.Source](
+		func(spec domain.SourceSpec) (domain.Source, error) {
+			return newMockSource(spec.Name), nil
+		},
+	)
 
 	stageFactory := newMockFactory[domain.StageSpec, domain.Stage](func(spec domain.StageSpec) (domain.Stage, error) {
 		return newMockStage(spec.Name), nil
@@ -197,10 +201,10 @@ func TestStreamHotSwappingWithRunningSource(t *testing.T) {
 	logger := slog.Default()
 
 	const (
-		runningStreamName   = "running-stream"
-		runningSourceName   = "running-source"
-		runningSinkName     = "running-sink"
-		updatedSinkName     = "updated-sink"
+		runningStreamName = "running-stream"
+		runningSourceName = "running-source"
+		runningSinkName   = "running-sink"
+		updatedSinkName   = updatedSink
 	)
 
 	// Create stream spec
@@ -217,9 +221,11 @@ func TestStreamHotSwappingWithRunningSource(t *testing.T) {
 	}
 
 	// Create factories
-	sourceFactory := newMockFactory[domain.SourceSpec, domain.Source](func(spec domain.SourceSpec) (domain.Source, error) {
-		return newMockSource(spec.Name), nil
-	})
+	sourceFactory := newMockFactory[domain.SourceSpec, domain.Source](
+		func(spec domain.SourceSpec) (domain.Source, error) {
+			return newMockSource(spec.Name), nil
+		},
+	)
 
 	stageFactory := newMockFactory[domain.StageSpec, domain.Stage](func(spec domain.StageSpec) (domain.Stage, error) {
 		return newMockStage(spec.Name), nil
@@ -264,7 +270,7 @@ func TestStreamHotSwappingErrorRecovery(t *testing.T) {
 		errorRecoveryStreamName = "error-recovery-stream"
 		initialSourceName       = "initial-source"
 		initialSinkName         = "initial-sink"
-		updatedSinkName         = "updated-sink"
+		updatedSinkName         = updatedSink
 	)
 
 	// Create initial stream spec
@@ -281,9 +287,11 @@ func TestStreamHotSwappingErrorRecovery(t *testing.T) {
 	}
 
 	// Create factories
-	sourceFactory := newMockFactory[domain.SourceSpec, domain.Source](func(spec domain.SourceSpec) (domain.Source, error) {
-		return newMockSource(spec.Name), nil
-	})
+	sourceFactory := newMockFactory[domain.SourceSpec, domain.Source](
+		func(spec domain.SourceSpec) (domain.Source, error) {
+			return newMockSource(spec.Name), nil
+		},
+	)
 
 	stageFactory := newMockFactory[domain.StageSpec, domain.Stage](func(spec domain.StageSpec) (domain.Stage, error) {
 		return newMockStage(spec.Name), nil
@@ -325,12 +333,12 @@ func TestStreamHotSwappingWithStages(t *testing.T) {
 	logger := slog.Default()
 
 	const (
-		stageStreamName    = "stage-stream"
-		stageSourceName    = "stage-source"
-		stage1Name         = "stage-1"
-		stage2Name         = "stage-2"
-		stageSinkName      = "stage-sink"
-		stageSinkUpdated   = "stage-sink-updated"
+		stageStreamName  = "stage-stream"
+		stageSourceName  = "stage-source"
+		stage1Name       = "stage-1"
+		stage2Name       = "stage-2"
+		stageSinkName    = "stage-sink"
+		stageSinkUpdated = "stage-sink-updated"
 	)
 
 	// Create initial stream spec with stages
@@ -349,9 +357,11 @@ func TestStreamHotSwappingWithStages(t *testing.T) {
 	}
 
 	// Create factories
-	sourceFactory := newMockFactory[domain.SourceSpec, domain.Source](func(spec domain.SourceSpec) (domain.Source, error) {
-		return newMockSource(spec.Name), nil
-	})
+	sourceFactory := newMockFactory[domain.SourceSpec, domain.Source](
+		func(spec domain.SourceSpec) (domain.Source, error) {
+			return newMockSource(spec.Name), nil
+		},
+	)
 
 	stageFactory := newMockFactory[domain.StageSpec, domain.Stage](func(spec domain.StageSpec) (domain.Stage, error) {
 		return newMockStage(spec.Name), nil
@@ -417,9 +427,11 @@ func TestStreamHotSwappingWithMultipleSinks(t *testing.T) {
 	}
 
 	// Create factories
-	sourceFactory := newMockFactory[domain.SourceSpec, domain.Source](func(spec domain.SourceSpec) (domain.Source, error) {
-		return newMockSource(spec.Name), nil
-	})
+	sourceFactory := newMockFactory[domain.SourceSpec, domain.Source](
+		func(spec domain.SourceSpec) (domain.Source, error) {
+			return newMockSource(spec.Name), nil
+		},
+	)
 
 	stageFactory := newMockFactory[domain.StageSpec, domain.Stage](func(spec domain.StageSpec) (domain.Stage, error) {
 		return newMockStage(spec.Name), nil
@@ -460,7 +472,9 @@ type mockFactory[Spec any, Component any] struct {
 	createFunc func(spec Spec) (Component, error)
 }
 
-func newMockFactory[Spec any, Component any](createFunc func(spec Spec) (Component, error)) *mockFactory[Spec, Component] {
+func newMockFactory[Spec any, Component any](
+	createFunc func(spec Spec) (Component, error),
+) *mockFactory[Spec, Component] {
 	return &mockFactory[Spec, Component]{createFunc: createFunc}
 }
 

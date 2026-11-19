@@ -22,6 +22,8 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
+const metricsHaveNames = "metrics.resource_metrics.all(r, r.scope_metrics.all(s, s.metrics.all(m, m.name != '')))"
+
 type captureSubscriber struct{ events []*domain.Event }
 
 func (c *captureSubscriber) Name() string { return "capture" }
@@ -98,7 +100,7 @@ func TestDocumentedBehavior(t *testing.T) {
 		{
 			name: "metric names: accepted",
 			spec: map[string]any{
-				"metrics":     "metrics.resource_metrics.all(r, r.scope_metrics.all(s, s.metrics.all(m, m.name != '')))",
+				"metrics":     metricsHaveNames,
 				"on_mismatch": "drop",
 			},
 			event:         &domain.Event{Metrics: otlpgen.Metrics(shape)},
@@ -107,7 +109,7 @@ func TestDocumentedBehavior(t *testing.T) {
 		{
 			name: "metric names: dropped",
 			spec: map[string]any{
-				"metrics":     "metrics.resource_metrics.all(r, r.scope_metrics.all(s, s.metrics.all(m, m.name != '')))",
+				"metrics":     metricsHaveNames,
 				"on_mismatch": "drop",
 			},
 			event: &domain.Event{Metrics: unnamedMetric},
@@ -158,7 +160,7 @@ func TestDocumentedBehavior(t *testing.T) {
 		{
 			name: "drop removes only the failing signal type",
 			spec: map[string]any{
-				"metrics":     "metrics.resource_metrics.all(r, r.scope_metrics.all(s, s.metrics.all(m, m.name != '')))",
+				"metrics":     metricsHaveNames,
 				"on_mismatch": "drop",
 			},
 			event:         &domain.Event{Logs: otlpgen.Logs(shape), Metrics: unnamedMetric},

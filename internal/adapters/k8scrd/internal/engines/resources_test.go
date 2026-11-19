@@ -24,6 +24,12 @@ import (
 	"codeberg.org/eljoth/tram/internal/adapters/k8scrd/internal/engines"
 )
 
+const (
+	otlpHTTP    = "otlp-http"
+	hubMapper   = "telemetry-hub-mapper"
+	managerRole = "manager-role"
+)
+
 // typed converts an apply configuration to its typed object, the way the API
 // server reads it.
 func typed[T any](t *testing.T, config any) *T {
@@ -37,13 +43,13 @@ func typed[T any](t *testing.T, config any) *T {
 
 func testEngine() *tramv1alpha1.Engine {
 	e := &tramv1alpha1.Engine{}
-	e.Name, e.Namespace, e.UID = "telemetry-hub-mapper", "tram-nats-13", "engine-uid"
+	e.Name, e.Namespace, e.UID = hubMapper, "tram-nats-13", "engine-uid"
 	return e
 }
 
 func build(t *testing.T, e *tramv1alpha1.Engine, replicas *int32) engines.Resources {
 	t.Helper()
-	res, err := engines.BuildResources(e, "tram:default", "manager-role", replicas)
+	res, err := engines.BuildResources(e, "tram:default", managerRole, replicas)
 	require.NoError(t, err)
 	return res
 }
@@ -60,18 +66,18 @@ func TestBuildResourcesDefaults(t *testing.T) {
 	assert.Equal(t, new(int32(1)), deployment.Spec.Replicas)
 	assert.Equal(
 		t,
-		map[string]string{engines.EngineLabel: "telemetry-hub-mapper"},
+		map[string]string{engines.EngineLabel: hubMapper},
 		deployment.Spec.Selector.MatchLabels,
 	)
 	require.Len(t, deployment.OwnerReferences, 1)
 	assert.Equal(t, metav1.OwnerReference{
-		APIVersion: "io.tram.core/v1alpha1", Kind: "Engine", Name: "telemetry-hub-mapper", UID: "engine-uid",
+		APIVersion: "io.tram.core/v1alpha1", Kind: "Engine", Name: hubMapper, UID: "engine-uid",
 		Controller: new(true), BlockOwnerDeletion: new(true),
 	}, deployment.OwnerReferences[0])
 	assert.Equal(t, engines.FieldOwner, deployment.Labels[engines.ManagedByLabel])
 
 	pod := deployment.Spec.Template
-	assert.Equal(t, "telemetry-hub-mapper", pod.Labels[engines.EngineLabel])
+	assert.Equal(t, hubMapper, pod.Labels[engines.EngineLabel])
 	assert.Equal(t, name, pod.Spec.ServiceAccountName)
 	require.Len(t, pod.Spec.Containers, 1)
 	container := pod.Spec.Containers[0]
@@ -95,7 +101,7 @@ func TestBuildResourcesDefaults(t *testing.T) {
 
 	service := typed[corev1.Service](t, res.Service())
 	assert.Equal(t, corev1.ServiceTypeClusterIP, service.Spec.Type)
-	assert.Equal(t, map[string]string{engines.EngineLabel: "telemetry-hub-mapper"}, service.Spec.Selector)
+	assert.Equal(t, map[string]string{engines.EngineLabel: hubMapper}, service.Spec.Selector)
 	assert.Equal(t, []corev1.ServicePort{
 		{Name: "http", Port: 8080, TargetPort: intstr.FromString("http"), Protocol: corev1.ProtocolTCP},
 		{Name: "grpc", Port: 50051, TargetPort: intstr.FromString("grpc"), Protocol: corev1.ProtocolTCP},
@@ -103,7 +109,7 @@ func TestBuildResourcesDefaults(t *testing.T) {
 
 	binding := typed[rbacv1.RoleBinding](t, res.RoleBinding())
 	assert.Equal(t,
-		rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: "manager-role"}, binding.RoleRef)
+		rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: managerRole}, binding.RoleRef)
 	assert.Equal(t, []rbacv1.Subject{{Kind: rbacv1.ServiceAccountKind, Name: name, Namespace: ns}}, binding.Subjects)
 
 	assert.Equal(t, name, typed[corev1.ServiceAccount](t, res.ServiceAccount()).Name)
@@ -124,7 +130,7 @@ func TestBuildResourcesFromSpec(t *testing.T) {
 			TargetCPUUtilizationPercentage: new(int32(70)),
 		},
 		DisruptionBudget: &tramv1alpha1.DisruptionBudgetSpec{MaxUnavailable: new(intstr.FromInt32(1))},
-		Ports:            []tramv1alpha1.EnginePort{{Name: "otlp-http", Port: 4318}},
+		Ports:            []tramv1alpha1.EnginePort{{Name: otlpHTTP, Port: 4318}},
 		Service:          tramv1alpha1.ServiceSpec{Type: corev1.ServiceTypeLoadBalancer},
 		Runtime: tramv1alpha1.RuntimeSpec{
 			LogLevel: "debug",
@@ -148,7 +154,7 @@ func TestBuildResourcesFromSpec(t *testing.T) {
 					MaxSkew: 1, TopologyKey: "topology.kubernetes.io/zone",
 					WhenUnsatisfiable: corev1.ScheduleAnyway,
 					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{engines.EngineLabel: "telemetry-hub-mapper"},
+						MatchLabels: map[string]string{engines.EngineLabel: hubMapper},
 					},
 				}},
 				ImagePullSecrets: []corev1.LocalObjectReference{{Name: "registry"}},
@@ -165,7 +171,7 @@ func TestBuildResourcesFromSpec(t *testing.T) {
 	assert.Nil(t, deployment.Spec.Replicas, "the autoscaler sets the replicas")
 	pod := deployment.Spec.Template
 	assert.Equal(t, "telemetry", pod.Labels["team"])
-	assert.Equal(t, "telemetry-hub-mapper", pod.Labels[engines.EngineLabel])
+	assert.Equal(t, hubMapper, pod.Labels[engines.EngineLabel])
 	assert.Equal(t, map[string]string{"prometheus.io/scrape": "true"}, pod.Annotations)
 	assert.Equal(t, new(int64(30)), pod.Spec.TerminationGracePeriodSeconds)
 	assert.Equal(t, "telemetry-high", pod.Spec.PriorityClassName)
@@ -192,7 +198,7 @@ func TestBuildResourcesFromSpec(t *testing.T) {
 	assert.Equal(t, []corev1.ContainerPort{
 		{Name: "http", ContainerPort: 9080, Protocol: corev1.ProtocolTCP},
 		{Name: "grpc", ContainerPort: 9051, Protocol: corev1.ProtocolTCP},
-		{Name: "otlp-http", ContainerPort: 4318, Protocol: corev1.ProtocolTCP},
+		{Name: otlpHTTP, ContainerPort: 4318, Protocol: corev1.ProtocolTCP},
 	}, container.Ports, "pprof stays internal")
 
 	service := typed[corev1.Service](t, res.Service())
@@ -201,7 +207,7 @@ func TestBuildResourcesFromSpec(t *testing.T) {
 	for _, p := range service.Spec.Ports {
 		names = append(names, p.Name)
 	}
-	assert.Equal(t, []string{"http", "grpc", "otlp-http"}, names, "pprof is not exposed")
+	assert.Equal(t, []string{"http", "grpc", otlpHTTP}, names, "pprof is not exposed")
 
 	require.NotNil(t, res.HPA())
 	hpa := typed[autoscalingv2.HorizontalPodAutoscaler](t, res.HPA())
@@ -218,7 +224,7 @@ func TestBuildResourcesFromSpec(t *testing.T) {
 	pdb := typed[policyv1.PodDisruptionBudget](t, res.PDB())
 	assert.Equal(t, new(intstr.FromInt32(1)), pdb.Spec.MaxUnavailable)
 	assert.Nil(t, pdb.Spec.MinAvailable)
-	assert.Equal(t, map[string]string{engines.EngineLabel: "telemetry-hub-mapper"}, pdb.Spec.Selector.MatchLabels)
+	assert.Equal(t, map[string]string{engines.EngineLabel: hubMapper}, pdb.Spec.Selector.MatchLabels)
 }
 
 func TestBuildResourcesAutoscalingDisabledKeepsNoAutoscaler(t *testing.T) {
@@ -234,19 +240,19 @@ func TestBuildResourcesRejectsInvalidEngines(t *testing.T) {
 	t.Parallel()
 
 	noImage := testEngine()
-	_, err := engines.BuildResources(noImage, "", "manager-role", nil)
+	_, err := engines.BuildResources(noImage, "", managerRole, nil)
 	require.ErrorIs(t, err, engines.ErrInvalidEngine)
 	require.ErrorContains(t, err, "--engine-image")
 
 	collision := testEngine()
-	collision.Spec.Ports = []tramv1alpha1.EnginePort{{Name: "otlp-http", Port: 8080}}
-	_, err = engines.BuildResources(collision, "tram", "manager-role", nil)
+	collision.Spec.Ports = []tramv1alpha1.EnginePort{{Name: otlpHTTP, Port: 8080}}
+	_, err = engines.BuildResources(collision, "tram", managerRole, nil)
 	require.ErrorIs(t, err, engines.ErrInvalidEngine)
 	require.ErrorContains(t, err, "http and otlp-http both use 8080")
 
 	pprof := testEngine()
 	pprof.Spec.Runtime.Pprof = &tramv1alpha1.PprofSpec{Port: 50051}
-	_, err = engines.BuildResources(pprof, "tram", "manager-role", nil)
+	_, err = engines.BuildResources(pprof, "tram", managerRole, nil)
 	require.ErrorIs(t, err, engines.ErrInvalidEngine)
 }
 

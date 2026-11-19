@@ -221,6 +221,35 @@ func podSpecOf(
 	image, serviceAccount string,
 	ports []port,
 ) (*corev1ac.PodSpecApplyConfiguration, error) {
+	container, err := containerOf(engine, image, ports)
+	if err != nil {
+		return nil, err
+	}
+
+	pod := engine.Spec.PodTemplate.Spec
+	spec := corev1ac.PodSpec().
+		WithServiceAccountName(serviceAccount).
+		WithContainers(container)
+	if pod.TerminationGracePeriodSeconds != nil {
+		spec.WithTerminationGracePeriodSeconds(*pod.TerminationGracePeriodSeconds)
+	}
+	if pod.PriorityClassName != "" {
+		spec.WithPriorityClassName(pod.PriorityClassName)
+	}
+	if len(pod.NodeSelector) > 0 {
+		spec.WithNodeSelector(pod.NodeSelector)
+	}
+	if err = applyPodScheduling(pod, spec); err != nil {
+		return nil, err
+	}
+	return spec, nil
+}
+
+func containerOf(
+	engine *tramv1alpha1.Engine,
+	image string,
+	ports []port,
+) (*corev1ac.ContainerApplyConfiguration, error) {
 	container := corev1ac.Container().
 		WithName(containerName).
 		WithImage(image).
@@ -245,42 +274,34 @@ func podSpecOf(
 	if err != nil {
 		return nil, err
 	}
-	container.WithResources(resources)
+	return container.WithResources(resources), nil
+}
 
-	pod := engine.Spec.PodTemplate.Spec
-	spec := corev1ac.PodSpec().
-		WithServiceAccountName(serviceAccount).
-		WithContainers(container)
-	if pod.TerminationGracePeriodSeconds != nil {
-		spec.WithTerminationGracePeriodSeconds(*pod.TerminationGracePeriodSeconds)
+// applyPodScheduling copies the fields of the pod template that need a
+// conversion into apply configurations.
+func applyPodScheduling(pod tramv1alpha1.PodSpec, spec *corev1ac.PodSpecApplyConfiguration) error {
+	if err := convertInto(pod.Tolerations, &spec.Tolerations); err != nil {
+		return err
 	}
-	if pod.PriorityClassName != "" {
-		spec.WithPriorityClassName(pod.PriorityClassName)
+	if err := convertInto(pod.TopologySpreadConstraints, &spec.TopologySpreadConstraints); err != nil {
+		return err
 	}
-	if len(pod.NodeSelector) > 0 {
-		spec.WithNodeSelector(pod.NodeSelector)
+	if err := convertInto(pod.ImagePullSecrets, &spec.ImagePullSecrets); err != nil {
+		return err
 	}
-	if err = convertInto(pod.Tolerations, &spec.Tolerations); err != nil {
-		return nil, err
-	}
-	if err = convertInto(pod.TopologySpreadConstraints, &spec.TopologySpreadConstraints); err != nil {
-		return nil, err
-	}
-	if err = convertInto(pod.ImagePullSecrets, &spec.ImagePullSecrets); err != nil {
-		return nil, err
-	}
+	var err error
 	if pod.Affinity != nil {
 		if spec.Affinity, err = convert[corev1ac.AffinityApplyConfiguration](pod.Affinity); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	if pod.SecurityContext != nil {
 		if spec.SecurityContext, err = convert[corev1ac.PodSecurityContextApplyConfiguration](
 			pod.SecurityContext); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return spec, nil
+	return nil
 }
 
 func serviceOf(

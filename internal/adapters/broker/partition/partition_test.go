@@ -14,6 +14,11 @@ import (
 	"codeberg.org/eljoth/tram/internal/adapters/broker/partition"
 )
 
+const (
+	testTenant    = "tenant-123"
+	testTenantKey = "f9b77c12-7d75-039f-e93b-3f7224af834a"
+)
+
 // Fixed values, computed with the partitioning of the former NATS sink: data
 // partitioned before is still found, and consumers that compute the
 // partition themselves keep working. The hash must never change.
@@ -32,12 +37,12 @@ func TestOfIsStable(t *testing.T) {
 		{key: "a", count: 3, want: 1},
 		{key: "a", count: 8, want: 4},
 		{key: "a", count: 1024, want: 300},
-		{key: "tenant-123", count: 3, want: 0},
-		{key: "tenant-123", count: 8, want: 0},
-		{key: "tenant-123", count: 1024, want: 152},
-		{key: "f9b77c12-7d75-039f-e93b-3f7224af834a", count: 3, want: 2},
-		{key: "f9b77c12-7d75-039f-e93b-3f7224af834a", count: 8, want: 3},
-		{key: "f9b77c12-7d75-039f-e93b-3f7224af834a", count: 1024, want: 499},
+		{key: testTenant, count: 3, want: 0},
+		{key: testTenant, count: 8, want: 0},
+		{key: testTenant, count: 1024, want: 152},
+		{key: testTenantKey, count: 3, want: 2},
+		{key: testTenantKey, count: 8, want: 3},
+		{key: testTenantKey, count: 1024, want: 499},
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s/%d", tt.key, tt.count), func(t *testing.T) {

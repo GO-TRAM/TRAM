@@ -218,12 +218,7 @@ func arrived(events []*domain.Event) []string {
 	var out []string
 	for _, e := range events {
 		for _, rl := range e.Logs.GetResourceLogs() {
-			service := ""
-			for _, a := range rl.GetResource().GetAttributes() {
-				if a.GetKey() == "service.name" {
-					service = a.GetValue().GetStringValue()
-				}
-			}
+			service := serviceName(rl.GetResource().GetAttributes())
 			for _, sl := range rl.GetScopeLogs() {
 				for _, r := range sl.GetLogRecords() {
 					out = append(
@@ -235,6 +230,17 @@ func arrived(events []*domain.Event) []string {
 		}
 	}
 	return out
+}
+
+// serviceName returns the last service.name of the attributes.
+func serviceName(attributes []*commonpb.KeyValue) string {
+	service := ""
+	for _, a := range attributes {
+		if a.GetKey() == "service.name" {
+			service = a.GetValue().GetStringValue()
+		}
+	}
+	return service
 }
 
 func captureSinkSpec(name, from string) domain.SinkSpec {

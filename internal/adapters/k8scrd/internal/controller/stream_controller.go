@@ -76,12 +76,7 @@ func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		if client.IgnoreNotFound(err) != nil {
 			return ctrl.Result{}, fmt.Errorf("get stream: %w", err)
 		}
-		if deleteErr := r.Core.DeleteStream(ctx, name); deleteErr != nil &&
-			!errors.Is(deleteErr, domain.ErrStreamNotFound) {
-			return ctrl.Result{}, fmt.Errorf("delete from core: %w", deleteErr)
-		}
-		log.Info("Deleted Stream from core", "stream", name)
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, r.deleteFromCore(ctx, name)
 	}
 
 	if r.Engine != "" && !stream.RefersToEngine(r.Engine) {
@@ -95,14 +90,10 @@ func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	resolved, refersToValues, err := resolveRefs(ctx, r.references(), stream.Namespace, *desired)
 	if err != nil {
-		err = fmt.Errorf("resolve references: %w", err)
-		if errors.Is(err, ErrInvalidSecretRef) || errors.Is(err, ErrInvalidConfigMapSelector) {
-			err = reconcile.TerminalError(err)
-		}
 		// A missing secret or config map, or config maps that disagree, are
 		// retried, and creating or changing them reconciles the stream as
 		// well.
-		return ctrl.Result{}, errors.Join(r.setActive(ctx, &stream, false), err)
+		return ctrl.Result{}, errors.Join(r.setActive(ctx, &stream, false), resolveError(err))
 	}
 
 	current, err := r.Core.GetStream(ctx, name)
@@ -127,6 +118,25 @@ func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	return ctrl.Result{}, r.setActive(ctx, &stream, true)
+}
+
+// deleteFromCore removes a Stream that no longer exists from the core.
+func (r *StreamReconciler) deleteFromCore(ctx context.Context, name string) error {
+	if err := r.Core.DeleteStream(ctx, name); err != nil && !errors.Is(err, domain.ErrStreamNotFound) {
+		return fmt.Errorf("delete from core: %w", err)
+	}
+	logf.FromContext(ctx).Info("Deleted Stream from core", "stream", name)
+	return nil
+}
+
+// resolveError wraps an error from resolving references. Invalid references
+// are terminal; anything else is retried.
+func resolveError(err error) error {
+	err = fmt.Errorf("resolve references: %w", err)
+	if errors.Is(err, ErrInvalidSecretRef) || errors.Is(err, ErrInvalidConfigMapSelector) {
+		return reconcile.TerminalError(err)
+	}
+	return err
 }
 
 // stopUnreferenced stops a Stream whose spec.engineRefs do not name the

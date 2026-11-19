@@ -22,6 +22,12 @@ import (
 	tracespb "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
+const (
+	metricsServiceIsTest = "metrics.resource_metrics.all(resMetric, resMetric.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))"
+	tracesServiceIsTest  = "traces.resource_spans.all(resSpan, resSpan.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))"
+	serviceNameKey       = "service.name"
+)
+
 func TestCELValidator(t *testing.T) {
 	t.Parallel()
 
@@ -61,7 +67,7 @@ func TestCELValidator(t *testing.T) {
 										{
 											Attributes: []*commonpb.KeyValue{
 												{
-													Key: "service.name",
+													Key: serviceNameKey,
 													Value: &commonpb.AnyValue{
 														Value: &commonpb.AnyValue_StringValue{StringValue: "test"},
 													},
@@ -94,7 +100,7 @@ func TestCELValidator(t *testing.T) {
 										{
 											Attributes: []*commonpb.KeyValue{
 												{
-													Key: "service.name",
+													Key: serviceNameKey,
 													Value: &commonpb.AnyValue{
 														Value: &commonpb.AnyValue_StringValue{StringValue: "test"},
 													},
@@ -127,7 +133,7 @@ func TestCELValidator(t *testing.T) {
 										{
 											Attributes: []*commonpb.KeyValue{
 												{
-													Key: "service.name",
+													Key: serviceNameKey,
 													Value: &commonpb.AnyValue{
 														Value: &commonpb.AnyValue_StringValue{StringValue: "test"},
 													},
@@ -160,7 +166,7 @@ func TestCELValidator(t *testing.T) {
 										{
 											Attributes: []*commonpb.KeyValue{
 												{
-													Key: "service.name",
+													Key: serviceNameKey,
 													Value: &commonpb.AnyValue{
 														Value: &commonpb.AnyValue_StringValue{StringValue: "test2"},
 													},
@@ -206,7 +212,7 @@ func TestCELValidator(t *testing.T) {
 			name: "valid metrics with cel",
 			spec: domain.StageSpec{
 				Spec: map[string]any{
-					"metrics":     "metrics.resource_metrics.all(resMetric, resMetric.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))",
+					"metrics":     metricsServiceIsTest,
 					"on_mismatch": "drop",
 				},
 			},
@@ -217,7 +223,7 @@ func TestCELValidator(t *testing.T) {
 							Resource: &resourcepb.Resource{
 								Attributes: []*commonpb.KeyValue{
 									{
-										Key: "service.name",
+										Key: serviceNameKey,
 										Value: &commonpb.AnyValue{
 											Value: &commonpb.AnyValue_StringValue{StringValue: "test"},
 										},
@@ -234,7 +240,7 @@ func TestCELValidator(t *testing.T) {
 			name: "drop metrics",
 			spec: domain.StageSpec{
 				Spec: map[string]any{
-					"metrics":     "metrics.resource_metrics.all(resMetric, resMetric.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))",
+					"metrics":     metricsServiceIsTest,
 					"on_mismatch": "drop",
 				},
 			},
@@ -245,7 +251,7 @@ func TestCELValidator(t *testing.T) {
 							Resource: &resourcepb.Resource{
 								Attributes: []*commonpb.KeyValue{
 									{
-										Key: "service.name",
+										Key: serviceNameKey,
 										Value: &commonpb.AnyValue{
 											Value: &commonpb.AnyValue_StringValue{StringValue: "test2"},
 										},
@@ -262,7 +268,7 @@ func TestCELValidator(t *testing.T) {
 			name: "reject metrics",
 			spec: domain.StageSpec{
 				Spec: map[string]any{
-					"metrics":     "metrics.resource_metrics.all(resMetric, resMetric.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))",
+					"metrics":     metricsServiceIsTest,
 					"on_mismatch": "reject",
 				},
 			},
@@ -273,7 +279,7 @@ func TestCELValidator(t *testing.T) {
 							Resource: &resourcepb.Resource{
 								Attributes: []*commonpb.KeyValue{
 									{
-										Key: "service.name",
+										Key: serviceNameKey,
 										Value: &commonpb.AnyValue{
 											Value: &commonpb.AnyValue_StringValue{StringValue: "test2"},
 										},
@@ -317,7 +323,7 @@ func TestCELValidator(t *testing.T) {
 			name: "valid traces with cel",
 			spec: domain.StageSpec{
 				Spec: map[string]any{
-					"traces":      "traces.resource_spans.all(resSpan, resSpan.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))",
+					"traces":      tracesServiceIsTest,
 					"on_mismatch": "drop",
 				},
 			},
@@ -328,7 +334,7 @@ func TestCELValidator(t *testing.T) {
 							Resource: &resourcepb.Resource{
 								Attributes: []*commonpb.KeyValue{
 									{
-										Key: "service.name",
+										Key: serviceNameKey,
 										Value: &commonpb.AnyValue{
 											Value: &commonpb.AnyValue_StringValue{StringValue: "test"},
 										},
@@ -345,7 +351,7 @@ func TestCELValidator(t *testing.T) {
 			name: "drop traces",
 			spec: domain.StageSpec{
 				Spec: map[string]any{
-					"traces":      "traces.resource_spans.all(resSpan, resSpan.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))",
+					"traces":      tracesServiceIsTest,
 					"on_mismatch": "drop",
 				},
 			},
@@ -356,7 +362,7 @@ func TestCELValidator(t *testing.T) {
 							Resource: &resourcepb.Resource{
 								Attributes: []*commonpb.KeyValue{
 									{
-										Key: "service.name",
+										Key: serviceNameKey,
 										Value: &commonpb.AnyValue{
 											Value: &commonpb.AnyValue_StringValue{StringValue: "test2"},
 										},
@@ -373,7 +379,7 @@ func TestCELValidator(t *testing.T) {
 			name: "reject traces",
 			spec: domain.StageSpec{
 				Spec: map[string]any{
-					"traces":      "traces.resource_spans.all(resSpan, resSpan.resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'test'))",
+					"traces":      tracesServiceIsTest,
 					"on_mismatch": "reject",
 				},
 			},
@@ -384,7 +390,7 @@ func TestCELValidator(t *testing.T) {
 							Resource: &resourcepb.Resource{
 								Attributes: []*commonpb.KeyValue{
 									{
-										Key: "service.name",
+										Key: serviceNameKey,
 										Value: &commonpb.AnyValue{
 											Value: &commonpb.AnyValue_StringValue{StringValue: "test2"},
 										},

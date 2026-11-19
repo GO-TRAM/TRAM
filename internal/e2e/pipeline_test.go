@@ -20,6 +20,14 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
+const (
+	sinkA           = "sink-a"
+	sinkRest        = "sink-rest"
+	checkoutSubject = "checkout/e2e/c1"
+	customerA       = "customer-a"
+	otherCustomers  = "other-customers"
+)
+
 func batchStage(maxRecords int, timeout string) domain.StageSpec {
 	return domain.StageSpec{Name: "batch", Type: "batch", From: "in", Spec: map[string]any{
 		"max_records": float64(maxRecords),
@@ -48,7 +56,7 @@ func TestBatchMergesConcurrentRequests(t *testing.T) {
 	require.Len(t, events, 1, "the three requests are delivered as one batch")
 	assert.Len(t, events[0].Logs.GetResourceLogs(), 3, "each request keeps its resource entry")
 	assert.ElementsMatch(t, []string{
-		"checkout/e2e/c1", "checkout/e2e/c2",
+		checkoutSubject, "checkout/e2e/c2",
 		"cart/e2e/k1", "cart/e2e/k2",
 		"search/e2e/s1", "search/e2e/s2",
 	}, arrived(events))
@@ -62,7 +70,7 @@ func TestBatchFlushesAfterTimeout(t *testing.T) {
 	start := time.Now()
 	assert.Equal(t, http.StatusOK, p.post(t, request("checkout", rec{"c1", "A"}), 10*time.Second))
 	assert.GreaterOrEqual(t, time.Since(start), 50*time.Millisecond, "the request waits for the batch timeout")
-	assert.Equal(t, []string{"checkout/e2e/c1"}, arrived(p.sinks.sink(t, "out").received()))
+	assert.Equal(t, []string{checkoutSubject}, arrived(p.sinks.sink(t, "out").received()))
 }
 
 func TestCancelledRequestIsNotDelivered(t *testing.T) {
@@ -93,12 +101,12 @@ func TestSplitByCustomer(t *testing.T) {
 
 	p := newPipeline(t,
 		[]domain.StageSpec{
-			customerFilter("customer-a", "in", isCustomerA),
-			customerFilter("other-customers", "in", "!"+isCustomerA),
+			customerFilter(customerA, "in", isCustomerA),
+			customerFilter(otherCustomers, "in", "!"+isCustomerA),
 		},
 		[]domain.SinkSpec{
-			captureSinkSpec("sink-a", "customer-a"),
-			captureSinkSpec("sink-rest", "other-customers"),
+			captureSinkSpec(sinkA, customerA),
+			captureSinkSpec(sinkRest, otherCustomers),
 		})
 
 	assert.Equal(
@@ -110,21 +118,21 @@ func TestSplitByCustomer(t *testing.T) {
 	assert.Equal(
 		t,
 		[]string{"shop/e2e/r1", "shop/e2e/r3"},
-		arrived(p.sinks.sink(t, "sink-a").received()),
+		arrived(p.sinks.sink(t, sinkA).received()),
 		"order within the branch is kept",
 	)
-	assert.Equal(t, []string{"shop/e2e/r2", "shop/e2e/r4"}, arrived(p.sinks.sink(t, "sink-rest").received()))
+	assert.Equal(t, []string{"shop/e2e/r2", "shop/e2e/r4"}, arrived(p.sinks.sink(t, sinkRest).received()))
 }
 
 func TestSplitWithoutMatchesDeliversNothing(t *testing.T) {
 	t.Parallel()
 
 	p := newPipeline(t,
-		[]domain.StageSpec{customerFilter("customer-a", "in", isCustomerA)},
-		[]domain.SinkSpec{captureSinkSpec("sink-a", "customer-a")})
+		[]domain.StageSpec{customerFilter(customerA, "in", isCustomerA)},
+		[]domain.SinkSpec{captureSinkSpec(sinkA, customerA)})
 
 	assert.Equal(t, http.StatusOK, p.post(t, request("shop", rec{"r1", "B"}), 10*time.Second))
-	assert.Empty(t, p.sinks.sink(t, "sink-a").received(), "a branch without matching records receives no event")
+	assert.Empty(t, p.sinks.sink(t, sinkA).received(), "a branch without matching records receives no event")
 }
 
 func TestBatchThenSplit(t *testing.T) {
@@ -133,12 +141,12 @@ func TestBatchThenSplit(t *testing.T) {
 	p := newPipeline(t,
 		[]domain.StageSpec{
 			batchStage(4, "5s"),
-			customerFilter("customer-a", "batch", isCustomerA),
-			customerFilter("other-customers", "batch", "!"+isCustomerA),
+			customerFilter(customerA, "batch", isCustomerA),
+			customerFilter(otherCustomers, "batch", "!"+isCustomerA),
 		},
 		[]domain.SinkSpec{
-			captureSinkSpec("sink-a", "customer-a"),
-			captureSinkSpec("sink-rest", "other-customers"),
+			captureSinkSpec(sinkA, customerA),
+			captureSinkSpec(sinkRest, otherCustomers),
 		})
 
 	codes := p.postConcurrently(t,
@@ -147,11 +155,11 @@ func TestBatchThenSplit(t *testing.T) {
 	)
 	assert.Equal(t, []int{http.StatusOK, http.StatusOK}, codes)
 
-	toA := p.sinks.sink(t, "sink-a").received()
-	toRest := p.sinks.sink(t, "sink-rest").received()
+	toA := p.sinks.sink(t, sinkA).received()
+	toRest := p.sinks.sink(t, sinkRest).received()
 	require.Len(t, toA, 1, "each branch receives the batch as one event")
 	require.Len(t, toRest, 1)
-	assert.ElementsMatch(t, []string{"checkout/e2e/c1", "cart/e2e/k2"}, arrived(toA))
+	assert.ElementsMatch(t, []string{checkoutSubject, "cart/e2e/k2"}, arrived(toA))
 	assert.ElementsMatch(t, []string{"checkout/e2e/c2", "cart/e2e/k1"}, arrived(toRest))
 }
 

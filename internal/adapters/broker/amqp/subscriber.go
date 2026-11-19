@@ -82,13 +82,12 @@ func (s *subscriber) Next(ctx context.Context) (broker.Delivery, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if s.receiver == nil {
-			if err := s.attach(ctx); err != nil {
-				if waitErr := s.wait(ctx, err); waitErr != nil {
-					return nil, waitErr
-				}
-				continue
-			}
+		attached, err := s.ensureAttached(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if !attached {
+			continue
 		}
 		msg, err := s.receiver.Receive(ctx, nil)
 		if err == nil {
@@ -106,6 +105,19 @@ func (s *subscriber) Next(ctx context.Context) (broker.Delivery, error) {
 			return nil, err
 		}
 	}
+}
+
+// ensureAttached attaches a receiver if none is attached. It reports false
+// after a failed attach was waited out, so the caller tries again; the error
+// is set only when ctx ends while waiting.
+func (s *subscriber) ensureAttached(ctx context.Context) (bool, error) {
+	if s.receiver != nil {
+		return true, nil
+	}
+	if err := s.attach(ctx); err != nil {
+		return false, s.wait(ctx, err)
+	}
+	return true, nil
 }
 
 // wait logs why receiving failed and waits a growing delay before the next

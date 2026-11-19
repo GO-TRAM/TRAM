@@ -15,6 +15,8 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
+const secretValue = "secret-value"
+
 // outSpecs returns the specs the sink "out" was created with.
 func (r *registry) outSpecs() []map[string]any {
 	r.mu.Lock()
@@ -42,11 +44,11 @@ func TestUpsertResolvedStreamBuildsResolvedAndShowsSpec(t *testing.T) {
 	events := make(chan domain.StreamSpecWatchEvent, 1)
 	require.NoError(t, c.Watch(t.Context(), events))
 
-	spec, resolved := referring("secret-value")
+	spec, resolved := referring(secretValue)
 	upserted, err := c.UpsertResolvedStream(t.Context(), spec, resolved)
 	require.NoError(t, err)
 
-	assert.Equal(t, []map[string]any{{"token": "secret-value"}}, reg.outSpecs(), "components get the values")
+	assert.Equal(t, []map[string]any{{"token": secretValue}}, reg.outSpecs(), "components get the values")
 
 	assert.True(t, spec.Equal(*upserted), "the upsert returns the spec")
 	got, err := c.GetStream(t.Context(), "stream")
@@ -58,7 +60,7 @@ func TestUpsertResolvedStreamBuildsResolvedAndShowsSpec(t *testing.T) {
 	assert.True(t, spec.Equal(all[0]), "GetStreams returns the spec")
 	event := <-events
 	assert.True(t, spec.Equal(event.StreamSpec), "watchers like the config sync get the spec")
-	assert.NotContains(t, event.StreamSpec.Sinks[0].Spec, "secret-value")
+	assert.NotContains(t, event.StreamSpec.Sinks[0].Spec, secretValue)
 }
 
 func TestUpsertResolvedStreamRestartsOnChangedValue(t *testing.T) {

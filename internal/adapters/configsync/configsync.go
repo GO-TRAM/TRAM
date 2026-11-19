@@ -215,9 +215,32 @@ func (c *ConfigSync) sync(ctx context.Context) (int, error) {
 		return 0, err
 	}
 
+	if err = c.deleteRemovedStreams(ctx, files, unreadable); err != nil {
+		return 0, err
+	}
+
+	for name := range c.failing {
+		if _, ok := files[name]; !ok {
+			delete(c.failing, name)
+		}
+	}
+
+	unapplied := c.applyStreamFiles(ctx, files)
+	c.unapplied = unapplied
+	return unapplied, nil
+}
+
+// deleteRemovedStreams deletes the configured streams that have no file
+// anymore. Streams whose file cannot be read are kept. Must be called with
+// syncMu held.
+func (c *ConfigSync) deleteRemovedStreams(
+	ctx context.Context,
+	files map[string]Stream,
+	unreadable map[string]struct{},
+) error {
 	configured, err := c.core.GetStreams(ctx)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	for _, stream := range configured {
 		if _, ok := files[stream.Name]; ok {
@@ -238,16 +261,15 @@ func (c *ConfigSync) sync(ctx context.Context) (int, error) {
 			)
 		}
 	}
+	return nil
+}
 
-	for name := range c.failing {
-		if _, ok := files[name]; !ok {
-			delete(c.failing, name)
-		}
-	}
-
+// applyStreamFiles applies every stream file and returns how many could not
+// be applied. Must be called with syncMu held.
+func (c *ConfigSync) applyStreamFiles(ctx context.Context, files map[string]Stream) int {
 	unapplied := 0
 	for name, file := range files {
-		if err = c.apply(ctx, name, file); err != nil {
+		if err := c.apply(ctx, name, file); err != nil {
 			unapplied++
 			c.logFailure(ctx, name, err)
 			continue
@@ -257,8 +279,7 @@ func (c *ConfigSync) sync(ctx context.Context) (int, error) {
 			delete(c.failing, name)
 		}
 	}
-	c.unapplied = unapplied
-	return unapplied, nil
+	return unapplied
 }
 
 // logFailure logs a stream that could not be applied, the first time and then

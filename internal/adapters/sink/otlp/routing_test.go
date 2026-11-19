@@ -57,26 +57,37 @@ func newDestination(t *testing.T, status int) *destination {
 
 // names returns the log bodies or metric names of an OTLP request body.
 func names(path string, body []byte) []string {
-	var out []string
 	switch path {
 	case "/v1/logs":
-		var logs logspb.LogsData
-		_ = proto.Unmarshal(body, &logs)
-		for _, rl := range logs.GetResourceLogs() {
-			for _, sl := range rl.GetScopeLogs() {
-				for _, record := range sl.GetLogRecords() {
-					out = append(out, record.GetBody().GetStringValue())
-				}
+		return logBodies(body)
+	case "/v1/metrics":
+		return metricNames(body)
+	}
+	return nil
+}
+
+func logBodies(body []byte) []string {
+	var out []string
+	var logs logspb.LogsData
+	_ = proto.Unmarshal(body, &logs)
+	for _, rl := range logs.GetResourceLogs() {
+		for _, sl := range rl.GetScopeLogs() {
+			for _, record := range sl.GetLogRecords() {
+				out = append(out, record.GetBody().GetStringValue())
 			}
 		}
-	case "/v1/metrics":
-		var metrics metricspb.MetricsData
-		_ = proto.Unmarshal(body, &metrics)
-		for _, rm := range metrics.GetResourceMetrics() {
-			for _, sm := range rm.GetScopeMetrics() {
-				for _, m := range sm.GetMetrics() {
-					out = append(out, m.GetName())
-				}
+	}
+	return out
+}
+
+func metricNames(body []byte) []string {
+	var out []string
+	var metrics metricspb.MetricsData
+	_ = proto.Unmarshal(body, &metrics)
+	for _, rm := range metrics.GetResourceMetrics() {
+		for _, sm := range rm.GetScopeMetrics() {
+			for _, m := range sm.GetMetrics() {
+				out = append(out, m.GetName())
 			}
 		}
 	}

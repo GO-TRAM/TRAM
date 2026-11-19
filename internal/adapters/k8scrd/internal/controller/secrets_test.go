@@ -22,6 +22,8 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
+const otlpAuth = "otlp-auth"
+
 const tokenRef = `{"valueFrom":{"secretKeyRef":{"name":"otlp-auth","key":"token"}}}`
 
 func ref(name, key string) map[string]any {
@@ -29,7 +31,7 @@ func ref(name, key string) map[string]any {
 }
 
 func secret(namespace string, data map[string]string) *corev1.Secret {
-	s := &corev1.Secret{Namespace: namespace, Name: "otlp-auth", Data: map[string][]byte{}}
+	s := &corev1.Secret{Namespace: namespace, Name: otlpAuth, Data: map[string][]byte{}}
 	for k, v := range data {
 		s.Data[k] = []byte(v)
 	}
@@ -98,10 +100,10 @@ func TestReplaceRefsRejectsInvalidReferences(t *testing.T) {
 	t.Parallel()
 
 	for _, selector := range []any{
-		"otlp-auth",
-		map[string]any{"name": "otlp-auth"},
+		otlpAuth,
+		map[string]any{"name": otlpAuth},
 		map[string]any{"key": "token"},
-		map[string]any{"name": "otlp-auth", "key": "token", "optional": true},
+		map[string]any{"name": otlpAuth, "key": "token", "optional": true},
 	} {
 		in := map[string]any{"token": map[string]any{"valueFrom": map[string]any{"secretKeyRef": selector}}}
 		_, _, err := controller.ReplaceRefs(in, func(string, string) any { return "" })
@@ -116,7 +118,7 @@ func TestSecretNames(t *testing.T) {
 	s.Spec.Source.Spec = &runtime.RawExtension{Raw: []byte(
 		`{"url":{"valueFrom":{"secretKeyRef":{"name":"nats","key":"url"}}},` +
 			`"again":{"valueFrom":{"secretKeyRef":{"name":"otlp-auth","key":"x"}}}}`)}
-	assert.ElementsMatch(t, []string{"nats", "otlp-auth"}, controller.SecretNames(s))
+	assert.ElementsMatch(t, []string{"nats", otlpAuth}, controller.SecretNames(s))
 	assert.Empty(t, controller.SecretNames(newStream("ns")))
 }
 
@@ -132,7 +134,7 @@ func TestReconcileResolvesSecrets(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "Bearer s3cr3t", header(t, core.resolved["ns.s"]), "the stream runs with the value")
-	assert.Equal(t, ref("otlp-auth", "token"), header(t, core.streams["ns.s"]), "the core shows the reference")
+	assert.Equal(t, ref(otlpAuth, "token"), header(t, core.streams["ns.s"]), "the core shows the reference")
 }
 
 func TestReconcileAppliesChangedSecret(t *testing.T) {

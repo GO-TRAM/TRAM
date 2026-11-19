@@ -27,6 +27,13 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
+const (
+	jsonContentType     = "application/json"
+	logsPath            = "/v1/logs"
+	contentTypeHeader   = "Content-Type"
+	protobufContentType = "application/x-protobuf"
+)
+
 type recorder struct {
 	events []*domain.Event
 	err    error
@@ -80,7 +87,7 @@ func TestHandleLogs(t *testing.T) {
 		{
 			name:         "protobuf content type",
 			body:         valid,
-			contentType:  "application/x-protobuf",
+			contentType:  protobufContentType,
 			expectStatus: http.StatusOK,
 			expectEvents: 1,
 		},
@@ -101,13 +108,13 @@ func TestHandleLogs(t *testing.T) {
 		{
 			name:         "malformed JSON",
 			body:         []byte(`{"resourceLogs": [`),
-			contentType:  "application/json",
+			contentType:  jsonContentType,
 			expectStatus: http.StatusUnprocessableEntity,
 		},
 		{
 			name:         "JSON trace ID that is not hex",
 			body:         []byte(`{"resourceLogs":[{"scopeLogs":[{"logRecords":[{"traceId":"not hex"}]}]}]}`),
-			contentType:  "application/json",
+			contentType:  jsonContentType,
 			expectStatus: http.StatusUnprocessableEntity,
 		},
 		{name: "too large", body: make([]byte, otlp.MaxBodyBytes+1), expectStatus: http.StatusRequestEntityTooLarge},
@@ -159,9 +166,9 @@ func TestHandleLogs(t *testing.T) {
 
 			o, rec := newSource(t, c.subscriberErr)
 
-			r := httptest.NewRequest(http.MethodPost, "/v1/logs", bytes.NewReader(c.body))
+			r := httptest.NewRequest(http.MethodPost, logsPath, bytes.NewReader(c.body))
 			if c.contentType != "" {
-				r.Header.Set("Content-Type", c.contentType)
+				r.Header.Set(contentTypeHeader, c.contentType)
 			}
 			if c.contentEncoding != "" {
 				r.Header.Set("Content-Encoding", c.contentEncoding)
@@ -188,13 +195,13 @@ func TestHandleLogsProtobufResponse(t *testing.T) {
 	body, err := proto.Marshal(&logspb.LogsData{ResourceLogs: []*logspb.ResourceLogs{{}}})
 	require.NoError(t, err)
 
-	r := httptest.NewRequest(http.MethodPost, "/v1/logs", bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/x-protobuf")
+	r := httptest.NewRequest(http.MethodPost, logsPath, bytes.NewReader(body))
+	r.Header.Set(contentTypeHeader, protobufContentType)
 	w := httptest.NewRecorder()
 	otlp.HandleLogs(o, w, r)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "application/x-protobuf", w.Header().Get("Content-Type"))
+	assert.Equal(t, protobufContentType, w.Header().Get(contentTypeHeader))
 	assert.Empty(t, w.Body.Bytes(), "an empty response message encodes to no bytes")
 }
 
@@ -215,13 +222,14 @@ func TestHandleLogsJSON(t *testing.T) {
 	}]}]}]}`
 
 	o, rec := newSource(t, nil)
-	r := httptest.NewRequest(http.MethodPost, "/v1/logs", bytes.NewReader([]byte(body)))
-	r.Header.Set("Content-Type", "application/json; charset=utf-8")
+	r := httptest.NewRequest(http.MethodPost, logsPath, bytes.NewReader([]byte(body)))
+	r.Header.Set(contentTypeHeader, "application/json; charset=utf-8")
 	w := httptest.NewRecorder()
 	otlp.HandleLogs(o, w, r)
 
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	//nolint:testifylint // A content type, not a JSON document.
+	assert.Equal(t, jsonContentType, w.Header().Get(contentTypeHeader))
 	assert.JSONEq(t, "{}", w.Body.String())
 
 	require.Len(t, rec.events, 1)
@@ -270,8 +278,8 @@ func TestHandleLogsRecordsRequestSize(t *testing.T) {
 			t.Parallel()
 
 			o, rec := newSource(t, nil)
-			r := httptest.NewRequest(http.MethodPost, "/v1/logs", bytes.NewReader(c.body))
-			r.Header.Set("Content-Type", "application/x-protobuf")
+			r := httptest.NewRequest(http.MethodPost, logsPath, bytes.NewReader(c.body))
+			r.Header.Set(contentTypeHeader, protobufContentType)
 			if c.encoding != "" {
 				r.Header.Set("Content-Encoding", c.encoding)
 			}

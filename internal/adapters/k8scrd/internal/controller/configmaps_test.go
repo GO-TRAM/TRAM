@@ -22,13 +22,19 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
+const (
+	routingA   = "routing-a"
+	routingB   = "routing-b"
+	tableLabel = "tram.io/table"
+)
+
 const routingSelector = `{"valueFrom":{"configMapSelector":{"matchLabels":{"tram.io/table":"routing"}}}}`
 
 func configMap(namespace, name string, labels map[string]string, data map[string]string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{Namespace: namespace, Name: name, Labels: labels, Data: data}
 }
 
-func routing() map[string]string { return map[string]string{"tram.io/table": "routing"} }
+func routing() map[string]string { return map[string]string{tableLabel: "routing"} }
 
 // selectingStream is in namespace ns and has a value_map stage whose table is
 // given by table.
@@ -124,10 +130,10 @@ func TestReconcileMergesSelectedConfigMaps(t *testing.T) {
 
 	r, core, _ := configMapReconciler(t,
 		selectingStream(routingSelector),
-		configMap("ns", "routing-a", routing(), map[string]string{"t1": "r1", "t2": "r1"}),
-		configMap("ns", "routing-b", routing(), map[string]string{"t3": "r2", "t2": "r1"}),
+		configMap("ns", routingA, routing(), map[string]string{"t1": "r1", "t2": "r1"}),
+		configMap("ns", routingB, routing(), map[string]string{"t3": "r2", "t2": "r1"}),
 		// Not selected: other labels, or another namespace.
-		configMap("ns", "other", map[string]string{"tram.io/table": "other"}, map[string]string{"t9": "x"}),
+		configMap("ns", "other", map[string]string{tableLabel: "other"}, map[string]string{"t9": "x"}),
 		configMap("other", "routing-c", routing(), map[string]string{"t8": "x"}),
 	)
 	_, err := r.Reconcile(t.Context(), request("ns"))
@@ -136,7 +142,7 @@ func TestReconcileMergesSelectedConfigMaps(t *testing.T) {
 	assert.Equal(t, map[string]any{"t1": "r1", "t2": "r1", "t3": "r2"}, table(t, core.resolved["ns.s"]),
 		"the stream runs with the merged table; a key with the same value in two config maps is fine")
 	assert.Equal(t, map[string]any{"valueFrom": map[string]any{"configMapSelector": map[string]any{
-		"matchLabels": map[string]any{"tram.io/table": "routing"},
+		"matchLabels": map[string]any{tableLabel: "routing"},
 	}}}, table(t, core.streams["ns.s"]), "the core shows the selector")
 }
 
@@ -145,12 +151,12 @@ func TestReconcileAppliesChangedConfigMap(t *testing.T) {
 
 	r, core, c := configMapReconciler(t,
 		selectingStream(routingSelector),
-		configMap("ns", "routing-a", routing(), map[string]string{"t1": "r1"}),
+		configMap("ns", routingA, routing(), map[string]string{"t1": "r1"}),
 	)
 	_, err := r.Reconcile(t.Context(), request("ns"))
 	require.NoError(t, err)
 
-	require.NoError(t, c.Create(t.Context(), configMap("ns", "routing-b", routing(), map[string]string{"t2": "r2"})))
+	require.NoError(t, c.Create(t.Context(), configMap("ns", routingB, routing(), map[string]string{"t2": "r2"})))
 	_, err = r.Reconcile(t.Context(), request("ns"))
 	require.NoError(t, err)
 	assert.Equal(t, map[string]any{"t1": "r1", "t2": "r2"}, table(t, core.resolved["ns.s"]))
@@ -178,8 +184,8 @@ func TestReconcileRetriesUnresolvableConfigMaps(t *testing.T) {
 			name: "conflicting values",
 			objs: []client.Object{
 				selectingStream(routingSelector),
-				configMap("ns", "routing-a", routing(), map[string]string{"t1": "r1"}),
-				configMap("ns", "routing-b", routing(), map[string]string{"t1": "r2"}),
+				configMap("ns", routingA, routing(), map[string]string{"t1": "r1"}),
+				configMap("ns", routingB, routing(), map[string]string{"t1": "r2"}),
 			},
 			want: controller.ErrConfigMapConflict,
 		},
@@ -206,8 +212,8 @@ func TestReconcileConflictNamesBothConfigMaps(t *testing.T) {
 
 	r, _, _ := configMapReconciler(t,
 		selectingStream(routingSelector),
-		configMap("ns", "routing-b", routing(), map[string]string{"t1": "r2"}),
-		configMap("ns", "routing-a", routing(), map[string]string{"t1": "r1"}),
+		configMap("ns", routingB, routing(), map[string]string{"t1": "r2"}),
+		configMap("ns", routingA, routing(), map[string]string{"t1": "r1"}),
 	)
 	_, err := r.Reconcile(t.Context(), request("ns"))
 	require.ErrorIs(t, err, controller.ErrConfigMapConflict)
@@ -235,7 +241,7 @@ func TestStreamsSelecting(t *testing.T) {
 		want      []string
 	}{
 		{name: "matching labels", namespace: "ns", labelSets: []map[string]string{routing()}, want: []string{"s"}},
-		{name: "other labels", namespace: "ns", labelSets: []map[string]string{{"tram.io/table": "x"}}},
+		{name: "other labels", namespace: "ns", labelSets: []map[string]string{{tableLabel: "x"}}},
 		{name: "other namespace", namespace: "other", labelSets: []map[string]string{routing()}},
 		{
 			name:      "label removed: the old labels match",

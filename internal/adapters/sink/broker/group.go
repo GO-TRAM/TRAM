@@ -151,12 +151,19 @@ func (s *Sink) group(event *domain.Event, check func(string) error) ([]message, 
 	}
 
 	// Checked once per destination rather than for every record.
-	for _, m := range messages {
-		if err := check(m.destination); err != nil {
-			return nil, err
-		}
+	if err := checkDestinations(messages, check); err != nil {
+		return nil, err
 	}
 	return messages, nil
+}
+
+func checkDestinations(messages []message, check func(string) error) error {
+	for _, m := range messages {
+		if err := check(m.destination); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func appendMessages[D any](messages []message, parts []domain.Part[D], event func(D) *domain.Event) []message {

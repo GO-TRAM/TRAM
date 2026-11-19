@@ -25,6 +25,8 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
+const tenantIDKey = "tenant.id"
+
 func kv(key, value string) *commonpb.KeyValue {
 	return &commonpb.KeyValue{
 		Key:   key,
@@ -103,11 +105,11 @@ func TestDuplicateKey(t *testing.T) {
 		{
 			name: "same key in different lists",
 			event: logsEvent(
-				logsParts{resource: kvs("tenant.id", "A"), scope: kvs("tenant.id", "A"), record: kvs("tenant.id", "B")},
+				logsParts{resource: kvs(tenantIDKey, "A"), scope: kvs(tenantIDKey, "A"), record: kvs(tenantIDKey, "B")},
 			),
 		},
 		{name: "empty event", event: &domain.Event{}},
-		{name: "record", event: logsEvent(logsParts{record: twice("tenant.id")}), duplicate: "tenant.id"},
+		{name: "record", event: logsEvent(logsParts{record: twice(tenantIDKey)}), duplicate: tenantIDKey},
 		{name: "resource", event: logsEvent(logsParts{resource: twice("service.name")}), duplicate: "service.name"},
 		{name: "scope", event: logsEvent(logsParts{scope: twice("library")}), duplicate: "library"},
 		{
@@ -145,43 +147,43 @@ func TestDuplicateKey(t *testing.T) {
 			event: metricsEvent(
 				&metricspb.Metric{
 					Data: &metricspb.Metric_Gauge{
-						Gauge: &metricspb.Gauge{DataPoints: numberPoints(twice("tenant.id"))},
+						Gauge: &metricspb.Gauge{DataPoints: numberPoints(twice(tenantIDKey))},
 					},
 				},
 			),
-			duplicate: "tenant.id",
+			duplicate: tenantIDKey,
 		},
 		{
 			name: "sum data point",
 			event: metricsEvent(
 				&metricspb.Metric{
-					Data: &metricspb.Metric_Sum{Sum: &metricspb.Sum{DataPoints: numberPoints(twice("tenant.id"))}},
+					Data: &metricspb.Metric_Sum{Sum: &metricspb.Sum{DataPoints: numberPoints(twice(tenantIDKey))}},
 				},
 			),
-			duplicate: "tenant.id",
+			duplicate: tenantIDKey,
 		},
 		{
 			name: "histogram data point",
 			event: metricsEvent(&metricspb.Metric{Data: &metricspb.Metric_Histogram{Histogram: &metricspb.Histogram{
-				DataPoints: []*metricspb.HistogramDataPoint{{Attributes: twice("tenant.id")}},
+				DataPoints: []*metricspb.HistogramDataPoint{{Attributes: twice(tenantIDKey)}},
 			}}}),
-			duplicate: "tenant.id",
+			duplicate: tenantIDKey,
 		},
 		{
 			name: "exponential histogram data point",
 			event: metricsEvent(&metricspb.Metric{Data: &metricspb.Metric_ExponentialHistogram{
 				ExponentialHistogram: &metricspb.ExponentialHistogram{
-					DataPoints: []*metricspb.ExponentialHistogramDataPoint{{Attributes: twice("tenant.id")}},
+					DataPoints: []*metricspb.ExponentialHistogramDataPoint{{Attributes: twice(tenantIDKey)}},
 				},
 			}}),
-			duplicate: "tenant.id",
+			duplicate: tenantIDKey,
 		},
 		{
 			name: "summary data point",
 			event: metricsEvent(&metricspb.Metric{Data: &metricspb.Metric_Summary{Summary: &metricspb.Summary{
-				DataPoints: []*metricspb.SummaryDataPoint{{Attributes: twice("tenant.id")}},
+				DataPoints: []*metricspb.SummaryDataPoint{{Attributes: twice(tenantIDKey)}},
 			}}}),
-			duplicate: "tenant.id",
+			duplicate: tenantIDKey,
 		},
 		{
 			name: "exemplar",
@@ -193,7 +195,7 @@ func TestDuplicateKey(t *testing.T) {
 			duplicate: "trace",
 		},
 		{name: "metric metadata", event: metricsEvent(&metricspb.Metric{Metadata: twice("unit")}), duplicate: "unit"},
-		{name: "span", event: tracesEvent(&tracepb.Span{Attributes: twice("tenant.id")}), duplicate: "tenant.id"},
+		{name: "span", event: tracesEvent(&tracepb.Span{Attributes: twice(tenantIDKey)}), duplicate: tenantIDKey},
 		{
 			name:      "span event",
 			event:     tracesEvent(&tracepb.Span{Events: []*tracepb.Span_Event{{Attributes: twice("exception.type")}}}),
@@ -220,7 +222,7 @@ func TestDuplicateKey(t *testing.T) {
 func TestDuplicateAttributeIsRejected(t *testing.T) {
 	t.Parallel()
 
-	body, err := proto.Marshal(logsEvent(logsParts{record: twice("tenant.id")}).Logs)
+	body, err := proto.Marshal(logsEvent(logsParts{record: twice(tenantIDKey)}).Logs)
 	require.NoError(t, err)
 
 	o, rec := newSource(t, nil)

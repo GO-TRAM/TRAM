@@ -37,19 +37,23 @@ func BenchmarkOTLPDataRoundTrip(b *testing.B) {
 			}
 
 			b.Run(signal.name+"/"+shape.String(), func(b *testing.B) {
-				b.SetBytes(int64(len(data)))
-				b.ReportAllocs()
-				for b.Loop() {
-					sig, encoded, marshalErr := event.MarshalOTLPData()
-					if marshalErr != nil {
-						b.Fatal(marshalErr)
-					}
-					if _, unmarshalErr := domain.UnmarshalOTLPData(sig, encoded); unmarshalErr != nil {
-						b.Fatal(unmarshalErr)
-					}
-				}
-				b.ReportMetric(float64(shape.Records*b.N)/b.Elapsed().Seconds(), "records/s")
+				benchRoundTrip(b, event, shape.Records, len(data))
 			})
 		}
 	}
+}
+
+func benchRoundTrip(b *testing.B, event *domain.Event, records, size int) {
+	b.SetBytes(int64(size))
+	b.ReportAllocs()
+	for b.Loop() {
+		sig, encoded, err := event.MarshalOTLPData()
+		if err != nil {
+			b.Fatal(err)
+		}
+		if _, err = domain.UnmarshalOTLPData(sig, encoded); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ReportMetric(float64(records*b.N)/b.Elapsed().Seconds(), "records/s")
 }

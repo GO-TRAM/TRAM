@@ -14,6 +14,12 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
+const (
+	emptySpecName         = "empty stream spec"
+	specWithSource        = "stream spec with source"
+	specWithSourceAndSink = "stream spec with source and sink"
+)
+
 func TestTreeString(t *testing.T) {
 	t.Parallel()
 
@@ -198,11 +204,11 @@ func TestNewTree(t *testing.T) {
 		expectedErr error
 	}{
 		{
-			name:       "empty stream spec",
+			name:       emptySpecName,
 			streamSpec: domain.StreamSpec{},
 		},
 		{
-			name: "stream spec with source",
+			name: specWithSource,
 			streamSpec: domain.StreamSpec{
 				Source: domain.SourceSpec{
 					Name: "testSource",
@@ -211,7 +217,7 @@ func TestNewTree(t *testing.T) {
 			expectedErr: nil,
 		},
 		{
-			name: "stream spec with source and sink",
+			name: specWithSourceAndSink,
 			streamSpec: domain.StreamSpec{
 				Source: domain.SourceSpec{
 					Name: "testSource",
@@ -396,12 +402,12 @@ func TestIsTree(t *testing.T) {
 		expected   bool
 	}{
 		{
-			name:       "empty stream spec",
+			name:       emptySpecName,
 			streamSpec: domain.StreamSpec{},
 			expected:   true,
 		},
 		{
-			name: "stream spec with source",
+			name: specWithSource,
 			streamSpec: domain.StreamSpec{
 				Source: domain.SourceSpec{
 					Name: "testSource",
@@ -410,7 +416,7 @@ func TestIsTree(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "stream spec with source and sink",
+			name: specWithSourceAndSink,
 			streamSpec: domain.StreamSpec{
 				Source: domain.SourceSpec{
 					Name: "testSource",
@@ -560,7 +566,7 @@ func TestIsConnected(t *testing.T) {
 		expected   bool
 	}{
 		{
-			name: "stream spec with source and sink",
+			name: specWithSourceAndSink,
 			streamSpec: domain.StreamSpec{
 				Source: domain.SourceSpec{
 					Name: "testSource",
@@ -726,11 +732,11 @@ func BenchmarkNewTree(b *testing.B) {
 		streamSpec domain.StreamSpec
 	}{
 		{
-			name:       "empty stream spec",
+			name:       emptySpecName,
 			streamSpec: domain.StreamSpec{},
 		},
 		{
-			name: "stream spec with source",
+			name: specWithSource,
 			streamSpec: domain.StreamSpec{
 				Source: domain.SourceSpec{
 					Name: "testSource",
@@ -738,7 +744,7 @@ func BenchmarkNewTree(b *testing.B) {
 			},
 		},
 		{
-			name: "stream spec with source and sink",
+			name: specWithSourceAndSink,
 			streamSpec: domain.StreamSpec{
 				Source: domain.SourceSpec{
 					Name: "testSource",

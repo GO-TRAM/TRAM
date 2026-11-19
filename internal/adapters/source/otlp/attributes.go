@@ -122,28 +122,36 @@ func (c *keyCheck) attributes(list []*commonpb.KeyValue) {
 	if c.found {
 		return
 	}
-	if len(list) <= maxPairwiseKeys {
-		for i := 1; i < len(list); i++ {
-			for _, earlier := range list[:i] {
-				if list[i].GetKey() == earlier.GetKey() {
-					c.key, c.found = list[i].GetKey(), true
-					return
-				}
-			}
-		}
-	} else {
-		seen := make(map[string]struct{}, len(list))
-		for _, kv := range list {
-			if _, ok := seen[kv.GetKey()]; ok {
-				c.key, c.found = kv.GetKey(), true
-				return
-			}
-			seen[kv.GetKey()] = struct{}{}
-		}
+	if key, ok := repeatedKey(list); ok {
+		c.key, c.found = key, true
+		return
 	}
 	for _, kv := range list {
 		c.value(kv.GetValue())
 	}
+}
+
+// repeatedKey returns the first key that occurs a second time in list. Short
+// lists are compared pairwise, which is faster than building a set.
+func repeatedKey(list []*commonpb.KeyValue) (string, bool) {
+	if len(list) <= maxPairwiseKeys {
+		for i := 1; i < len(list); i++ {
+			for _, earlier := range list[:i] {
+				if list[i].GetKey() == earlier.GetKey() {
+					return list[i].GetKey(), true
+				}
+			}
+		}
+		return "", false
+	}
+	seen := make(map[string]struct{}, len(list))
+	for _, kv := range list {
+		if _, ok := seen[kv.GetKey()]; ok {
+			return kv.GetKey(), true
+		}
+		seen[kv.GetKey()] = struct{}{}
+	}
+	return "", false
 }
 
 func (c *keyCheck) value(v *commonpb.AnyValue) {

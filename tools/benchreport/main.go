@@ -363,7 +363,7 @@ func renderScenarios(results map[string]result) string {
 				count(r.metrics["records/s"]), count(r.metrics["events/s"]),
 				duration(r.metrics["cpu-ns/record"]), count(r.metrics["records/s/core"]),
 				millis(r.metrics, "p50-ms"), millis(r.metrics, "p99-ms"),
-				r.metrics["allocs/op"]/records, spread(r.spread))
+				r.metrics[allocsPerOp]/records, spread(r.spread))
 		}
 		b.WriteString("\n")
 	}
@@ -646,13 +646,7 @@ func renderComponents(results map[string]result, components []component, perReco
 			}
 			continue
 		}
-		ns, allocs := r.metrics["ns/op"], r.metrics["allocs/op"]
-		if c.name == "Pipeline/noop/records=1/resources=1/teams=1" {
-			if direct, found := results[c.pkg+"|Pipeline/direct/records=1/resources=1/teams=1"]; found {
-				ns -= direct.metrics["ns/op"]
-				allocs -= direct.metrics["allocs/op"]
-			}
-		}
+		ns, allocs := componentCost(results, c, r)
 		if perRecord {
 			records := recordsPerOp(c.name)
 			fmt.Fprintf(
@@ -671,6 +665,21 @@ func renderComponents(results map[string]result, components []component, perReco
 	return b.String()
 }
 
+// componentCost returns the time and allocations of a component. The noop
+// stage is measured as a pipeline, so the cost of the direct pipeline is
+// subtracted from it.
+func componentCost(results map[string]result, c component, r result) (float64, float64) {
+	ns, allocs := r.metrics["ns/op"], r.metrics[allocsPerOp]
+	if c.name != "Pipeline/noop/records=1/resources=1/teams=1" {
+		return ns, allocs
+	}
+	if direct, found := results[c.pkg+"|Pipeline/direct/records=1/resources=1/teams=1"]; found {
+		ns -= direct.metrics["ns/op"]
+		allocs -= direct.metrics[allocsPerOp]
+	}
+	return ns, allocs
+}
+
 func replaceSection(page []byte, name, content string) ([]byte, error) {
 	begin := fmt.Sprintf("<!-- BEGIN benchreport:%s -->", name)
 	end := fmt.Sprintf("<!-- END benchreport:%s -->", name)
@@ -683,6 +692,8 @@ func replaceSection(page []byte, name, content string) ([]byte, error) {
 }
 
 const (
+	allocsPerOp = "allocs/op"
+
 	kibibyte        = 1024
 	thousand        = 1e3
 	tenThousand     = 1e4

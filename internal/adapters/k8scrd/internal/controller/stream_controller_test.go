@@ -21,6 +21,8 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
+const defaultStream = "default.s"
+
 type fakeCore struct {
 	streams  map[string]domain.StreamSpec
 	resolved map[string]domain.StreamSpec
@@ -144,10 +146,10 @@ func TestReconcileKeepsNamespacesApart(t *testing.T) {
 func TestToDomainKeepsSpecTypes(t *testing.T) {
 	t.Parallel()
 
-	spec, err := controller.ToDomain("default.s", *newStream("default"))
+	spec, err := controller.ToDomain(defaultStream, *newStream("default"))
 	require.NoError(t, err)
 
-	assert.Equal(t, "default.s", spec.Name)
+	assert.Equal(t, defaultStream, spec.Name)
 	assert.Equal(t, map[string]any{"http_port": float64(4318)}, spec.Source.Spec)
 	assert.Equal(t, map[string]any{"subject": map[string]any{"register": []any{"a.>"}}}, spec.Sinks[0].Spec)
 	assert.Equal(t, domain.MetricsSpec{}, spec.Metrics, "a stream without metrics keeps the defaults")
@@ -163,7 +165,7 @@ func TestToDomainMapsMetrics(t *testing.T) {
 		RequestSize: new(false),
 	}
 
-	spec, err := controller.ToDomain("default.s", *stream)
+	spec, err := controller.ToDomain(defaultStream, *stream)
 	require.NoError(t, err)
 
 	assert.Equal(t, domain.MetricsSpec{
@@ -196,7 +198,7 @@ func TestReconcileRunsOnlyStreamsThatReferToTheEngine(t *testing.T) {
 	require.NoError(t, r.Update(t.Context(), &stream))
 	_, err = r.Reconcile(t.Context(), request("default"))
 	require.NoError(t, err)
-	assert.Contains(t, core.streams, "default.s", "a Stream that refers to the engine runs")
+	assert.Contains(t, core.streams, defaultStream, "a Stream that refers to the engine runs")
 
 	require.NoError(t, r.Get(t.Context(), key, &stream))
 	stream.Spec.EngineRefs = []tramv1.EngineReference{{Name: "routers"}}

@@ -26,6 +26,12 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
+const (
+	team0     = "team-0"
+	team1     = "team-1"
+	teamIDKey = "team.id"
+)
+
 type capture struct{ events []*domain.Event }
 
 func (c *capture) Name() string { return "capture" }
@@ -48,7 +54,7 @@ func newStage(t *testing.T, spec map[string]any) (*valuemap.ValueMap, *capture) 
 func mappedSpec(table map[string]string) map[string]any {
 	return map[string]any{
 		"source_attr": "team",
-		"target_attr": "team.id",
+		"target_attr": teamIDKey,
 		"default":     "unknown",
 		"table":       table,
 	}
@@ -111,30 +117,30 @@ func TestNew(t *testing.T) {
 		expectErrIs error
 	}{{
 		name: "embedded table",
-		spec: mappedSpec(map[string]string{"team-0": "a"}),
+		spec: mappedSpec(map[string]string{team0: "a"}),
 	}, {
 		name: "table from file",
 		spec: map[string]any{
-			"source_attr": "team", "target_attr": "team.id", "default": "unknown",
+			"source_attr": "team", "target_attr": teamIDKey, "default": "unknown",
 			"table_ref": tableFile(t, `{"team-0": "a"}`),
 		},
 	}, {
 		name: "record level is the default",
 		spec: func() map[string]any {
-			spec := mappedSpec(map[string]string{"team-0": "a"})
+			spec := mappedSpec(map[string]string{team0: "a"})
 			spec["level"] = "record"
 			return spec
 		}(),
 	}, {
 		name: "resource level",
 		spec: func() map[string]any {
-			spec := mappedSpec(map[string]string{"team-0": "a"})
+			spec := mappedSpec(map[string]string{team0: "a"})
 			spec["level"] = "resource"
 			return spec
 		}(),
 	}, {
 		name:      "missing source_attr",
-		spec:      map[string]any{"target_attr": "team.id", "default": "unknown", "table": map[string]any{}},
+		spec:      map[string]any{"target_attr": teamIDKey, "default": "unknown", "table": map[string]any{}},
 		expectErr: true,
 	}, {
 		name:      "missing target_attr",
@@ -142,31 +148,31 @@ func TestNew(t *testing.T) {
 		expectErr: true,
 	}, {
 		name:      "missing default",
-		spec:      map[string]any{"source_attr": "team", "target_attr": "team.id", "table": map[string]any{}},
+		spec:      map[string]any{"source_attr": "team", "target_attr": teamIDKey, "table": map[string]any{}},
 		expectErr: true,
 	}, {
 		name: "invalid level",
 		spec: func() map[string]any {
-			spec := mappedSpec(map[string]string{"team-0": "a"})
+			spec := mappedSpec(map[string]string{team0: "a"})
 			spec["level"] = "scope"
 			return spec
 		}(),
 		expectErr: true,
 	}, {
 		name:      "neither table nor table_ref",
-		spec:      map[string]any{"source_attr": "team", "target_attr": "team.id", "default": "unknown"},
+		spec:      map[string]any{"source_attr": "team", "target_attr": teamIDKey, "default": "unknown"},
 		expectErr: true,
 	}, {
 		name: "both table and table_ref",
 		spec: map[string]any{
-			"source_attr": "team", "target_attr": "team.id", "default": "unknown",
-			"table": map[string]any{"team-0": "a"}, "table_ref": "table.json",
+			"source_attr": "team", "target_attr": teamIDKey, "default": "unknown",
+			"table": map[string]any{team0: "a"}, "table_ref": "table.json",
 		},
 		expectErr: true,
 	}, {
 		name: "table_ref file does not exist",
 		spec: map[string]any{
-			"source_attr": "team", "target_attr": "team.id", "default": "unknown",
+			"source_attr": "team", "target_attr": teamIDKey, "default": "unknown",
 			"table_ref": filepath.Join(t.TempDir(), "missing.json"),
 		},
 		expectErr:   true,
@@ -174,7 +180,7 @@ func TestNew(t *testing.T) {
 	}, {
 		name: "table_ref holds invalid JSON",
 		spec: map[string]any{
-			"source_attr": "team", "target_attr": "team.id", "default": "unknown",
+			"source_attr": "team", "target_attr": teamIDKey, "default": "unknown",
 			"table_ref": tableFile(t, `{"team-0": `),
 		},
 		expectErr:   true,
@@ -182,7 +188,7 @@ func TestNew(t *testing.T) {
 	}, {
 		name: "table_ref holds non-string values",
 		spec: map[string]any{
-			"source_attr": "team", "target_attr": "team.id", "default": "unknown",
+			"source_attr": "team", "target_attr": teamIDKey, "default": "unknown",
 			"table_ref": tableFile(t, `{"team-0": 7}`),
 		},
 		expectErr:   true,
@@ -213,19 +219,19 @@ func TestNew(t *testing.T) {
 func TestMappingHits(t *testing.T) {
 	t.Parallel()
 
-	s, out := newStage(t, mappedSpec(map[string]string{"team-0": "cart", "team-1": "checkout"}))
+	s, out := newStage(t, mappedSpec(map[string]string{team0: "cart", team1: "checkout"}))
 
 	event := logs(
 		[]*logspb.LogRecord{
-			record(stringAttr("team", "team-0")),
-			record(stringAttr("team", "team-1"), stringAttr("other", "kept")),
+			record(stringAttr("team", team0)),
+			record(stringAttr("team", team1), stringAttr("other", "kept")),
 		},
 	)
 
 	require.NoError(t, s.Notify(t.Context(), event))
 	require.Len(t, out.events, 1)
 
-	mapped, ok := attr(out.events[0], "team.id")
+	mapped, ok := attr(out.events[0], teamIDKey)
 	require.True(t, ok, "the target attribute is set")
 	assert.Equal(t, "cart", mapped)
 
@@ -236,22 +242,22 @@ func TestMappingHits(t *testing.T) {
 	for _, kv := range second.GetAttributes() {
 		values[kv.GetKey()] = kv.GetValue().GetStringValue()
 	}
-	assert.Equal(t, "team-1", values["team"])
+	assert.Equal(t, team1, values["team"])
 	assert.Equal(t, "kept", values["other"])
-	assert.Equal(t, "checkout", values["team.id"])
+	assert.Equal(t, "checkout", values[teamIDKey])
 }
 
 func TestLookupMissesSetDefault(t *testing.T) {
 	t.Parallel()
 
-	s, out := newStage(t, mappedSpec(map[string]string{"team-0": "cart"}))
+	s, out := newStage(t, mappedSpec(map[string]string{team0: "cart"}))
 
 	event := logs([]*logspb.LogRecord{
-		record(stringAttr("team", "team-0")), // mapped
+		record(stringAttr("team", team0)),    // mapped
 		record(stringAttr("team", "team-9")), // no table entry
 		record(),                             // no source attribute
 		record(intAttr("team", 7)),           // source value that is no string
-		record(stringAttr("team", "team-1")), // no table entry
+		record(stringAttr("team", team1)),    // no table entry
 	})
 
 	require.NoError(t, s.Notify(t.Context(), event))
@@ -265,7 +271,7 @@ func TestLookupMissesSetDefault(t *testing.T) {
 		for _, kv := range r.GetAttributes() {
 			values[kv.GetKey()] = kv.GetValue().GetStringValue()
 		}
-		assert.Equal(t, "unknown", values["team.id"], "a miss sets the default")
+		assert.Equal(t, "unknown", values[teamIDKey], "a miss sets the default")
 	}
 
 	// nothing is filtered or dropped: every record arrives
@@ -275,11 +281,11 @@ func TestLookupMissesSetDefault(t *testing.T) {
 func TestMixedBatch(t *testing.T) {
 	t.Parallel()
 
-	s, out := newStage(t, mappedSpec(map[string]string{"team-0": "cart", "team-1": "checkout"}))
+	s, out := newStage(t, mappedSpec(map[string]string{team0: "cart", team1: "checkout"}))
 
 	event := logs(
-		[]*logspb.LogRecord{record(stringAttr("team", "team-0")), record(stringAttr("team", "team-9"))},
-		[]*logspb.LogRecord{record(stringAttr("team", "team-1")), record()},
+		[]*logspb.LogRecord{record(stringAttr("team", team0)), record(stringAttr("team", "team-9"))},
+		[]*logspb.LogRecord{record(stringAttr("team", team1)), record()},
 	)
 
 	require.NoError(t, s.Notify(t.Context(), event))
@@ -301,17 +307,17 @@ func TestMixedBatch(t *testing.T) {
 func TestExistingTargetIsOverwritten(t *testing.T) {
 	t.Parallel()
 
-	s, out := newStage(t, mappedSpec(map[string]string{"team-0": "cart"}))
+	s, out := newStage(t, mappedSpec(map[string]string{team0: "cart"}))
 
 	event := logs([]*logspb.LogRecord{
-		record(stringAttr("team", "team-0"), stringAttr("team.id", "stale")),
+		record(stringAttr("team", team0), stringAttr(teamIDKey, "stale")),
 	})
 
 	require.NoError(t, s.Notify(t.Context(), event))
 
 	records := out.events[0].Logs.GetResourceLogs()[0].GetScopeLogs()[0].GetLogRecords()
 	require.Len(t, records[0].GetAttributes(), 2, "the existing target is replaced, not appended")
-	assert.Equal(t, "team.id", records[0].GetAttributes()[1].GetKey())
+	assert.Equal(t, teamIDKey, records[0].GetAttributes()[1].GetKey())
 	assert.Equal(t, "cart", records[0].GetAttributes()[1].GetValue().GetStringValue())
 }
 
@@ -350,12 +356,12 @@ func TestResourceLevel(t *testing.T) {
 func TestSignals(t *testing.T) {
 	t.Parallel()
 
-	s, out := newStage(t, mappedSpec(map[string]string{"team-0": "cart", "team-1": "checkout"}))
+	s, out := newStage(t, mappedSpec(map[string]string{team0: "cart", team1: "checkout"}))
 
 	gauge := &metricspb.Metric{
 		Name: "gauge",
 		Data: &metricspb.Metric_Gauge{Gauge: &metricspb.Gauge{DataPoints: []*metricspb.NumberDataPoint{
-			{Attributes: []*commonpb.KeyValue{stringAttr("team", "team-1")}},
+			{Attributes: []*commonpb.KeyValue{stringAttr("team", team1)}},
 		}}},
 	}
 	sum := &metricspb.Metric{
@@ -367,21 +373,21 @@ func TestSignals(t *testing.T) {
 	histogram := &metricspb.Metric{
 		Name: "histogram",
 		Data: &metricspb.Metric_Histogram{Histogram: &metricspb.Histogram{DataPoints: []*metricspb.HistogramDataPoint{
-			{Attributes: []*commonpb.KeyValue{stringAttr("team", "team-0")}, Count: 5, Min: new(1.0), Max: new(9.0)},
+			{Attributes: []*commonpb.KeyValue{stringAttr("team", team0)}, Count: 5, Min: new(1.0), Max: new(9.0)},
 		}}},
 	}
 	exponential := &metricspb.Metric{
 		Name: "exponential_histogram",
 		Data: &metricspb.Metric_ExponentialHistogram{ExponentialHistogram: &metricspb.ExponentialHistogram{
 			DataPoints: []*metricspb.ExponentialHistogramDataPoint{
-				{Attributes: []*commonpb.KeyValue{stringAttr("team", "team-0")}, ZeroCount: 2},
+				{Attributes: []*commonpb.KeyValue{stringAttr("team", team0)}, ZeroCount: 2},
 			},
 		}},
 	}
 	summary := &metricspb.Metric{
 		Name: "summary",
 		Data: &metricspb.Metric_Summary{Summary: &metricspb.Summary{DataPoints: []*metricspb.SummaryDataPoint{
-			{Attributes: []*commonpb.KeyValue{stringAttr("team", "team-1")}, Count: 4, Sum: 10},
+			{Attributes: []*commonpb.KeyValue{stringAttr("team", team1)}, Count: 4, Sum: 10},
 		}}},
 	}
 	event := &domain.Event{
@@ -393,7 +399,7 @@ func TestSignals(t *testing.T) {
 		}}},
 		Traces: &tracepb.TracesData{ResourceSpans: []*tracepb.ResourceSpans{{
 			ScopeSpans: []*tracepb.ScopeSpans{{
-				Spans: []*tracepb.Span{{Attributes: []*commonpb.KeyValue{stringAttr("team", "team-0")}, Name: "get"}},
+				Spans: []*tracepb.Span{{Attributes: []*commonpb.KeyValue{stringAttr("team", team0)}, Name: "get"}},
 			}},
 		}}},
 	}
@@ -441,10 +447,10 @@ func TestSignals(t *testing.T) {
 func TestInputStaysUntouched(t *testing.T) {
 	t.Parallel()
 
-	s, out := newStage(t, mappedSpec(map[string]string{"team-0": "cart"}))
+	s, out := newStage(t, mappedSpec(map[string]string{team0: "cart"}))
 
 	event := logs(
-		[]*logspb.LogRecord{record(stringAttr("team", "team-0"), stringAttr("team.id", "stale")), record()},
+		[]*logspb.LogRecord{record(stringAttr("team", team0), stringAttr(teamIDKey, "stale")), record()},
 	)
 	original := proto.Clone(event.Logs)
 
@@ -467,9 +473,9 @@ func TestInputStaysUntouched(t *testing.T) {
 	)
 
 	// a second sibling branch sees the same untouched event
-	s2, out2 := newStage(t, mappedSpec(map[string]string{"team-0": "other"}))
+	s2, out2 := newStage(t, mappedSpec(map[string]string{team0: "other"}))
 	require.NoError(t, s2.Notify(t.Context(), event))
 	assert.True(t, proto.Equal(original, event.Logs), "the shared input must not be modified")
-	mapped, _ := attr(out2.events[0], "team.id")
+	mapped, _ := attr(out2.events[0], teamIDKey)
 	assert.Equal(t, "other", mapped)
 }

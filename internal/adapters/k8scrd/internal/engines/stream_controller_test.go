@@ -23,6 +23,8 @@ import (
 	"codeberg.org/eljoth/tram/internal/adapters/k8scrd/internal/engines"
 )
 
+const mapperLabel = "engine.tram.io/mapper"
+
 const namespace = "telemetry"
 
 func streamKey() types.NamespacedName {
@@ -71,14 +73,14 @@ func TestStreamReconcileDerivesEngineLabels(t *testing.T) {
 	t.Parallel()
 
 	r, c := newStreamReconciler(t, stream(
-		map[string]string{"team": "telemetry", "engine.tram.io/old": "", "engine.tram.io/mapper": "yes"},
+		map[string]string{"team": "telemetry", "engine.tram.io/old": "", mapperLabel: "yes"},
 		"mapper", "mapper-v2",
 	))
 	reconcileStream(t, r)
 
 	assert.Equal(t, map[string]string{
 		"team":                     "telemetry",
-		"engine.tram.io/mapper":    "",
+		mapperLabel:                "",
 		"engine.tram.io/mapper-v2": "",
 	}, getStream(t, c).Labels)
 }
@@ -86,7 +88,7 @@ func TestStreamReconcileDerivesEngineLabels(t *testing.T) {
 func TestStreamReconcileRemovesEngineLabelsWithoutReferences(t *testing.T) {
 	t.Parallel()
 
-	r, c := newStreamReconciler(t, stream(map[string]string{"engine.tram.io/mapper": "", "team": "telemetry"}))
+	r, c := newStreamReconciler(t, stream(map[string]string{mapperLabel: "", "team": "telemetry"}))
 	reconcileStream(t, r)
 
 	s := getStream(t, c)
@@ -99,7 +101,7 @@ func TestStreamReconcileLeavesMatchingStreamAlone(t *testing.T) {
 
 	r, c := newStreamReconciler(
 		t,
-		stream(map[string]string{"engine.tram.io/mapper": ""}, "mapper"),
+		stream(map[string]string{mapperLabel: ""}, "mapper"),
 		engine("mapper"),
 	)
 	reconcileStream(t, r)

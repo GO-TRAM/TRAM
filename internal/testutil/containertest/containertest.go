@@ -14,20 +14,22 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 )
 
+const noRuntimeFormat = "no container runtime available: %v"
+
 // SkipWithoutRuntime skips tb if neither Docker nor Podman is reachable.
 func SkipWithoutRuntime(ctx context.Context, tb testing.TB) {
 	tb.Helper()
 	defer func() {
 		if r := recover(); r != nil {
-			tb.Skipf("no container runtime available: %v", r)
+			tb.Skipf(noRuntimeFormat, r)
 		}
 	}()
 
 	provider, err := testcontainers.ProviderDocker.GetProvider()
 	if err != nil {
-		tb.Skipf("no container runtime available: %v", err)
+		tb.Skipf(noRuntimeFormat, err)
 	}
 	if err = provider.Health(ctx); err != nil {
-		tb.Skipf("no container runtime available: %v", err)
+		tb.Skipf(noRuntimeFormat, err)
 	}
 }

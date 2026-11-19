@@ -22,6 +22,11 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
+const (
+	team0           = "team-0"
+	inputUnmodified = "the input must not be modified"
+)
+
 func team(attrs []*commonpb.KeyValue) string {
 	for _, a := range attrs {
 		if a.GetKey() == "team" {
@@ -59,7 +64,7 @@ func TestFilterLogs(t *testing.T) {
 		keep     domain.LogFilter
 		expected []string
 	}{
-		{name: "keep one team", keep: keepTeam("team-0"), expected: []string{"team-0", "team-0", "team-0", "team-0"}},
+		{name: "keep one team", keep: keepTeam(team0), expected: []string{team0, team0, team0, team0}},
 		{name: "keep none", keep: keepTeam("team-9")},
 	}
 
@@ -74,7 +79,7 @@ func TestFilterLogs(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, c.expected, logTeams(got))
-			assert.True(t, proto.Equal(original, input), "the input must not be modified")
+			assert.True(t, proto.Equal(original, input), inputUnmodified)
 			if c.expected == nil {
 				assert.Nil(t, got)
 			}
@@ -182,7 +187,7 @@ func TestFilterErrorsPropagate(t *testing.T) {
 func TestFilterNil(t *testing.T) {
 	t.Parallel()
 
-	logs, err := domain.FilterLogs(nil, keepTeam("team-0"))
+	logs, err := domain.FilterLogs(nil, keepTeam(team0))
 	require.NoError(t, err)
 	assert.Nil(t, logs)
 }
@@ -209,7 +214,7 @@ func TestFilterSpans(t *testing.T) {
 			}
 		}
 	}
-	assert.True(t, proto.Equal(original, input), "the input must not be modified")
+	assert.True(t, proto.Equal(original, input), inputUnmodified)
 }
 
 func TestFilterMetricsPerDataPoint(t *testing.T) {
@@ -266,5 +271,5 @@ func TestFilterMetricsPerDataPoint(t *testing.T) {
 
 	assert.Same(t, summary, metrics[1], "a fully kept metric is reused")
 	assert.Same(t, noData, metrics[2])
-	assert.True(t, proto.Equal(original, input), "the input must not be modified")
+	assert.True(t, proto.Equal(original, input), inputUnmodified)
 }

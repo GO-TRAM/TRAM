@@ -79,7 +79,13 @@ func TestStreamSpecEqual(t *testing.T) {
 		change   func(*domain.StreamSpec)
 		expected bool
 	}{
-		{name: "identical", change: func(*domain.StreamSpec) {}, expected: true},
+		{
+			name: "identical",
+			change: func(*domain.StreamSpec) {
+				// Leaves the spec unchanged.
+			},
+			expected: true,
+		},
 		{
 			name:     "removed stages",
 			change:   func(s *domain.StreamSpec) { s.Stages = nil; s.Sinks[0].From = "in" },

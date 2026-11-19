@@ -25,6 +25,8 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/tcpproxy"
 )
 
+const unreachableURL = "amqp://127.0.0.1:1"
+
 func newDriver() *amqpdriver.Driver {
 	return amqpdriver.New(validator.New(validator.WithRequiredStructEnabled()))
 }
@@ -65,17 +67,17 @@ func TestOptionsAreValidated(t *testing.T) {
 			return err
 		}},
 		{"publisher with a username but no password", func() error {
-			_, err := d.NewPublisher(map[string]any{"url": "amqp://127.0.0.1:1", "username": "u"},
+			_, err := d.NewPublisher(map[string]any{"url": unreachableURL, "username": "u"},
 				broker.PublisherConfig{Name: "p", MaxPending: 1}, discard)
 			return err
 		}},
 		{"publisher with an unknown field", func() error {
-			_, err := d.NewPublisher(map[string]any{"url": "amqp://127.0.0.1:1", "address": "a"},
+			_, err := d.NewPublisher(map[string]any{"url": unreachableURL, "address": "a"},
 				broker.PublisherConfig{Name: "p", MaxPending: 1}, discard)
 			return err
 		}},
 		{"subscriber without address", func() error {
-			_, err := d.NewSubscriber(map[string]any{"url": "amqp://127.0.0.1:1"},
+			_, err := d.NewSubscriber(map[string]any{"url": unreachableURL},
 				broker.SubscriberConfig{Name: "s", Capacity: 1}, discard)
 			return err
 		}},

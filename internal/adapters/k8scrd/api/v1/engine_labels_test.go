@@ -14,6 +14,8 @@ import (
 	tramv1 "codeberg.org/eljoth/tram/internal/adapters/k8scrd/api/v1"
 )
 
+const mapperLabel = "engine.tram.io/mapper"
+
 func refs(names ...string) []tramv1.EngineReference {
 	out := make([]tramv1.EngineReference, len(names))
 	for i, name := range names {
@@ -38,35 +40,35 @@ func TestWithEngineLabels(t *testing.T) {
 		{
 			name: "adds a label per reference",
 			refs: refs("mapper", "routers"),
-			want: map[string]string{"engine.tram.io/mapper": "", "engine.tram.io/routers": ""},
+			want: map[string]string{mapperLabel: "", "engine.tram.io/routers": ""},
 		},
 		{
 			name:   "keeps other labels",
 			labels: map[string]string{"team": "telemetry", "tram.io/validation": "true"},
 			refs:   refs("mapper"),
 			want: map[string]string{
-				"team": "telemetry", "tram.io/validation": "true", "engine.tram.io/mapper": "",
+				"team": "telemetry", "tram.io/validation": "true", mapperLabel: "",
 			},
 		},
 		{
 			name: "drops engine labels no reference names",
 			labels: map[string]string{
-				"engine.tram.io/old":    "",
-				"engine.tram.io/mapper": "",
-				"team":                  "telemetry",
+				"engine.tram.io/old": "",
+				mapperLabel:          "",
+				"team":               "telemetry",
 			},
 			refs: refs("mapper"),
-			want: map[string]string{"engine.tram.io/mapper": "", "team": "telemetry"},
+			want: map[string]string{mapperLabel: "", "team": "telemetry"},
 		},
 		{
 			name:   "resets the value of an engine label set by hand",
-			labels: map[string]string{"engine.tram.io/mapper": "yes"},
+			labels: map[string]string{mapperLabel: "yes"},
 			refs:   refs("mapper"),
-			want:   map[string]string{"engine.tram.io/mapper": ""},
+			want:   map[string]string{mapperLabel: ""},
 		},
 		{
 			name:   "drops all engine labels without references",
-			labels: map[string]string{"engine.tram.io/mapper": "", "team": "telemetry"},
+			labels: map[string]string{mapperLabel: "", "team": "telemetry"},
 			want:   map[string]string{"team": "telemetry"},
 		},
 	}

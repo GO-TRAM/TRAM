@@ -41,6 +41,9 @@ const (
 	dataPointVariable = "datapoint"
 	spanVariable      = "span"
 
+	resourceType = "opentelemetry.proto.resource.v1.Resource"
+	scopeType    = "opentelemetry.proto.common.v1.InstrumentationScope"
+
 	getAttrArguments = 2
 )
 
@@ -98,8 +101,8 @@ func Compile(e Expressions, extra ...cel.EnvOption) (Programs, error) {
 		baseEnv,
 		e.Logs,
 		cel.Variable(logsVariable, cel.ObjectType("opentelemetry.proto.logs.v1.LogsData")),
-		cel.Variable(resourceVariable, cel.ObjectType("opentelemetry.proto.resource.v1.Resource")),
-		cel.Variable(scopeVariable, cel.ObjectType("opentelemetry.proto.common.v1.InstrumentationScope")),
+		cel.Variable(resourceVariable, cel.ObjectType(resourceType)),
+		cel.Variable(scopeVariable, cel.ObjectType(scopeType)),
 		cel.Variable(recordVariable, cel.ObjectType("opentelemetry.proto.logs.v1.LogRecord")),
 	)
 	if err != nil {
@@ -110,8 +113,8 @@ func Compile(e Expressions, extra ...cel.EnvOption) (Programs, error) {
 		baseEnv,
 		e.Metrics,
 		cel.Variable(metricsVariable, cel.ObjectType("opentelemetry.proto.metrics.v1.MetricsData")),
-		cel.Variable(resourceVariable, cel.ObjectType("opentelemetry.proto.resource.v1.Resource")),
-		cel.Variable(scopeVariable, cel.ObjectType("opentelemetry.proto.common.v1.InstrumentationScope")),
+		cel.Variable(resourceVariable, cel.ObjectType(resourceType)),
+		cel.Variable(scopeVariable, cel.ObjectType(scopeType)),
 		cel.Variable(metricVariable, cel.ObjectType("opentelemetry.proto.metrics.v1.Metric")),
 		// Its type depends on the metric's type.
 		cel.Variable(dataPointVariable, cel.DynType),
@@ -124,8 +127,8 @@ func Compile(e Expressions, extra ...cel.EnvOption) (Programs, error) {
 		baseEnv,
 		e.Traces,
 		cel.Variable(tracesVariable, cel.ObjectType("opentelemetry.proto.trace.v1.TracesData")),
-		cel.Variable(resourceVariable, cel.ObjectType("opentelemetry.proto.resource.v1.Resource")),
-		cel.Variable(scopeVariable, cel.ObjectType("opentelemetry.proto.common.v1.InstrumentationScope")),
+		cel.Variable(resourceVariable, cel.ObjectType(resourceType)),
+		cel.Variable(scopeVariable, cel.ObjectType(scopeType)),
 		cel.Variable(spanVariable, cel.ObjectType("opentelemetry.proto.trace.v1.Span")),
 	)
 	if err != nil {

@@ -220,19 +220,7 @@ func benchmarkOTLP(b *testing.B, e *env, sc scenario, shape otlpgen.Shape, concu
 	client := &http.Client{Transport: &http.Transport{MaxIdleConnsPerHost: concurrency}}
 	b.Cleanup(client.CloseIdleConnections)
 
-	send := func() (time.Duration, error) {
-		start := time.Now()
-		resp, postErr := client.Post(url, "application/x-protobuf", bytes.NewReader(body))
-		if postErr != nil {
-			return 0, postErr
-		}
-		_, _ = io.Copy(io.Discard, resp.Body)
-		_ = resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return 0, fmt.Errorf("status %s", resp.Status)
-		}
-		return time.Since(start), nil
-	}
+	send := func() (time.Duration, error) { return postOnce(client, url, body) }
 	if _, sendErr := send(); sendErr != nil {
 		b.Fatal(sendErr)
 	}
@@ -245,20 +233,7 @@ func benchmarkOTLP(b *testing.B, e *env, sc scenario, shape otlpgen.Shape, concu
 	b.ResetTimer()
 	cpuStart := cpuTime()
 	for range concurrency {
-		wg.Go(func() {
-			for {
-				i := next.Add(1) - 1
-				if i >= int64(b.N) {
-					return
-				}
-				latency, sendErr := send()
-				if sendErr != nil {
-					b.Error(sendErr)
-					return
-				}
-				latencies[i] = latency
-			}
-		})
+		wg.Go(func() { sendUntilDone(b, send, latencies, &next) })
 	}
 	wg.Wait()
 	cpu := cpuTime() - cpuStart
@@ -268,6 +243,38 @@ func benchmarkOTLP(b *testing.B, e *env, sc scenario, shape otlpgen.Shape, concu
 	slices.Sort(latencies)
 	b.ReportMetric(float64(percentile(latencies, 0.50).Microseconds())/1000, "p50-ms")
 	b.ReportMetric(float64(percentile(latencies, 0.99).Microseconds())/1000, "p99-ms")
+}
+
+// postOnce posts body to url and returns how long the answer took.
+func postOnce(client *http.Client, url string, body []byte) (time.Duration, error) {
+	start := time.Now()
+	resp, err := client.Post(url, "application/x-protobuf", bytes.NewReader(body))
+	if err != nil {
+		return 0, err
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("status %s", resp.Status)
+	}
+	return time.Since(start), nil
+}
+
+// sendUntilDone sends requests until b.N are taken from next and records the
+// latency of each at its index.
+func sendUntilDone(b *testing.B, send func() (time.Duration, error), latencies []time.Duration, next *atomic.Int64) {
+	for {
+		i := next.Add(1) - 1
+		if i >= int64(b.N) {
+			return
+		}
+		latency, err := send()
+		if err != nil {
+			b.Error(err)
+			return
+		}
+		latencies[i] = latency
+	}
 }
 
 func benchmarkNATS(b *testing.B, e *env, sc scenario, shape otlpgen.Shape, concurrency int) {

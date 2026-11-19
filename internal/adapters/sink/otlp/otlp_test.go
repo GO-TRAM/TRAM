@@ -27,6 +27,13 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
+const (
+	logsPath     = "/v1/logs"
+	testSource   = "test-source"
+	testEndpoint = "http://localhost:4318"
+	customHeader = "X-Custom"
+)
+
 func TestNew(t *testing.T) {
 	t.Parallel()
 
@@ -35,17 +42,17 @@ func TestNew(t *testing.T) {
 
 		sink, err := otlp.New(domain.SinkSpec{
 			Name: "test-otlp",
-			From: "test-source",
+			From: testSource,
 			Type: otlp.Type,
 			Spec: map[string]any{
-				"url": "http://localhost:4318",
+				"url": testEndpoint,
 			},
 		}, validator.New(), slog.New(slog.DiscardHandler))
 
 		require.NoError(t, err)
 		assert.NotNil(t, sink)
 		assert.Equal(t, "test-otlp", sink.Name())
-		assert.Equal(t, "test-source", sink.From())
+		assert.Equal(t, testSource, sink.From())
 		assert.NoError(t, sink.Stop())
 	})
 
@@ -54,10 +61,10 @@ func TestNew(t *testing.T) {
 
 		sink, err := otlp.New(domain.SinkSpec{
 			Name: "test-otlp-timeout",
-			From: "test-source",
+			From: testSource,
 			Type: otlp.Type,
 			Spec: map[string]any{
-				"url":     "http://localhost:4318",
+				"url":     testEndpoint,
 				"timeout": "5s",
 			},
 		}, validator.New(), slog.New(slog.DiscardHandler))
@@ -72,13 +79,13 @@ func TestNew(t *testing.T) {
 
 		sink, err := otlp.New(domain.SinkSpec{
 			Name: "test-otlp-headers",
-			From: "test-source",
+			From: testSource,
 			Type: otlp.Type,
 			Spec: map[string]any{
-				"url": "http://localhost:4318",
+				"url": testEndpoint,
 				"headers": map[string]string{
 					"Authorization": "Bearer token",
-					"X-Custom":      "value",
+					customHeader:    "value",
 				},
 			},
 		}, validator.New(), slog.New(slog.DiscardHandler))
@@ -93,7 +100,7 @@ func TestNew(t *testing.T) {
 
 		sink, err := otlp.New(domain.SinkSpec{
 			Name: "test-otlp-insecure",
-			From: "test-source",
+			From: testSource,
 			Type: otlp.Type,
 			Spec: map[string]any{
 				"url":      "https://localhost:4318",
@@ -111,7 +118,7 @@ func TestNew(t *testing.T) {
 
 		_, err := otlp.New(domain.SinkSpec{
 			Name: "test-otlp-missing-url",
-			From: "test-source",
+			From: testSource,
 			Type: otlp.Type,
 			Spec: map[string]any{},
 		}, validator.New(), slog.New(slog.DiscardHandler))
@@ -124,10 +131,10 @@ func TestNew(t *testing.T) {
 
 		_, err := otlp.New(domain.SinkSpec{
 			Name: "test-otlp-bad-timeout",
-			From: "test-source",
+			From: testSource,
 			Type: otlp.Type,
 			Spec: map[string]any{
-				"url":     "http://localhost:4318",
+				"url":     testEndpoint,
 				"timeout": "invalid",
 			},
 		}, validator.New(), slog.New(slog.DiscardHandler))
@@ -159,7 +166,7 @@ func TestNotify(t *testing.T) {
 
 		sink, err := otlp.New(domain.SinkSpec{
 			Name: "test-otlp-success",
-			From: "test-source",
+			From: testSource,
 			Type: otlp.Type,
 			Spec: map[string]any{
 				"url": server.URL,
@@ -208,7 +215,7 @@ func TestNotify(t *testing.T) {
 
 		sink, err := otlp.New(domain.SinkSpec{
 			Name: "test-otlp-metrics",
-			From: "test-source",
+			From: testSource,
 			Type: otlp.Type,
 			Spec: map[string]any{
 				"url": server.URL,
@@ -251,7 +258,7 @@ func TestNotify(t *testing.T) {
 			body, _ := io.ReadAll(r.Body)
 			var event *domain.Event
 			switch r.URL.Path {
-			case "/v1/logs":
+			case logsPath:
 				event, _ = domain.UnmarshalOTLPData(domain.SignalLogs, body)
 			case "/v1/traces":
 				event, _ = domain.UnmarshalOTLPData(domain.SignalTraces, body)
@@ -263,7 +270,7 @@ func TestNotify(t *testing.T) {
 
 		sink, err := otlp.New(domain.SinkSpec{
 			Name: "test-otlp-several-signals",
-			From: "test-source",
+			From: testSource,
 			Type: otlp.Type,
 			Spec: map[string]any{
 				"url": server.URL,
@@ -286,7 +293,7 @@ func TestNotify(t *testing.T) {
 
 		mu.Lock()
 		defer mu.Unlock()
-		assert.Equal(t, map[string]int{"/v1/logs": 2, "/v1/traces": 3}, received)
+		assert.Equal(t, map[string]int{logsPath: 2, "/v1/traces": 3}, received)
 	})
 
 	t.Run("server error response", func(t *testing.T) {
@@ -299,7 +306,7 @@ func TestNotify(t *testing.T) {
 
 		sink, err := otlp.New(domain.SinkSpec{
 			Name: "test-otlp-error",
-			From: "test-source",
+			From: testSource,
 			Type: otlp.Type,
 			Spec: map[string]any{
 				"url": server.URL,
@@ -327,10 +334,10 @@ func TestNotify(t *testing.T) {
 
 		sink, err := otlp.New(domain.SinkSpec{
 			Name: "test-otlp-nil",
-			From: "test-source",
+			From: testSource,
 			Type: otlp.Type,
 			Spec: map[string]any{
-				"url": "http://localhost:4318",
+				"url": testEndpoint,
 			},
 		}, validator.New(), slog.New(slog.DiscardHandler))
 		require.NoError(t, err)
@@ -345,10 +352,10 @@ func TestNotify(t *testing.T) {
 
 		sink, err := otlp.New(domain.SinkSpec{
 			Name: "test-otlp-empty",
-			From: "test-source",
+			From: testSource,
 			Type: otlp.Type,
 			Spec: map[string]any{
-				"url": "http://localhost:4318",
+				"url": testEndpoint,
 			},
 		}, validator.New(), slog.New(slog.DiscardHandler))
 		require.NoError(t, err)
@@ -375,7 +382,7 @@ func TestNotify(t *testing.T) {
 
 		sink, err := otlp.New(domain.SinkSpec{
 			Name: "test-otlp-trailing-slash",
-			From: "test-source",
+			From: testSource,
 			Type: otlp.Type,
 			Spec: map[string]any{
 				"url": server.URL + "/",
@@ -398,7 +405,7 @@ func TestNotify(t *testing.T) {
 
 		mu.Lock()
 		defer mu.Unlock()
-		assert.Equal(t, "/v1/logs", receivedPath)
+		assert.Equal(t, logsPath, receivedPath)
 	})
 
 	t.Run("custom headers", func(t *testing.T) {
@@ -417,13 +424,13 @@ func TestNotify(t *testing.T) {
 
 		sink, err := otlp.New(domain.SinkSpec{
 			Name: "test-otlp-custom-headers",
-			From: "test-source",
+			From: testSource,
 			Type: otlp.Type,
 			Spec: map[string]any{
 				"url": server.URL,
 				"headers": map[string]string{
 					"Authorization": "Bearer secret-token",
-					"X-Custom":      "custom-value",
+					customHeader:    "custom-value",
 				},
 			},
 		}, validator.New(), slog.New(slog.DiscardHandler))
@@ -445,7 +452,7 @@ func TestNotify(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 		assert.Equal(t, "Bearer secret-token", receivedHeaders.Get("Authorization"))
-		assert.Equal(t, "custom-value", receivedHeaders.Get("X-Custom"))
+		assert.Equal(t, "custom-value", receivedHeaders.Get(customHeader))
 	})
 }
 
@@ -454,10 +461,10 @@ func TestStop(t *testing.T) {
 
 	sink, err := otlp.New(domain.SinkSpec{
 		Name: "test-otlp-stop",
-		From: "test-source",
+		From: testSource,
 		Type: otlp.Type,
 		Spec: map[string]any{
-			"url": "http://localhost:4318",
+			"url": testEndpoint,
 		},
 	}, validator.New(), slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
@@ -493,7 +500,7 @@ func TestNotifyClassifiesStatus(t *testing.T) {
 
 			sink, err := otlp.New(domain.SinkSpec{
 				Name: "test-otlp-status",
-				From: "test-source",
+				From: testSource,
 				Type: otlp.Type,
 				Spec: map[string]any{"url": server.URL},
 			}, validator.New(), slog.New(slog.DiscardHandler))
@@ -513,9 +520,9 @@ func TestNewRejectsNonPositiveTimeout(t *testing.T) {
 	for _, timeout := range []string{"0s", "-1s"} {
 		_, err := otlp.New(domain.SinkSpec{
 			Name: "test-otlp-timeout",
-			From: "test-source",
+			From: testSource,
 			Type: otlp.Type,
-			Spec: map[string]any{"url": "http://localhost:4318", "timeout": timeout},
+			Spec: map[string]any{"url": testEndpoint, "timeout": timeout},
 		}, validator.New(), slog.New(slog.DiscardHandler))
 		require.ErrorContains(t, err, "not positive", timeout)
 	}

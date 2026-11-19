@@ -26,6 +26,8 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
+const anyLocalAddr = "127.0.0.1:0"
+
 func run(ctx context.Context, a *api.API) <-chan error {
 	done := make(chan error, 1)
 	go func() { done <- a.Run(ctx) }()
@@ -36,11 +38,11 @@ func TestRunFailsWhenPortIsInUse(t *testing.T) {
 	t.Parallel()
 
 	var lc net.ListenConfig
-	taken, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	taken, err := lc.Listen(t.Context(), "tcp", anyLocalAddr)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = taken.Close() })
 
-	a, err := api.New(nil, "127.0.0.1:0", taken.Addr().String(), nil, slog.New(slog.DiscardHandler))
+	a, err := api.New(nil, anyLocalAddr, taken.Addr().String(), nil, slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -60,7 +62,7 @@ func TestRunFailsWhenPortIsInUse(t *testing.T) {
 func TestRunStopsWithContext(t *testing.T) {
 	t.Parallel()
 
-	a, err := api.New(nil, "127.0.0.1:0", "127.0.0.1:0", nil, slog.New(slog.DiscardHandler))
+	a, err := api.New(nil, anyLocalAddr, anyLocalAddr, nil, slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -158,7 +160,7 @@ func TestMetricsEndpoint(t *testing.T) {
 func freeAddr(t *testing.T) string {
 	t.Helper()
 	var lc net.ListenConfig
-	l, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	l, err := lc.Listen(t.Context(), "tcp", anyLocalAddr)
 	require.NoError(t, err)
 	addr := l.Addr().String()
 	require.NoError(t, l.Close())

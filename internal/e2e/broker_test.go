@@ -66,12 +66,12 @@ func TestBrokerNATS(t *testing.T) {
 		outA, outRest := n.brokerStream(t, "a"), n.brokerStream(t, "rest")
 		p := newPipeline(t,
 			[]domain.StageSpec{
-				customerFilter("customer-a", "in", isCustomerA),
-				customerFilter("other-customers", "in", "!"+isCustomerA),
+				customerFilter(customerA, "in", isCustomerA),
+				customerFilter(otherCustomers, "in", "!"+isCustomerA),
 			},
 			[]domain.SinkSpec{
-				n.brokerSinkByService("sink-a", "customer-a", outA),
-				n.brokerSinkByService("sink-rest", "other-customers", outRest),
+				n.brokerSinkByService(sinkA, customerA, outA),
+				n.brokerSinkByService(sinkRest, otherCustomers, outRest),
 			})
 
 		require.Equal(t, http.StatusOK,
@@ -88,8 +88,8 @@ func TestBrokerNATS(t *testing.T) {
 		mid := n.brokerStream(t, "mid")
 		ingest := newPipeline(t, nil, []domain.SinkSpec{n.brokerSinkByService("out", "in", mid)})
 		forward := newStream(t, n.brokerSource(mid, "logs", mid+".>"),
-			[]domain.StageSpec{customerFilter("customer-a", "in", isCustomerA)},
-			[]domain.SinkSpec{captureSinkSpec("received", "customer-a")})
+			[]domain.StageSpec{customerFilter(customerA, "in", isCustomerA)},
+			[]domain.SinkSpec{captureSinkSpec("received", customerA)})
 
 		require.Equal(t, http.StatusOK,
 			ingest.post(t, request("shop", rec{"r1", "A"}, rec{"r2", "B"}, rec{"r3", "A"}), 10*time.Second))
@@ -103,41 +103,7 @@ func TestBrokerNATS(t *testing.T) {
 
 	t.Run("one source per signal", func(t *testing.T) {
 		t.Parallel()
-
-		mid := n.brokerStream(t, "signals")
-		ingest := newPipeline(t, nil, []domain.SinkSpec{{
-			Name: "out", Type: "broker", From: "in", Spec: n.brokerSinkSpec(map[string]any{
-				"logs":    fmt.Sprintf("'%s.logs'", mid),
-				"metrics": fmt.Sprintf("'%s.metrics'", mid),
-				"traces":  fmt.Sprintf("'%s.traces'", mid),
-			}),
-		}})
-		received := map[string]*captureSink{}
-		for _, signal := range []string{"logs", "metrics", "traces"} {
-			s := newStream(t, n.brokerSource(mid, signal, mid+"."+signal),
-				nil, []domain.SinkSpec{captureSinkSpec("received", "in")})
-			received[signal] = s.sinks.sink(t, "received")
-		}
-
-		shape := otlpgen.Shape{Records: 2, Resources: 1, Teams: 1}
-		require.Equal(t, http.StatusOK, ingest.postTo(t, "/v1/logs", otlpgen.Logs(shape), 10*time.Second))
-		require.Equal(t, http.StatusOK, ingest.postTo(t, "/v1/metrics", otlpgen.Metrics(shape), 10*time.Second))
-		require.Equal(t, http.StatusOK, ingest.postTo(t, "/v1/traces", otlpgen.Traces(shape), 10*time.Second))
-
-		for signal, sink := range received {
-			require.Eventually(t, func() bool { return len(sink.received()) == 1 }, 10*time.Second, 10*time.Millisecond,
-				"the %s source", signal)
-			e := sink.received()[0]
-			assert.Equal(t, 2, e.RecordCount(), signal)
-			switch signal {
-			case "logs":
-				assert.NotNil(t, e.Logs)
-			case "metrics":
-				assert.NotNil(t, e.Metrics)
-			case "traces":
-				assert.NotNil(t, e.Traces)
-			}
-		}
+		testOneSourcePerSignal(t, n)
 	})
 
 	t.Run("plain OTLP from another producer is read", func(t *testing.T) {
@@ -159,48 +125,7 @@ func TestBrokerNATS(t *testing.T) {
 
 	t.Run("partitioned by customer", func(t *testing.T) {
 		t.Parallel()
-
-		const count = 3
-		prefix := n.stream("part")
-		for p := range count {
-			name := fmt.Sprintf("%s-%d", prefix, p)
-			_, err := n.js.CreateStream(t.Context(), jetstream.StreamConfig{
-				Name: name, Subjects: []string{fmt.Sprintf("%s.%d.>", prefix, p)},
-			})
-			require.NoError(t, err)
-		}
-		ingest := newPipeline(t, nil, []domain.SinkSpec{{
-			Name: "out", Type: "broker", From: "in",
-			Spec: n.brokerSinkSpec(map[string]any{
-				"logs": fmt.Sprintf("'%s.' + string(partition) + '.' + record.attributes.get_attr('%s')",
-					prefix, customerAttr),
-			}, "partition", map[string]any{
-				"count": float64(count), "logs": "record.attributes.get_attr('" + customerAttr + "')",
-			}),
-		}})
-		customers := []string{"A", "B", "C", "D"}
-		received := map[string]*captureSink{}
-		for _, customer := range customers {
-			src := n.brokerSource(prefix+"-{partition}", "logs", prefix+".{partition}."+customer)
-			src.Spec["partition"] = map[string]any{"count": float64(count), "key": customer}
-			s := newStream(t, src, nil, []domain.SinkSpec{captureSinkSpec("received", "in")})
-			received[customer] = s.sinks.sink(t, "received")
-		}
-
-		var records []rec
-		for _, customer := range customers {
-			records = append(records, rec{"r-" + customer, customer})
-		}
-		require.Equal(t, http.StatusOK, ingest.post(t, request("shop", records...), 10*time.Second))
-
-		for _, customer := range customers {
-			require.Eventually(t, func() bool { return len(arrived(received[customer].received())) == 1 },
-				10*time.Second, 10*time.Millisecond, "customer %s", customer)
-			assert.Equal(t, []string{"shop/e2e/r-" + customer}, arrived(received[customer].received()))
-			stream := fmt.Sprintf("%s-%d", prefix, partition.Of(customer, count))
-			assert.Len(t, n.read(t, stream), countCustomersIn(customers, partition.Of(customer, count), count),
-				"stream %s holds the customers of its partition", stream)
-		}
+		testPartitionedByCustomer(t, n)
 	})
 
 	t.Run("routing by record attribute", func(t *testing.T) {
@@ -415,4 +340,89 @@ func logsBySubject(t *testing.T, messages []*jetstream.RawStreamMsg) map[string]
 		sort.Strings(out[subject])
 	}
 	return out
+}
+
+// testOneSourcePerSignal sends each signal to its own subject and reads it with a source of that signal.
+func testOneSourcePerSignal(t *testing.T, n *natsServer) {
+	t.Helper()
+	mid := n.brokerStream(t, "signals")
+	ingest := newPipeline(t, nil, []domain.SinkSpec{{
+		Name: "out", Type: "broker", From: "in", Spec: n.brokerSinkSpec(map[string]any{
+			"logs":    fmt.Sprintf("'%s.logs'", mid),
+			"metrics": fmt.Sprintf("'%s.metrics'", mid),
+			"traces":  fmt.Sprintf("'%s.traces'", mid),
+		}),
+	}})
+	received := map[string]*captureSink{}
+	for _, signal := range []string{"logs", "metrics", "traces"} {
+		s := newStream(t, n.brokerSource(mid, signal, mid+"."+signal),
+			nil, []domain.SinkSpec{captureSinkSpec("received", "in")})
+		received[signal] = s.sinks.sink(t, "received")
+	}
+
+	shape := otlpgen.Shape{Records: 2, Resources: 1, Teams: 1}
+	require.Equal(t, http.StatusOK, ingest.postTo(t, "/v1/logs", otlpgen.Logs(shape), 10*time.Second))
+	require.Equal(t, http.StatusOK, ingest.postTo(t, "/v1/metrics", otlpgen.Metrics(shape), 10*time.Second))
+	require.Equal(t, http.StatusOK, ingest.postTo(t, "/v1/traces", otlpgen.Traces(shape), 10*time.Second))
+
+	for signal, sink := range received {
+		require.Eventually(t, func() bool { return len(sink.received()) == 1 }, 10*time.Second, 10*time.Millisecond,
+			"the %s source", signal)
+		e := sink.received()[0]
+		assert.Equal(t, 2, e.RecordCount(), signal)
+		switch signal {
+		case "logs":
+			assert.NotNil(t, e.Logs)
+		case "metrics":
+			assert.NotNil(t, e.Metrics)
+		case "traces":
+			assert.NotNil(t, e.Traces)
+		}
+	}
+}
+
+// testPartitionedByCustomer writes to partitioned streams and reads each customer from its partition.
+func testPartitionedByCustomer(t *testing.T, n *natsServer) {
+	t.Helper()
+	const count = 3
+	prefix := n.stream("part")
+	for p := range count {
+		name := fmt.Sprintf("%s-%d", prefix, p)
+		_, err := n.js.CreateStream(t.Context(), jetstream.StreamConfig{
+			Name: name, Subjects: []string{fmt.Sprintf("%s.%d.>", prefix, p)},
+		})
+		require.NoError(t, err)
+	}
+	ingest := newPipeline(t, nil, []domain.SinkSpec{{
+		Name: "out", Type: "broker", From: "in",
+		Spec: n.brokerSinkSpec(map[string]any{
+			"logs": fmt.Sprintf("'%s.' + string(partition) + '.' + record.attributes.get_attr('%s')",
+				prefix, customerAttr),
+		}, "partition", map[string]any{
+			"count": float64(count), "logs": "record.attributes.get_attr('" + customerAttr + "')",
+		}),
+	}})
+	customers := []string{"A", "B", "C", "D"}
+	received := map[string]*captureSink{}
+	for _, customer := range customers {
+		src := n.brokerSource(prefix+"-{partition}", "logs", prefix+".{partition}."+customer)
+		src.Spec["partition"] = map[string]any{"count": float64(count), "key": customer}
+		s := newStream(t, src, nil, []domain.SinkSpec{captureSinkSpec("received", "in")})
+		received[customer] = s.sinks.sink(t, "received")
+	}
+
+	var records []rec
+	for _, customer := range customers {
+		records = append(records, rec{"r-" + customer, customer})
+	}
+	require.Equal(t, http.StatusOK, ingest.post(t, request("shop", records...), 10*time.Second))
+
+	for _, customer := range customers {
+		require.Eventually(t, func() bool { return len(arrived(received[customer].received())) == 1 },
+			10*time.Second, 10*time.Millisecond, "customer %s", customer)
+		assert.Equal(t, []string{"shop/e2e/r-" + customer}, arrived(received[customer].received()))
+		stream := fmt.Sprintf("%s-%d", prefix, partition.Of(customer, count))
+		assert.Len(t, n.read(t, stream), countCustomersIn(customers, partition.Of(customer, count), count),
+			"stream %s holds the customers of its partition", stream)
+	}
 }

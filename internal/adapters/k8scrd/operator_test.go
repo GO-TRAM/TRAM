@@ -18,6 +18,8 @@ import (
 	"codeberg.org/eljoth/tram/internal/adapters/k8scrd"
 )
 
+const mapperLabel = "engine.tram.io/mapper"
+
 func TestCacheOptionsWithoutLimitsWatchesEverything(t *testing.T) {
 	t.Parallel()
 
@@ -52,10 +54,10 @@ func TestCacheOptionsEngineSelectsItsStreams(t *testing.T) {
 		labels labels.Set
 		want   bool
 	}{
-		{"stream of the engine", labels.Set{"engine.tram.io/mapper": ""}, true},
-		{"engine label with any value", labels.Set{"engine.tram.io/mapper": "yes"}, true},
+		{"stream of the engine", labels.Set{mapperLabel: ""}, true},
+		{"engine label with any value", labels.Set{mapperLabel: "yes"}, true},
 		{"stream of the engine and another",
-			labels.Set{"engine.tram.io/mapper": "", "engine.tram.io/routers": ""}, true},
+			labels.Set{mapperLabel: "", "engine.tram.io/routers": ""}, true},
 		{"stream of another engine", labels.Set{"engine.tram.io/routers": ""}, false},
 		{"stream without engine", labels.Set{"team": "telemetry"}, false},
 	}

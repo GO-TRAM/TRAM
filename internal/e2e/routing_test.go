@@ -25,6 +25,15 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
+const (
+	logsPath   = "/v1/logs"
+	logsA1     = "logs:a1"
+	logsA2     = "logs:a2"
+	metricsPA1 = "metrics:mixed/pa1"
+	metricsPA3 = "metrics:mixed/pa3"
+	tracesSA1  = "traces:sa1"
+)
+
 // Every log record, span and data point carries the customer it belongs to.
 const (
 	customerAttr = "customer"
@@ -214,8 +223,8 @@ func testRoutingByRecordAttribute(t *testing.T, n *natsServer) {
 
 	t.Run("each consumer receives exactly the records of its customer", func(t *testing.T) {
 		codes := ingest.postAll(t,
-			post{"/v1/logs", request("shop", rec{"a1", "a"}, rec{"b1", "b"}, rec{"c1", "c"})},
-			post{"/v1/logs", request("cart", rec{"a2", "a"})},
+			post{logsPath, request("shop", rec{"a1", "a"}, rec{"b1", "b"}, rec{"c1", "c"})},
+			post{logsPath, request("cart", rec{"a2", "a"})},
 			post{"/v1/traces", spans(entry{"sb1", "b"}, entry{"sa1", "a"}, entry{"sc1", "c"})},
 			post{"/v1/metrics", metrics(
 				&metricspb.Metric{Name: "mixed", Data: &metricspb.Metric_Gauge{Gauge: &metricspb.Gauge{
@@ -229,7 +238,7 @@ func testRoutingByRecordAttribute(t *testing.T, n *natsServer) {
 		require.Equal(t, []int{http.StatusOK, http.StatusOK, http.StatusOK, http.StatusOK}, codes)
 
 		expect(t, map[string][]string{
-			"a": {"logs:a1", "logs:a2", "traces:sa1", "metrics:mixed/pa1", "metrics:mixed/pa3"},
+			"a": {logsA1, logsA2, tracesSA1, metricsPA1, metricsPA3},
 			"b": {"logs:b1", "traces:sb1", "metrics:mixed/pb2", "metrics:total/pb5"},
 		})
 	})
@@ -240,15 +249,15 @@ func testRoutingByRecordAttribute(t *testing.T, n *natsServer) {
 		record.Attributes = append(record.Attributes, stringAttr(customerAttr, "b"))
 
 		codes := ingest.postAll(t,
-			post{"/v1/logs", request("shop", rec{"a3", "a"})},
-			post{"/v1/logs", request("shop", rec{"bad", "B!"})},
-			post{"/v1/logs", duplicate},
+			post{logsPath, request("shop", rec{"a3", "a"})},
+			post{logsPath, request("shop", rec{"bad", "B!"})},
+			post{logsPath, duplicate},
 		)
 		assert.Equal(t, []int{http.StatusOK, http.StatusUnprocessableEntity, http.StatusUnprocessableEntity}, codes,
 			"an invalid customer and a customer given twice are refused, the valid request is delivered")
 
 		expect(t, map[string][]string{
-			"a": {"logs:a1", "logs:a2", "logs:a3", "traces:sa1", "metrics:mixed/pa1", "metrics:mixed/pa3"},
+			"a": {logsA1, logsA2, "logs:a3", tracesSA1, metricsPA1, metricsPA3},
 		})
 	})
 
@@ -270,7 +279,7 @@ func testRoutingByRecordAttribute(t *testing.T, n *natsServer) {
 		}, 10*time.Second, 10*time.Millisecond, "the messages were not handled")
 
 		assert.Equal(t,
-			[]string{"logs:a1", "logs:a2", "logs:a3", "metrics:mixed/pa1", "metrics:mixed/pa3", "traces:sa1"},
+			[]string{logsA1, logsA2, "logs:a3", metricsPA1, metricsPA3, tracesSA1},
 			receivedEntries(consumers["a"].received()),
 			"neither the foreign message nor the mixed one reaches the sink")
 	})

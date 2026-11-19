@@ -21,6 +21,12 @@ import (
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
 
+const (
+	recordsMetric    = "tram.node.records"
+	durationMetric   = "tram.node.duration"
+	recordsOutMetric = "tram.node.records.out"
+)
+
 func newMeteredCore(t *testing.T) (*core.Core, *registry, *sdkmetric.ManualReader) {
 	t.Helper()
 	c, reg := newCore(t)
@@ -37,22 +43,26 @@ func collect(t *testing.T, reader *sdkmetric.ManualReader, name string) map[attr
 	points := map[attribute.Distinct]int64{}
 	for _, sm := range rm.ScopeMetrics {
 		for _, m := range sm.Metrics {
-			if m.Name != name {
-				continue
-			}
-			switch data := m.Data.(type) {
-			case metricdata.Sum[int64]:
-				for _, dp := range data.DataPoints {
-					points[dp.Attributes.Equivalent()] = dp.Value
-				}
-			case metricdata.Histogram[float64]:
-				for _, dp := range data.DataPoints {
-					points[dp.Attributes.Equivalent()] = int64(dp.Count)
-				}
+			if m.Name == name {
+				addPoints(points, m.Data)
 			}
 		}
 	}
 	return points
+}
+
+// addPoints adds the values of counters and the counts of histograms.
+func addPoints(points map[attribute.Distinct]int64, data metricdata.Aggregation) {
+	switch data := data.(type) {
+	case metricdata.Sum[int64]:
+		for _, dp := range data.DataPoints {
+			points[dp.Attributes.Equivalent()] = dp.Value
+		}
+	case metricdata.Histogram[float64]:
+		for _, dp := range data.DataPoints {
+			points[dp.Attributes.Equivalent()] = int64(dp.Count)
+		}
+	}
 }
 
 func attrs(node, kind string, kv ...attribute.KeyValue) attribute.Distinct {
@@ -97,11 +107,11 @@ func TestMetricsCountRecordsPerSignal(t *testing.T) {
 		attrs("source", "source", signal(domain.SignalTraces)): 6,
 		attrs("sink", "sink", signal(domain.SignalLogs)):       4,
 		attrs("sink", "sink", signal(domain.SignalTraces)):     6,
-	}, collect(t, reader, "tram.node.records"), "signals without records are left out")
+	}, collect(t, reader, recordsMetric), "signals without records are left out")
 	assert.Equal(t, map[attribute.Distinct]int64{
 		attrs("source", "source", outcome("ok")): 2,
 		attrs("sink", "sink", outcome("ok")):     2,
-	}, collect(t, reader, "tram.node.duration"))
+	}, collect(t, reader, durationMetric))
 }
 
 func TestMetricsCountSourceOncePerEvent(t *testing.T) {
@@ -118,7 +128,7 @@ func TestMetricsCountSourceOncePerEvent(t *testing.T) {
 		attrs("a", "sink", signal(domain.SignalLogs)):        2,
 		attrs("b", "sink", signal(domain.SignalLogs)):        2,
 		attrs("c", "sink", signal(domain.SignalLogs)):        2,
-	}, collect(t, reader, "tram.node.records"))
+	}, collect(t, reader, recordsMetric))
 }
 
 func TestMetricsRecordOutcome(t *testing.T) {
@@ -146,7 +156,7 @@ func TestMetricsRecordOutcome(t *testing.T) {
 				attrs("source", "source", outcome(tc.outcome)): 1,
 				attrs("ok", "sink", outcome("ok")):             1,
 				attrs("broken", "sink", outcome(tc.outcome)):   1,
-			}, collect(t, reader, "tram.node.duration"))
+			}, collect(t, reader, durationMetric))
 		})
 	}
 }
@@ -170,14 +180,14 @@ func TestMetricsLeaveOutStagesByDefault(t *testing.T) {
 	assert.Equal(t, map[attribute.Distinct]int64{
 		attrs("source", "source", signal(domain.SignalLogs)): 1,
 		attrs("sink", "sink", signal(domain.SignalLogs)):     1,
-	}, collect(t, reader, "tram.node.records"))
+	}, collect(t, reader, recordsMetric))
 	assert.Equal(t, map[attribute.Distinct]int64{
 		attrs("source", "source", signal(domain.SignalLogs)): 1,
-	}, collect(t, reader, "tram.node.records.out"))
+	}, collect(t, reader, recordsOutMetric))
 	assert.Equal(t, map[attribute.Distinct]int64{
 		attrs("source", "source", outcome("ok")): 1,
 		attrs("sink", "sink", outcome("ok")):     1,
-	}, collect(t, reader, "tram.node.duration"))
+	}, collect(t, reader, durationMetric))
 }
 
 func TestMetricsCoverStagesWhenEnabled(t *testing.T) {
@@ -196,12 +206,12 @@ func TestMetricsCoverStagesWhenEnabled(t *testing.T) {
 		attrs("source", "source", signal(domain.SignalLogs)): 1,
 		attrs("stage", "stage", signal(domain.SignalLogs)):   1,
 		attrs("sink", "sink", signal(domain.SignalLogs)):     1,
-	}, collect(t, reader, "tram.node.records"))
+	}, collect(t, reader, recordsMetric))
 	assert.Equal(t, map[attribute.Distinct]int64{
 		attrs("source", "source", outcome("ok")): 1,
 		attrs("stage", "stage", outcome("ok")):   1,
 		attrs("sink", "sink", outcome("ok")):     1,
-	}, collect(t, reader, "tram.node.duration"))
+	}, collect(t, reader, durationMetric))
 }
 
 func TestMetricsLeaveOutDisabledMetrics(t *testing.T) {
@@ -221,11 +231,11 @@ func TestMetricsLeaveOutDisabledMetrics(t *testing.T) {
 
 	assert.Equal(t, map[attribute.Distinct]int64{
 		attrs("sink", "sink", signal(domain.SignalLogs)): 1,
-	}, collect(t, reader, "tram.node.records"))
-	assert.Empty(t, collect(t, reader, "tram.node.records.out"), "records.out follows records")
+	}, collect(t, reader, recordsMetric))
+	assert.Empty(t, collect(t, reader, recordsOutMetric), "records.out follows records")
 	assert.Equal(t, map[attribute.Distinct]int64{
 		attrs("source", "source", outcome("ok")): 1,
-	}, collect(t, reader, "tram.node.duration"))
+	}, collect(t, reader, durationMetric))
 	assert.Empty(t, requestSizes(t, reader))
 }
 
@@ -242,7 +252,7 @@ func TestMetricsFollowChangedSettings(t *testing.T) {
 
 	require.NoError(t, deliver(t, reg, logs(1)))
 
-	assert.Contains(t, collect(t, reader, "tram.node.records"),
+	assert.Contains(t, collect(t, reader, recordsMetric),
 		attrs("stage", "stage", signal(domain.SignalLogs)), "the stage records once enabled")
 }
 
@@ -262,7 +272,7 @@ func TestMetricsSurviveReplacedReceivers(t *testing.T) {
 	assert.Equal(t, map[attribute.Distinct]int64{
 		attrs("source", "source", signal(domain.SignalLogs)): 1,
 		attrs("new", "sink", signal(domain.SignalLogs)):      1,
-	}, collect(t, reader, "tram.node.records"))
+	}, collect(t, reader, recordsMetric))
 }
 
 func TestMetricsCountRecordsOut(t *testing.T) {
@@ -287,14 +297,14 @@ func TestMetricsCountRecordsOut(t *testing.T) {
 	assert.Equal(t, map[attribute.Distinct]int64{
 		attrs("source", "source", signal(domain.SignalLogs)): 2,
 		attrs("forward", "stage", signal(domain.SignalLogs)): 2,
-	}, collect(t, reader, "tram.node.records.out"), "a stage that passes nothing on has no output")
+	}, collect(t, reader, recordsOutMetric), "a stage that passes nothing on has no output")
 	assert.Equal(t, map[attribute.Distinct]int64{
 		attrs("source", "source", signal(domain.SignalLogs)): 2,
 		attrs("forward", "stage", signal(domain.SignalLogs)): 2,
 		attrs("swallow", "stage", signal(domain.SignalLogs)): 2,
 		attrs("a", "sink", signal(domain.SignalLogs)):        2,
 		attrs("b", "sink", signal(domain.SignalLogs)):        2,
-	}, collect(t, reader, "tram.node.records"))
+	}, collect(t, reader, recordsMetric))
 }
 
 func TestMetricsRecordCancellation(t *testing.T) {
@@ -338,7 +348,7 @@ func TestMetricsRecordCancellation(t *testing.T) {
 			assert.Equal(t, map[attribute.Distinct]int64{
 				attrs("source", "source", outcome(tc.outcome)): 1,
 				attrs("waiting", "sink", outcome(tc.outcome)):  1,
-			}, collect(t, reader, "tram.node.duration"))
+			}, collect(t, reader, durationMetric))
 		})
 	}
 }

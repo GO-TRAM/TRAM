@@ -35,6 +35,13 @@ import (
 	tramv1alpha1 "codeberg.org/eljoth/tram/internal/adapters/k8scrd/api/v1alpha1"
 )
 
+const (
+	testImage     = "tram:test"
+	testStreamUID = "fc9e4198-cbe4-686e-95f7-abfa5a16a23e"
+	otlpHTTP      = "otlp-http"
+	managerName   = "tram-manager"
+)
+
 // startEngineCluster starts a cluster whose admin client knows Engines.
 func startEngineCluster(t *testing.T) *cluster {
 	t.Helper()
@@ -113,12 +120,12 @@ func TestManagerRunsEngine(t *testing.T) {
 	c := startEngineCluster(t)
 	ns := c.newNamespace(t)
 	runManager(t, k8scrd.ManagerOptions{
-		Kubeconfig: c.adminKubeconfig(t), Namespaces: []string{ns}, EngineImage: "tram:test",
+		Kubeconfig: c.adminKubeconfig(t), Namespaces: []string{ns}, EngineImage: testImage,
 	})
 
-	c.createEngine(t, ns, "fc9e4198-cbe4-686e-95f7-abfa5a16a23e", tramv1alpha1.EngineSpec{
+	c.createEngine(t, ns, testStreamUID, tramv1alpha1.EngineSpec{
 		Replicas:         new(int32(2)),
-		Ports:            []tramv1alpha1.EnginePort{{Name: "otlp-http", Port: 4318}},
+		Ports:            []tramv1alpha1.EnginePort{{Name: otlpHTTP, Port: 4318}},
 		DisruptionBudget: &tramv1alpha1.DisruptionBudgetSpec{MaxUnavailable: new(intstr.FromInt32(1))},
 		PodTemplate: tramv1alpha1.PodTemplate{Spec: tramv1alpha1.PodSpec{
 			NodeSelector: map[string]string{"node-pool": "telemetry"},
@@ -126,10 +133,10 @@ func TestManagerRunsEngine(t *testing.T) {
 	})
 
 	var deployment appsv1.Deployment
-	c.requireOwned(t, ns, "fc9e4198-cbe4-686e-95f7-abfa5a16a23e", &deployment)
+	c.requireOwned(t, ns, testStreamUID, &deployment)
 	assert.Equal(t, new(int32(2)), deployment.Spec.Replicas)
 	container := deployment.Spec.Template.Spec.Containers[0]
-	assert.Equal(t, "tram:test", container.Image)
+	assert.Equal(t, testImage, container.Image)
 	assert.Contains(t, container.Args, "--engine=fc9e4198-cbe4-686e-95f7-abfa5a16a23e")
 	assert.Contains(t, container.Args, "--watch-namespace="+ns)
 	assert.Equal(
@@ -140,23 +147,23 @@ func TestManagerRunsEngine(t *testing.T) {
 	assert.Equal(t, map[string]string{"node-pool": "telemetry"}, deployment.Spec.Template.Spec.NodeSelector)
 
 	var service corev1.Service
-	c.requireOwned(t, ns, "fc9e4198-cbe4-686e-95f7-abfa5a16a23e", &service)
+	c.requireOwned(t, ns, testStreamUID, &service)
 	ports := make([]string, 0, len(service.Spec.Ports))
 	for _, p := range service.Spec.Ports {
 		ports = append(ports, p.Name)
 	}
-	assert.Equal(t, []string{"http", "grpc", "otlp-http"}, ports)
+	assert.Equal(t, []string{"http", "grpc", otlpHTTP}, ports)
 
 	var binding rbacv1.RoleBinding
-	c.requireOwned(t, ns, "fc9e4198-cbe4-686e-95f7-abfa5a16a23e", &binding)
+	c.requireOwned(t, ns, testStreamUID, &binding)
 	assert.Equal(t, "manager-role", binding.RoleRef.Name)
-	c.requireOwned(t, ns, "fc9e4198-cbe4-686e-95f7-abfa5a16a23e", &corev1.ServiceAccount{})
-	c.requireOwned(t, ns, "fc9e4198-cbe4-686e-95f7-abfa5a16a23e", &policyv1.PodDisruptionBudget{})
+	c.requireOwned(t, ns, testStreamUID, &corev1.ServiceAccount{})
+	c.requireOwned(t, ns, testStreamUID, &policyv1.PodDisruptionBudget{})
 
 	c.requireEngine(
 		t,
 		ns,
-		"fc9e4198-cbe4-686e-95f7-abfa5a16a23e",
+		testStreamUID,
 		func(collect *assert.CollectT, e *tramv1alpha1.Engine) {
 			assert.Equal(collect, e.Generation, e.Status.ObservedGeneration)
 			assert.Equal(collect, "tram.io/engine=fc9e4198-cbe4-686e-95f7-abfa5a16a23e", e.Status.Selector)
@@ -167,11 +174,11 @@ func TestManagerRunsEngine(t *testing.T) {
 	)
 
 	// A Stream that refers to the Engine is counted and accepted.
-	c.createEngineStream(t, ns, "s", nil, "fc9e4198-cbe4-686e-95f7-abfa5a16a23e")
+	c.createEngineStream(t, ns, "s", nil, testStreamUID)
 	c.requireEngine(
 		t,
 		ns,
-		"fc9e4198-cbe4-686e-95f7-abfa5a16a23e",
+		testStreamUID,
 		func(collect *assert.CollectT, e *tramv1alpha1.Engine) {
 			assert.Equal(collect, int32(1), e.Status.Streams)
 		},
@@ -201,7 +208,7 @@ func TestManagerRunsEngine(t *testing.T) {
 	c.requireEngine(
 		t,
 		ns,
-		"fc9e4198-cbe4-686e-95f7-abfa5a16a23e",
+		testStreamUID,
 		func(collect *assert.CollectT, e *tramv1alpha1.Engine) {
 			assert.Equal(collect, int32(2), e.Status.ReadyReplicas)
 			assert.Equal(collect, metav1.ConditionTrue, condition(e, tramv1alpha1.ConditionReady).Status)
@@ -214,7 +221,7 @@ func TestManagerRunsEngine(t *testing.T) {
 		t,
 		c.admin.Get(
 			t.Context(),
-			types.NamespacedName{Namespace: ns, Name: "fc9e4198-cbe4-686e-95f7-abfa5a16a23e"},
+			types.NamespacedName{Namespace: ns, Name: testStreamUID},
 			&engine,
 		),
 	)
@@ -226,14 +233,14 @@ func TestManagerRunsEngine(t *testing.T) {
 	// A resource deleted by hand is restored, one the Engine no longer asks
 	// for is deleted.
 	require.NoError(t, c.admin.Delete(t.Context(), &service))
-	c.requireOwned(t, ns, "fc9e4198-cbe4-686e-95f7-abfa5a16a23e", &corev1.Service{})
+	c.requireOwned(t, ns, testStreamUID, &corev1.Service{})
 	c.updateEngine(
 		t,
 		ns,
-		"fc9e4198-cbe4-686e-95f7-abfa5a16a23e",
+		testStreamUID,
 		func(spec *tramv1alpha1.EngineSpec) { spec.DisruptionBudget = nil },
 	)
-	c.requireGone(t, ns, "fc9e4198-cbe4-686e-95f7-abfa5a16a23e", &policyv1.PodDisruptionBudget{})
+	c.requireGone(t, ns, testStreamUID, &policyv1.PodDisruptionBudget{})
 }
 
 // ownsReplicas tells whether manager applied the replicas of deployment.
@@ -257,7 +264,7 @@ func TestEngineHandsReplicasOverToAutoscaler(t *testing.T) {
 	c := startEngineCluster(t)
 	ns := c.newNamespace(t)
 	runManager(t, k8scrd.ManagerOptions{
-		Kubeconfig: c.adminKubeconfig(t), Namespaces: []string{ns}, EngineImage: "tram:test",
+		Kubeconfig: c.adminKubeconfig(t), Namespaces: []string{ns}, EngineImage: testImage,
 	})
 
 	c.createEngine(t, ns, "routers", tramv1alpha1.EngineSpec{Replicas: new(int32(3))})
@@ -284,7 +291,7 @@ func TestEngineHandsReplicasOverToAutoscaler(t *testing.T) {
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
 		var d appsv1.Deployment
 		if assert.NoError(collect, c.admin.Get(t.Context(), key, &d)) {
-			assert.False(collect, ownsReplicas(t, &d, "tram-manager"), "the manager no longer applies the replicas")
+			assert.False(collect, ownsReplicas(t, &d, managerName), "the manager no longer applies the replicas")
 		}
 	}, eventuallyTimeout, pollInterval)
 	requireReplicas(3)
@@ -335,8 +342,8 @@ func TestEngineReportsInvalidSpec(t *testing.T) {
 
 	// A port that collides with the HTTP API.
 	c.updateEngine(t, ns, "broken", func(spec *tramv1alpha1.EngineSpec) {
-		spec.Image = "tram:test"
-		spec.Ports = []tramv1alpha1.EnginePort{{Name: "otlp-http", Port: 8080}}
+		spec.Image = testImage
+		spec.Ports = []tramv1alpha1.EnginePort{{Name: otlpHTTP, Port: 8080}}
 	})
 	c.requireEngine(t, ns, "broken", func(collect *assert.CollectT, e *tramv1alpha1.Engine) {
 		assert.Contains(collect, condition(e, tramv1alpha1.ConditionReconciled).Message, "both use 8080")
@@ -398,16 +405,16 @@ func TestManagerRunsEnginesWithItsClusterRole(t *testing.T) {
 		require.NoError(t, c.admin.Create(t.Context(), &role))
 	}
 
-	const user = "tram-manager"
+	const user = managerName
 	require.NoError(t, c.admin.Create(t.Context(), &rbacv1.ClusterRoleBinding{
-		Name:     "tram-manager",
-		RoleRef:  rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: "tram-manager"},
+		Name:     managerName,
+		RoleRef:  rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: managerName},
 		Subjects: []rbacv1.Subject{{APIGroup: rbacv1.GroupName, Kind: rbacv1.UserKind, Name: user}},
 	}))
 
 	ns := c.newNamespace(t)
 	c.createEngine(t, ns, "mapper", tramv1alpha1.EngineSpec{
-		Image: "tram:test",
+		Image: testImage,
 		Autoscaling: &tramv1alpha1.AutoscalingSpec{
 			Enabled:     true,
 			MinReplicas: new(int32(2)),
@@ -433,7 +440,7 @@ func TestManagerRunsEnginesWithItsClusterRole(t *testing.T) {
 		assert.Equal(collect, metav1.ConditionTrue, condition(e, tramv1alpha1.ConditionReconciled).Status)
 		assert.Equal(collect, int32(1), e.Status.Streams)
 	})
-	c.requireLabels(t, ns, "s", map[string]string{"engine.tram.io/mapper": ""})
+	c.requireLabels(t, ns, "s", map[string]string{mapperLabel: ""})
 }
 
 // examplesDir is setup/k8s/examples, relative to this package.

@@ -220,8 +220,7 @@ func (d *delivery) Ack() error {
 // Reject drops the record for good: its offset is committed like an
 // acknowledged one.
 func (d *delivery) Reject() error {
-	d.s.tracker.finish(d.e)
-	return nil
+	return d.Ack()
 }
 
 func (d *delivery) Retry(delay time.Duration) error {

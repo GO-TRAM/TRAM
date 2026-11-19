@@ -31,6 +31,11 @@ import (
 )
 
 const (
+	roleFile     = "role.yaml"
+	operatorName = "tram-operator"
+)
+
+const (
 	eventuallyTimeout = 15 * time.Second
 	pollInterval      = 50 * time.Millisecond
 	settleTime        = time.Second
@@ -245,14 +250,14 @@ func TestOperatorNeedsOnlyRoleBindingInWatchedNamespace(t *testing.T) {
 	t.Parallel()
 	c := startCluster(t)
 
-	content, err := os.ReadFile(filepath.Join("config", "rbac", "role.yaml"))
+	content, err := os.ReadFile(filepath.Join("config", "rbac", roleFile))
 	require.NoError(t, err)
 	var role rbacv1.ClusterRole
 	require.NoError(t, yaml.Unmarshal(content, &role))
 	require.NoError(t, c.admin.Create(t.Context(), &role))
 
 	ns := c.newNamespace(t)
-	const user = "tram-operator"
+	const user = operatorName
 	require.NoError(t, c.admin.Create(t.Context(), &rbacv1.RoleBinding{
 		Namespace: ns, Name: "tram",
 		RoleRef:  rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: role.Name},
@@ -277,14 +282,14 @@ func TestOperatorAppliesSecrets(t *testing.T) {
 	t.Parallel()
 	c := startCluster(t)
 
-	content, err := os.ReadFile(filepath.Join("config", "rbac", "role.yaml"))
+	content, err := os.ReadFile(filepath.Join("config", "rbac", roleFile))
 	require.NoError(t, err)
 	var role rbacv1.ClusterRole
 	require.NoError(t, yaml.Unmarshal(content, &role))
 	require.NoError(t, c.admin.Create(t.Context(), &role))
 
 	ns := c.newNamespace(t)
-	const user = "tram-operator"
+	const user = operatorName
 	require.NoError(t, c.admin.Create(t.Context(), &rbacv1.RoleBinding{
 		Namespace: ns, Name: "tram",
 		RoleRef:  rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: role.Name},
@@ -352,14 +357,14 @@ func TestOperatorAppliesConfigMaps(t *testing.T) {
 	t.Parallel()
 	c := startCluster(t)
 
-	content, err := os.ReadFile(filepath.Join("config", "rbac", "role.yaml"))
+	content, err := os.ReadFile(filepath.Join("config", "rbac", roleFile))
 	require.NoError(t, err)
 	var role rbacv1.ClusterRole
 	require.NoError(t, yaml.Unmarshal(content, &role))
 	require.NoError(t, c.admin.Create(t.Context(), &role))
 
 	ns := c.newNamespace(t)
-	const user = "tram-operator"
+	const user = operatorName
 	require.NoError(t, c.admin.Create(t.Context(), &rbacv1.RoleBinding{
 		Namespace: ns, Name: "tram",
 		RoleRef:  rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: role.Name},

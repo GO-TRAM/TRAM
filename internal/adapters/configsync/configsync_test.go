@@ -27,6 +27,8 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
+const editedFile = "edited.json"
+
 const streamFile = `{
   "stream": {
     "source": {"name": "generator", "type": "generator", "spec": {"interval": "1h"}},
@@ -88,14 +90,14 @@ func TestOtherFilesDoNotCancelSync(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeFile(t, dir, "edited.json", streamFile)
+	writeFile(t, dir, editedFile, streamFile)
 
 	c := newCore(t)
 	cs, err := configsync.New(c, dir, slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
 	run(t, cs)
 
-	writeFile(t, dir, "edited.json", strings.Replace(streamFile, "1h", "2h", 1))
+	writeFile(t, dir, editedFile, strings.Replace(streamFile, "1h", "2h", 1))
 	writeFile(t, dir, ".edited.json.swp", "swap")
 
 	require.Eventually(t, func() bool {
@@ -108,7 +110,7 @@ func TestUnreadableFileKeepsStream(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeFile(t, dir, "edited.json", streamFile)
+	writeFile(t, dir, editedFile, streamFile)
 	writeFile(t, dir, "removed.json", streamFile)
 
 	c := newCore(t)
@@ -123,7 +125,7 @@ func TestUnreadableFileKeepsStream(t *testing.T) {
 	// other file is removed, so the sync that deletes the removed stream sees
 	// it.
 	const broken = `{"stream": {"source": `
-	writeFile(t, dir, "edited.json", broken)
+	writeFile(t, dir, editedFile, broken)
 	require.NoError(t, os.Remove(filepath.Join(dir, "removed.json")))
 
 	require.Eventually(t, func() bool {
@@ -134,11 +136,11 @@ func TestUnreadableFileKeepsStream(t *testing.T) {
 	_, err = c.GetStream(t.Context(), "edited")
 	require.NoError(t, err, "stream with an unreadable file was deleted")
 
-	content, err := os.ReadFile(filepath.Join(dir, "edited.json"))
+	content, err := os.ReadFile(filepath.Join(dir, editedFile))
 	require.NoError(t, err, "unreadable stream file was removed")
 	assert.Equal(t, broken, string(content)) //nolint:testifylint // Invalid JSON on purpose; compared byte for byte.
 
-	writeFile(t, dir, "edited.json", strings.Replace(streamFile, "1h", "2h", 1))
+	writeFile(t, dir, editedFile, strings.Replace(streamFile, "1h", "2h", 1))
 	require.Eventually(t, func() bool {
 		stream, getErr := c.GetStream(t.Context(), "edited")
 		return getErr == nil && stream.Source.Spec["interval"] == "2h"

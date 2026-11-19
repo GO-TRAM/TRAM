@@ -29,6 +29,11 @@ import (
 )
 
 const (
+	partitionSubject = "in.{partition}"
+	logsSubject      = "in.logs"
+)
+
+const (
 	waitFor = 5 * time.Second
 	tick    = 10 * time.Millisecond
 )
@@ -66,7 +71,7 @@ func spec(extra map[string]any) map[string]any {
 	s := map[string]any{
 		"driver": brokertest.MemoryName,
 		"signal": "logs",
-		"memory": map[string]any{"destination": "in.logs", "durable": "d"},
+		"memory": map[string]any{"destination": logsSubject, "durable": "d"},
 	}
 	maps.Copy(s, extra)
 	return s
@@ -115,13 +120,13 @@ func TestNewRejectsInvalidSpecs(t *testing.T) {
 		{name: "options of another driver", spec: spec(map[string]any{"nats": map[string]any{}})},
 		{name: "too many workers", spec: spec(map[string]any{"workers": float64(10001)})},
 		{name: "placeholder without partition", spec: spec(map[string]any{
-			"memory": map[string]any{"destination": "in.{partition}"},
+			"memory": map[string]any{"destination": partitionSubject},
 		})},
 		{name: "partition without placeholder", spec: spec(map[string]any{
 			"partition": map[string]any{"count": float64(4), "key": "k"},
 		})},
 		{name: "partition without key", spec: spec(map[string]any{
-			"memory":    map[string]any{"destination": "in.{partition}"},
+			"memory":    map[string]any{"destination": partitionSubject},
 			"partition": map[string]any{"count": float64(4)},
 		})},
 	}
@@ -156,14 +161,14 @@ func TestDeliveryOutcomes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			m := brokertest.NewMemory(0)
-			m.Declare("in.logs", "d")
-			m.Inject("in.logs", tt.body(t))
+			m.Declare(logsSubject, "d")
+			m.Inject(logsSubject, tt.body(t))
 			src, err := newSource(m, spec(nil))
 			require.NoError(t, err)
 			c := &collector{err: tt.err}
 			run(t, src, c)
 
-			require.Eventually(t, func() bool { return m.Outcome("in.logs", "d") == tt.want }, waitFor, tick)
+			require.Eventually(t, func() bool { return m.Outcome(logsSubject, "d") == tt.want }, waitFor, tick)
 			if tt.want.Acked == 1 {
 				require.Equal(t, 1, c.count())
 				assert.Equal(t, 3, c.events[0].RecordCount())
@@ -181,7 +186,7 @@ func TestPartitionSelectsTheKeysDestination(t *testing.T) {
 	m.Inject(dest, logsBody(t, 2))
 
 	src, err := newSource(m, spec(map[string]any{
-		"memory":    map[string]any{"destination": "in.{partition}", "durable": "d"},
+		"memory":    map[string]any{"destination": partitionSubject, "durable": "d"},
 		"partition": map[string]any{"count": float64(8), "key": "tenant-123"},
 	}))
 	require.NoError(t, err)
@@ -205,8 +210,8 @@ func TestStopWaitsForMessagesBeingHandled(t *testing.T) {
 	t.Parallel()
 
 	m := brokertest.NewMemory(0)
-	m.Declare("in.logs", "d")
-	m.Inject("in.logs", logsBody(t, 1))
+	m.Declare(logsSubject, "d")
+	m.Inject(logsSubject, logsBody(t, 1))
 	src, err := newSource(m, spec(nil))
 	require.NoError(t, err)
 	c := &collector{hold: make(chan struct{})}
@@ -214,7 +219,7 @@ func TestStopWaitsForMessagesBeingHandled(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() { done <- src.Run(context.Background()) }()
-	require.Eventually(t, func() bool { return m.Outcome("in.logs", "d").Open == 1 }, waitFor, tick)
+	require.Eventually(t, func() bool { return m.Outcome(logsSubject, "d").Open == 1 }, waitFor, tick)
 
 	require.NoError(t, src.Stop())
 	select {
@@ -224,5 +229,5 @@ func TestStopWaitsForMessagesBeingHandled(t *testing.T) {
 	}
 	close(c.hold)
 	require.NoError(t, <-done)
-	assert.Equal(t, brokertest.Outcome{Acked: 1}, m.Outcome("in.logs", "d"), "the message is still acknowledged")
+	assert.Equal(t, brokertest.Outcome{Acked: 1}, m.Outcome(logsSubject, "d"), "the message is still acknowledged")
 }

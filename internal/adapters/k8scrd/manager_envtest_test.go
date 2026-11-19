@@ -28,6 +28,11 @@ import (
 	tramv1 "codeberg.org/eljoth/tram/internal/adapters/k8scrd/api/v1"
 )
 
+const (
+	routersLabel = "engine.tram.io/routers"
+	onlyMapper   = "only-mapper"
+)
+
 func engineRefs(engines ...string) []tramv1.EngineReference {
 	refs := make([]tramv1.EngineReference, len(engines))
 	for i, engine := range engines {
@@ -103,7 +108,7 @@ func TestManagerDerivesEngineLabels(t *testing.T) {
 	ns := c.newNamespace(t)
 	c.createEngineStream(t, ns, "mapped",
 		map[string]string{"team": "telemetry", "engine.tram.io/old": ""}, "mapper", "routers")
-	c.createEngineStream(t, ns, "unassigned", map[string]string{"engine.tram.io/mapper": ""})
+	c.createEngineStream(t, ns, "unassigned", map[string]string{mapperLabel: ""})
 
 	runManager(t, k8scrd.ManagerOptions{
 		Kubeconfig:              c.adminKubeconfig(t),
@@ -112,16 +117,16 @@ func TestManagerDerivesEngineLabels(t *testing.T) {
 	})
 
 	c.requireLabels(t, ns, "mapped",
-		map[string]string{"team": "telemetry", "engine.tram.io/mapper": "", "engine.tram.io/routers": ""})
+		map[string]string{"team": "telemetry", mapperLabel: "", routersLabel: ""})
 	c.requireLabels(t, ns, "unassigned", map[string]string{})
 
 	c.setEngineRefs(t, ns, "mapped", "routers")
-	c.requireLabels(t, ns, "mapped", map[string]string{"team": "telemetry", "engine.tram.io/routers": ""})
+	c.requireLabels(t, ns, "mapped", map[string]string{"team": "telemetry", routersLabel: ""})
 
 	// An engine label set by hand is removed, other labels stay.
 	c.setLabels(t, ns, "mapped",
-		map[string]string{"team": "platform", "engine.tram.io/routers": "yes", "engine.tram.io/rogue": ""})
-	c.requireLabels(t, ns, "mapped", map[string]string{"team": "platform", "engine.tram.io/routers": ""})
+		map[string]string{"team": "platform", routersLabel: "yes", "engine.tram.io/rogue": ""})
+	c.requireLabels(t, ns, "mapped", map[string]string{"team": "platform", routersLabel: ""})
 }
 
 func TestEnginesRunTheStreamsThatReferToThem(t *testing.T) {
@@ -129,7 +134,7 @@ func TestEnginesRunTheStreamsThatReferToThem(t *testing.T) {
 	c := startCluster(t)
 
 	ns := c.newNamespace(t)
-	c.createEngineStream(t, ns, "only-mapper", nil, "mapper")
+	c.createEngineStream(t, ns, onlyMapper, nil, "mapper")
 	c.createEngineStream(t, ns, "both", nil, "mapper", "routers")
 	c.createEngineStream(t, ns, "none", nil)
 
@@ -141,11 +146,11 @@ func TestEnginesRunTheStreamsThatReferToThem(t *testing.T) {
 
 	requireStreams(t, mapper, ns+".only-mapper", ns+".both")
 	requireStreams(t, routers, ns+".both")
-	c.requireActive(t, ns, "only-mapper")
+	c.requireActive(t, ns, onlyMapper)
 
 	// Moving a Stream to another engine stops it on the first and starts it on
 	// the second.
-	c.setEngineRefs(t, ns, "only-mapper", "routers")
+	c.setEngineRefs(t, ns, onlyMapper, "routers")
 	requireStreams(t, mapper, ns+".both")
 	requireStreams(t, routers, ns+".both", ns+".only-mapper")
 }
@@ -175,7 +180,7 @@ func TestManagerNeedsOnlyItsClusterRole(t *testing.T) {
 		LeaderElection:          true,
 		LeaderElectionNamespace: ns,
 	})
-	c.requireLabels(t, ns, "s", map[string]string{"engine.tram.io/mapper": ""})
+	c.requireLabels(t, ns, "s", map[string]string{mapperLabel: ""})
 }
 
 func TestStreamRejectsInvalidEngineRefs(t *testing.T) {
@@ -218,7 +223,7 @@ func TestEngineIgnoresEngineLabelsSetByHand(t *testing.T) {
 	c := startCluster(t)
 
 	ns := c.newNamespace(t)
-	label := map[string]string{"engine.tram.io/mapper": ""}
+	label := map[string]string{mapperLabel: ""}
 	c.createEngineStream(t, ns, "by-hand", label)
 	c.createEngineStream(t, ns, "referred", label, "mapper")
 
