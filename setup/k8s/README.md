@@ -2,7 +2,7 @@
 
 This directory contains Kubernetes YAML configurations for deploying Tram streams in Kubernetes environments. Each example has a corresponding JSON configuration in the `../config/` directory with the same base filename.
 
-Every example runs on the Engine `demo` from [`examples/engine.yaml`](examples/engine.yaml): its `spec.engineRefs` names it. The OTLP examples listen on ports of their own, 4318 to 4326, which the Engine declares, so all examples can run on it at once.
+Every example runs on the Engine `demo` from [`examples/engine.yaml`](examples/engine.yaml): its `spec.engineRefs` names it. The OTLP examples listen on ports of their own, 4318 to 4327, which the Engine declares, so all examples can run on it at once.
 
 ## Quick Start
 
@@ -59,6 +59,12 @@ These examples demonstrate using the OTLP sink in Tram for various use cases.
 - Forwards to a central OTLP collector
 - No processing stages
 - **JSON version**: [../config/otlp_basic.json](../config/otlp_basic.json)
+
+#### [`otlp_debug.yaml`](examples/otlp_debug.yaml)
+**Purpose**: OTLP into the debug sink, to see what reaches an Engine
+- Receives OTLP data on port 4327
+- Logs every record it receives; see them with `stern -l tram.io/engine=demo`
+- No JSON version
 
 #### [`otlp_secure.yaml`](examples/otlp_secure.yaml)
 **Purpose**: Secure OTLP forwarding with authentication

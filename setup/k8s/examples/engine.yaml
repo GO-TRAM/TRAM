@@ -30,5 +30,7 @@ spec:
       port: 4325
     - name: bench-split
       port: 4326
+    - name: otlp-debug
+      port: 4327
   runtime:
     logLevel: info

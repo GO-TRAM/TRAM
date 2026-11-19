@@ -1,4 +1,4 @@
-# otlp_basic.yaml - Basic OTLP to OTLP forwarding
+# otlp_debug.yaml - OTLP to the debug sink, which logs every record it receives
 apiVersion: io.tram.core/v1
 kind: Stream
 metadata:
@@ -10,7 +10,7 @@ spec:
     type: otlp
     name: otlp_source
     spec:
-      http_port: 4318
+      http_port: 4327
   stages: []
   sinks:
     - type: debug
