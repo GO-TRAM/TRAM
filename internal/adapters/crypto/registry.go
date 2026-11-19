@@ -24,9 +24,11 @@ import (
 // not know.
 var ErrUnknownDriver = errors.New("unknown crypto driver")
 
-// Driver creates a [ports.Crypter] from the driver's options.
+// Driver creates a [ports.Crypter] and a [ports.Decrypter] from the driver's
+// options.
 type Driver interface {
 	NewCrypter(opts map[string]any, validator *validator.Validate) (ports.Crypter, error)
+	NewDecrypter(opts map[string]any, validator *validator.Validate) (ports.Decrypter, error)
 }
 
 // DriverFactory returns the driver a spec names in its `driver` field.

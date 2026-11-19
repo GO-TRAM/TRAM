@@ -18,4 +18,10 @@ type Spec struct {
 	// string attributes can be encrypted; a listed attribute with another
 	// value type rejects the event.
 	Attributes []string `json:"attributes,omitempty"`
+	// MarkerPrefix is the prefix of the marker attributes set on every
+	// encrypted record: "<prefix>.algorithm", "<prefix>.key_id" and
+	// "<prefix>.wrapped_key". Zero means the default, tram.encryption. Choose
+	// a neutral prefix if the attribute names should not reveal the product.
+	// The decryption stage needs the same prefix.
+	MarkerPrefix string `json:"marker_prefix,omitempty"`
 }

@@ -33,12 +33,13 @@ const Type = "encryption"
 // one.
 const DefaultAlgorithm = "aes-256-gcm"
 
-// Record attributes the stage sets on every encrypted log record, so
-// consumers know how to decrypt it.
+// Record attributes the stage sets on every encrypted log record by default,
+// so consumers know how to decrypt it. A spec can rename them with
+// `marker_prefix`, see [crypto.MarkerAttributes].
 const (
-	AttrAlgorithm  = "tram.encryption.algorithm"
-	AttrKeyID      = "tram.encryption.key_id"
-	AttrWrappedKey = "tram.encryption.wrapped_key"
+	AttrAlgorithm  = crypto.DefaultMarkerPrefix + ".algorithm"
+	AttrKeyID      = crypto.DefaultMarkerPrefix + ".key_id"
+	AttrWrappedKey = crypto.DefaultMarkerPrefix + ".wrapped_key"
 )
 
 type Encryption struct {
@@ -47,7 +48,10 @@ type Encryption struct {
 	crypter    ports.Crypter
 	algorithm  string
 	attributes map[string]struct{}
-	logger     *slog.Logger
+	attrAlgorithm,
+	attrKeyID,
+	attrWrappedKey string
+	logger *slog.Logger
 }
 
 func New(stage domain.StageSpec, validator *validator.Validate, logger *slog.Logger) (*Encryption, error) {
@@ -73,13 +77,20 @@ func New(stage domain.StageSpec, validator *validator.Validate, logger *slog.Log
 	for _, name := range spec.Attributes {
 		attributes[name] = struct{}{}
 	}
+	attrAlgorithm, attrKeyID, attrWrappedKey, err := crypto.MarkerAttributes(spec.MarkerPrefix)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Encryption{
-		Stage:      baseStage,
-		crypter:    crypter,
-		algorithm:  algorithm,
-		attributes: attributes,
-		logger:     logger.With(slog.String("stage", stage.Name)),
+		Stage:          baseStage,
+		crypter:        crypter,
+		algorithm:      algorithm,
+		attributes:     attributes,
+		attrAlgorithm:  attrAlgorithm,
+		attrKeyID:      attrKeyID,
+		attrWrappedKey: attrWrappedKey,
+		logger:         logger.With(slog.String("stage", stage.Name)),
 	}, nil
 }
 
@@ -198,10 +209,10 @@ func (s *Encryption) encryptAttributes(attrs []*commonpb.KeyValue) ([]*commonpb.
 		}
 		out[i] = stringValue(attr.GetKey(), base64.StdEncoding.EncodeToString(encrypted))
 	}
-	out = setStringAttr(out, AttrAlgorithm, s.algorithm)
-	out = setStringAttr(out, AttrKeyID, s.crypter.KeyID())
+	out = setStringAttr(out, s.attrAlgorithm, s.algorithm)
+	out = setStringAttr(out, s.attrKeyID, s.crypter.KeyID())
 	if wrapped := s.crypter.WrappedKey(); wrapped != nil {
-		out = setStringAttr(out, AttrWrappedKey, base64.StdEncoding.EncodeToString(wrapped))
+		out = setStringAttr(out, s.attrWrappedKey, base64.StdEncoding.EncodeToString(wrapped))
 	}
 	return out, nil
 }

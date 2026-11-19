@@ -8,6 +8,7 @@
 package local
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -33,6 +34,9 @@ var (
 	// ErrInvalidKey is returned when the key is not exactly one of key,
 	// key_env and key_file, or does not decode to a 32-byte AES-256 key.
 	ErrInvalidKey = errors.New("invalid key")
+	// ErrDecryptionFailed is returned when the ciphertext does not open with
+	// the key, e.g. because the key is wrong or the data is corrupted.
+	ErrDecryptionFailed = errors.New("decryption failed")
 )
 
 // Spec holds the local driver's options, under `local:` in a component spec.
@@ -47,18 +51,32 @@ type Spec struct {
 	KeyFile string `json:"key_file,omitempty"`
 }
 
-// Driver creates crypters with a local key.
+// Driver creates crypters and decrypters with a local key.
 type Driver struct{}
 
 var _ interface {
 	NewCrypter(map[string]any, *validator.Validate) (ports.Crypter, error)
+	NewDecrypter(map[string]any, *validator.Validate) (ports.Decrypter, error)
 } = Driver{}
 
 // New returns the local driver.
 func New() Driver { return Driver{} }
 
 // NewCrypter creates a crypter from the driver's options.
-func (Driver) NewCrypter(opts map[string]any, validator *validator.Validate) (ports.Crypter, error) {
+func (d Driver) NewCrypter(opts map[string]any, validator *validator.Validate) (ports.Crypter, error) {
+	c, err := d.new(opts, validator)
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// NewDecrypter creates a decrypter from the driver's options.
+func (d Driver) NewDecrypter(opts map[string]any, validator *validator.Validate) (ports.Decrypter, error) {
+	return d.new(opts, validator)
+}
+
+func (Driver) new(opts map[string]any, validator *validator.Validate) (*crypter, error) {
 	spec, err := domain.ParseSpec(opts, new(Spec))
 	if err != nil {
 		return nil, err
@@ -145,3 +163,17 @@ func (c *crypter) Encrypt(plaintext []byte) ([]byte, error) {
 
 func (c *crypter) KeyID() string      { return c.keyID }
 func (c *crypter) WrappedKey() []byte { return nil }
+
+// Decrypt opens nonce and AES-256-GCM ciphertext with the key. A local key
+// decrypts directly, so wrappedKey is ignored.
+func (c *crypter) Decrypt(_ context.Context, _, ciphertext []byte) ([]byte, error) {
+	nonceSize := c.gcm.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return nil, fmt.Errorf("%w: ciphertext shorter than the nonce", ErrDecryptionFailed)
+	}
+	plaintext, err := c.gcm.Open(nil, ciphertext[:nonceSize], ciphertext[nonceSize:], nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: wrong key or corrupted ciphertext", ErrDecryptionFailed)
+	}
+	return plaintext, nil
+}

@@ -18,6 +18,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/stackitcloud/stackit-sdk-go/core/config"
@@ -37,6 +38,9 @@ var (
 	// ErrKMS is returned when the KMS key cannot be used, e.g. the options
 	// are incomplete or wrapping the data key fails.
 	ErrKMS = errors.New("STACKIT KMS error")
+	// ErrDecryptionFailed is returned when a ciphertext does not decrypt, e.g.
+	// because the data is corrupted.
+	ErrDecryptionFailed = errors.New("decryption failed")
 )
 
 // Spec holds the driver's options, under `stackit-kms:` in a component spec.
@@ -62,11 +66,12 @@ type Spec struct {
 	Token string `json:"token,omitempty"`
 }
 
-// Driver creates crypters backed by a STACKIT KMS key.
+// Driver creates crypters and decrypters backed by a STACKIT KMS key.
 type Driver struct{}
 
 var _ interface {
 	NewCrypter(map[string]any, *validator.Validate) (ports.Crypter, error)
+	NewDecrypter(map[string]any, *validator.Validate) (ports.Decrypter, error)
 } = Driver{}
 
 // New returns the STACKIT KMS driver.
@@ -74,18 +79,32 @@ func New() Driver { return Driver{} }
 
 // NewCrypter generates a data key, wraps it with the KMS key and returns the
 // crypter that encrypts with the data key.
-func (Driver) NewCrypter(opts map[string]any, validator *validator.Validate) (ports.Crypter, error) {
-	spec, err := domain.ParseSpec(opts, new(Spec))
+func (d Driver) NewCrypter(opts map[string]any, validator *validator.Validate) (ports.Crypter, error) {
+	spec, client, err := d.parse(opts, validator)
 	if err != nil {
 		return nil, err
 	}
-	if err = validator.Struct(spec); err != nil {
-		return nil, err
-	}
-	return newCrypter(context.Background(), spec)
+	return newCrypter(context.Background(), spec, client)
 }
 
-func newCrypter(ctx context.Context, spec *Spec) (*crypter, error) {
+// NewDecrypter returns a decrypter that unwraps the records' wrapped data keys
+// with the KMS key and decrypts with them.
+func (d Driver) NewDecrypter(opts map[string]any, validator *validator.Validate) (ports.Decrypter, error) {
+	spec, client, err := d.parse(opts, validator)
+	if err != nil {
+		return nil, err
+	}
+	return &decrypter{client: client, spec: spec, keyID: keyID(spec), unwrapped: map[string][]byte{}}, nil
+}
+
+func (Driver) parse(opts map[string]any, validator *validator.Validate) (*Spec, *kms.APIClient, error) {
+	spec, err := domain.ParseSpec(opts, new(Spec))
+	if err != nil {
+		return nil, nil, err
+	}
+	if err = validator.Struct(spec); err != nil {
+		return nil, nil, err
+	}
 	endpoint := spec.Endpoint
 	if endpoint == "" {
 		endpoint = fmt.Sprintf("https://kms.api.%s.stackit.cloud", spec.Region)
@@ -96,11 +115,19 @@ func newCrypter(ctx context.Context, spec *Spec) (*crypter, error) {
 	}
 	client, err := kms.NewAPIClient(clientOpts...)
 	if err != nil {
-		return nil, fmt.Errorf("%w: failed to create KMS client: %v", ErrKMS, err)
+		return nil, nil, fmt.Errorf("%w: failed to create KMS client: %v", ErrKMS, err)
 	}
+	return spec, client, nil
+}
 
+func keyID(spec *Spec) string {
+	return fmt.Sprintf("stackit-kms:%s/%s/%s/%s:%d",
+		spec.ProjectID, spec.Region, spec.KeyRingID, spec.KeyID, spec.KeyVersion)
+}
+
+func newCrypter(ctx context.Context, spec *Spec, client *kms.APIClient) (*crypter, error) {
 	dek := make([]byte, keySize)
-	if _, err = rand.Read(dek); err != nil {
+	if _, err := rand.Read(dek); err != nil {
 		return nil, fmt.Errorf("%w: failed to generate data key: %v", ErrKMS, err)
 	}
 	wrapped, err := client.DefaultAPI.Encrypt(ctx, spec.ProjectID, spec.Region, spec.KeyRingID, spec.KeyID, spec.KeyVersion).
@@ -121,8 +148,7 @@ func newCrypter(ctx context.Context, spec *Spec) (*crypter, error) {
 	return &crypter{
 		gcm:     gcm,
 		wrapped: wrappedKey,
-		keyID: fmt.Sprintf("stackit-kms:%s/%s/%s/%s:%d",
-			spec.ProjectID, spec.Region, spec.KeyRingID, spec.KeyID, spec.KeyVersion),
+		keyID:   keyID(spec),
 	}, nil
 }
 
@@ -157,3 +183,69 @@ func (c *crypter) Encrypt(plaintext []byte) ([]byte, error) {
 
 func (c *crypter) KeyID() string      { return c.keyID }
 func (c *crypter) WrappedKey() []byte { return c.wrapped }
+
+// decrypter unwraps the records' wrapped data keys with the KMS and decrypts
+// with them. Unwrapped data keys are cached in memory, so the KMS is called
+// once per wrapped key, not per record.
+type decrypter struct {
+	client    *kms.APIClient
+	spec      *Spec
+	keyID     string
+	mu        sync.Mutex
+	unwrapped map[string][]byte
+}
+
+// Decrypt unwraps wrappedKey with the KMS (unless cached) and opens the
+// AES-256-GCM ciphertext with the data key.
+func (d *decrypter) Decrypt(ctx context.Context, wrappedKey, ciphertext []byte) ([]byte, error) {
+	if len(wrappedKey) == 0 {
+		return nil, fmt.Errorf("%w: record has no wrapped data key", ErrKMS)
+	}
+	dek, err := d.unwrap(ctx, wrappedKey)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := newGCM(dek)
+	if err != nil {
+		return nil, err
+	}
+	nonceSize := gcm.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return nil, fmt.Errorf("%w: ciphertext shorter than the nonce", ErrDecryptionFailed)
+	}
+	plaintext, err := gcm.Open(nil, ciphertext[:nonceSize], ciphertext[nonceSize:], nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: corrupted ciphertext", ErrDecryptionFailed)
+	}
+	return plaintext, nil
+}
+
+func (d *decrypter) KeyID() string { return d.keyID }
+
+// unwrap returns the data key the KMS wrapped, calling the KMS Decrypt
+// operation once per wrapped key and caching the result.
+func (d *decrypter) unwrap(ctx context.Context, wrappedKey []byte) ([]byte, error) {
+	cacheKey := base64.StdEncoding.EncodeToString(wrappedKey)
+	d.mu.Lock()
+	dek, ok := d.unwrapped[cacheKey]
+	d.mu.Unlock()
+	if ok {
+		return dek, nil
+	}
+
+	decrypted, err := d.client.DefaultAPI.Decrypt(ctx, d.spec.ProjectID, d.spec.Region, d.spec.KeyRingID, d.spec.KeyID, d.spec.KeyVersion).
+		DecryptPayload(kms.DecryptPayload{Data: cacheKey}).
+		Execute()
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to unwrap the data key: %v", ErrKMS, err)
+	}
+	dek, err = base64.StdEncoding.DecodeString(decrypted.GetData())
+	if err != nil || len(dek) != keySize {
+		return nil, fmt.Errorf("%w: KMS returned no valid data key", ErrKMS)
+	}
+
+	d.mu.Lock()
+	d.unwrapped[cacheKey] = dek
+	d.mu.Unlock()
+	return dek, nil
+}
