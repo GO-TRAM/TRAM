@@ -1,6 +1,6 @@
 # Components Documentation
 
-This document provides detailed documentation for all implemented sources, stages, and sinks in Tram.
+This document provides detailed documentation for all implemented sources, stages, and sinks in TRAM.
 
 ---
 
@@ -18,7 +18,7 @@ Sources are the entry points of a pipeline that produce or receive data events.
 
 ### Generator Source
 
-Emits an event at a regular interval. The events are empty: they contain no logs, metrics or traces. Useful for testing how a pipeline is wired; stages that count or inspect records, like `batch` or `cel_filter`, ignore them.
+Emits an empty event at a fixed interval, for testing how a stream is wired. Stages that count or inspect records, like `batch` or `cel_filter`, ignore the events.
 
 **Type:** `generator`
 
@@ -66,20 +66,30 @@ Receives OpenTelemetry Protocol data over HTTP (OTLP/HTTP). OTLP over gRPC is no
 }
 ```
 
-**Behavior Notes:**
-- Accepts `POST` requests on `/v1/logs`, `/v1/metrics` and `/v1/traces` with a protobuf (`application/x-protobuf`) or JSON (`application/json`) body. Requests without a content type are read as protobuf
-- Bodies may be compressed with `Content-Encoding: gzip`
-- Each request becomes one event and is passed on as a whole
-- A request in which a key appears twice in the same key-value list is refused with `422`: the attributes of a resource, scope, log record, span, span event, span link, data point or exemplar, a metric's metadata, and key-value lists nested in values or log bodies. OTLP requires unique keys; with a key twice, a stage could check one value while a sink routes by the other. The same key in different lists, e.g. on the resource and on a record, is allowed
-- Responses: `200` with an empty response message in the request's encoding once all sinks have accepted the data, `422` for a body that cannot be read or parsed, contains a duplicate key, or holds data rejected by a stage or sink (e.g. `cel_validator` with `on_mismatch: reject`), `413` for bodies larger than 20 MiB (also after decompression), `415` for other content types or encodings, `503` with a `Retry-After` header if passing the data on failed or took longer than `delivery_timeout`. Only the `503` is retried by OTLP clients: it is the only answer the request itself did not cause
-- A rejection is answered with `422` wherever it comes from, including a sink whose destination refuses the data permanently, e.g. an [OTLP Sink](#otlp-sink) whose destination answers `401`, `403` or `404` because of its own configuration. The client then drops data it did not cause to be refused
-- The default `delivery_timeout` is below the 10s that OpenTelemetry SDK exporters wait by default, so they get the `503` before they give up. `batch` and `delay` stages have to leave time for it, see [Hold Times](#hold-times). Raise it for pipelines that take longer, e.g. with a `delay` stage or slow sinks, and for clients that wait longer, like the OpenTelemetry Collector (30s by default). A batch that is already being sent when the timeout expires is still awaited, since it holds data of other requests too
-- A request may take up to 1 minute to send, which leaves time for large bodies on slow connections
-- The port is opened when the stream is created, so a port that is already in use fails the stream creation
+**Responses:**
+
+| Status | When |
+|--------|------|
+| `200` | Empty response message in the request's encoding, once all sinks have accepted the data |
+| `422` | Body cannot be read or parsed, contains a duplicate key, or holds data rejected by a stage or sink (e.g. `cel_validator` with `on_mismatch: reject`) |
+| `413` | Body larger than 20 MiB, also after decompression |
+| `415` | Other content types or encodings |
+| `503` | Passing the data on failed or took longer than `delivery_timeout`; sent with a `Retry-After` header. The only status OTLP clients retry — the only answer the request itself did not cause |
+
+??? note "Behavior"
+
+    - Accepts `POST` requests on `/v1/logs`, `/v1/metrics` and `/v1/traces` with a protobuf (`application/x-protobuf`) or JSON (`application/json`) body. Requests without a content type are read as protobuf
+    - Bodies may be compressed with `Content-Encoding: gzip`
+    - Each request becomes one event and is passed on as a whole
+    - A request in which a key appears twice in the same key-value list is refused with `422`: the attributes of a resource, scope, log record, span, span event, span link, data point or exemplar, a metric's metadata, and key-value lists nested in values or log bodies. OTLP requires unique keys; with a key twice, a stage could check one value while a sink routes by the other. The same key in different lists, e.g. on the resource and on a record, is allowed
+    - A rejection is answered with `422` wherever it comes from, including a sink whose destination refuses the data permanently, e.g. an [OTLP Sink](#otlp-sink) whose destination answers `401`, `403` or `404` because of its own configuration. The client then drops data it did not cause to be refused
+    - The default `delivery_timeout` is below the 10s that OpenTelemetry SDK exporters wait by default, so they get the `503` before they give up. `batch` and `delay` stages have to leave time for it, see [Hold Times](#hold-times). Raise it for pipelines that take longer, e.g. with a `delay` stage or slow sinks, and for clients that wait longer, like the OpenTelemetry Collector (30s by default). A batch that is already being sent when the timeout expires is still awaited, since it holds data of other requests too
+    - A request may take up to 1 minute to send, which leaves time for large bodies on slow connections
+    - The port is opened when the stream is created, so a port that is already in use fails the stream creation
 
 ### Broker Source
 
-Receives OTLP data from a message broker. The broker is chosen by `driver`, and the driver's options are under a key of the same name, e.g. `nats:`. Every message is one serialized OTLP `LogsData`, `MetricsData` or `TracesData`, the plain body that the [Broker Sink](#broker-sink) writes, without headers, so any producer can feed the source. The broker is set up outside Tram: the source creates or updates only its consumer.
+Receives OTLP data from a message broker chosen by `driver` (driver options under `nats:`, `kafka:`, `amqp:`). Every message is one serialized OTLP `LogsData`, `MetricsData` or `TracesData` — the plain body the [Broker Sink](#broker-sink) writes, so any producer can feed the source. The broker is set up outside TRAM; the source creates or updates only its consumer.
 
 **Type:** `broker`
 
@@ -123,12 +133,14 @@ Receives OTLP data from a message broker. The broker is chosen by `driver`, and 
 | `username`, `password` | string | No | - | Authenticate with SASL PLAIN; without them the connection uses SASL ANONYMOUS. In a `Stream` resource, take them from a secret with `valueFrom.secretKeyRef` |
 | `insecure_skip_verify` | bool | No | `false` | Skip the verification of the broker's certificate with `amqps`, for tests only |
 
-**Solace with the AMQP driver:** Solace PubSub+ brokers speak AMQP 1.0, so they are used through `driver: amqp`; Tram has no Solace driver of its own, because Solace's Go API needs cgo and Tram's image is a static binary.
+??? note "Solace with the AMQP driver"
 
-- Enable the AMQP service of the message VPN. Solace gives each message VPN its own AMQP port, plain text and TLS (`amqps://`); use that port in `url`
-- `username` and `password` are a client username of the message VPN; it needs permission to publish to the destinations of a sink and to consume from the queue of a source
-- A source's `address` is the name of a queue, set up outside Tram with consume permission for the client username. A retried message is returned as a failed delivery, so the queue's maximum redelivery count and its dead message queue apply. A sink's destinations are queue names, or topics in Solace's AMQP address syntax
-- This combination is not covered by Tram's automated tests: the Solace container needs a user ID that rootless Podman with the default subordinate ID range cannot map. The AMQP driver is tested against ActiveMQ Artemis; verify against your Solace version before relying on it
+    Solace PubSub+ brokers speak AMQP 1.0, so they are used through `driver: amqp`; TRAM has no Solace driver of its own, because Solace's Go API needs cgo and TRAM's image is a static binary.
+
+    - Enable the AMQP service of the message VPN. Solace gives each message VPN its own AMQP port, plain text and TLS (`amqps://`); use that port in `url`
+    - `username` and `password` are a client username of the message VPN; it needs permission to publish to the destinations of a sink and to consume from the queue of a source
+    - A source's `address` is the name of a queue, set up outside TRAM with consume permission for the client username. A retried message is returned as a failed delivery, so the queue's maximum redelivery count and its dead message queue apply. A sink's destinations are queue names, or topics in Solace's AMQP address syntax
+    - This combination is not covered by TRAM's automated tests: the Solace container needs a user ID that rootless Podman with the default subordinate ID range cannot map. The AMQP driver is tested against ActiveMQ Artemis; verify against your Solace version before relying on it
 
 **Example:**
 
@@ -149,21 +161,22 @@ Receives OTLP data from a message broker. The broker is chosen by `driver`, and 
 }
 ```
 
-**Behavior Notes:**
-- A message that is not valid OTLP data of `signal` is rejected and not redelivered. Protobuf does not name its type, so data of another signal may decode without error; keep one signal per subject
-- Each message becomes one event. A message is acknowledged once all sinks have accepted it. If passing it on fails, it is redelivered after 5 seconds; data rejected by a stage or sink is rejected for good
-- Delivery is at-least-once, and messages are not processed in order unless `workers` is 1
-- Up to `workers` messages are processed at the same time. The driver buffers only as many messages as there are workers, so no message waits long for a worker while its acknowledgement deadline runs
-- A `batch` stage after the source holds up to `workers` messages, since every message waits for its batch to be delivered before it is acknowledged. To let batches fill up to `max_records` before their `timeout`, set `workers` to at least `max_records` divided by the records per message
-- Stopping or updating the source interrupts waiting for new messages right away; messages being processed are still delivered and acknowledged
-- With `partition`, the source computes the partition of `key` like the [Broker Sink](#broker-partitioning) and replaces `{partition}` in every option of the driver. Without `partition`, the options must not contain it; with it, at least one must
-- **NATS:** the consumer starts at the beginning of the stream. A durable consumer continues where it stopped. Its `MaxAckPending` is twice `workers`, at least 1,000, the JetStream default; the limit applies across all Tram replicas that share a durable consumer
-- **NATS:** with large messages and many workers, NATS can have a lot of data to send to the source at once. If that exceeds what the server buffers for one connection (`max_pending`, 64 MB by default), the server disconnects the source as a slow consumer, and the messages it had sent come again after their acknowledgement deadline. Lower `workers`, or raise `max_pending` above `workers` × message size
-- **NATS:** a lost connection is retried every 2 seconds, with up to 1 second of jitter, for as long as the source runs. A stream that does not exist when the source starts fails the Tram stream, which is retried
-- **Kafka:** offsets are committed per partition, every second and when the source stops, and only up to the first message that is not done yet, so messages finished out of order are never skipped by a restart. A message that is retried comes again after the delay from the same source; its offset stays uncommitted until it is done, so a restart reads it again. A rejected message counts as done; Tram writes no dead-letter topic
-- **Kafka:** a topic that does not exist when the source starts fails the Tram stream, which is retried. A group rebalance hands partitions to other sources; messages of those partitions that were not done yet are read again by their new owner
-- **AMQP:** the source has credit for twice `workers` messages. AMQP 1.0 has no delayed redelivery: a retried message is held for the delay and then returned as a failed delivery, which counts towards the broker's limit of attempts before it dead-letters the message; it keeps its credit while held. A rejected message is settled as rejected, and the broker's policy decides what happens to it, usually a dead-letter address
-- **AMQP:** a lost connection is opened again with growing delays, up to 5 seconds; messages not settled on the lost connection are delivered again by the broker. An address the broker does not have fails the Tram stream when it starts, unless the broker creates addresses on demand
+??? note "Behavior"
+
+    - A message that is not valid OTLP data of `signal` is rejected and not redelivered. Protobuf does not name its type, so data of another signal may decode without error; keep one signal per subject
+    - Each message becomes one event. A message is acknowledged once all sinks have accepted it. If passing it on fails, it is redelivered after 5 seconds; data rejected by a stage or sink is rejected for good
+    - Delivery is at-least-once, and messages are not processed in order unless `workers` is 1
+    - Up to `workers` messages are processed at the same time. The driver buffers only as many messages as there are workers, so no message waits long for a worker while its acknowledgement deadline runs
+    - A `batch` stage after the source holds up to `workers` messages, since every message waits for its batch to be delivered before it is acknowledged. To let batches fill up to `max_records` before their `timeout`, set `workers` to at least `max_records` divided by the records per message
+    - Stopping or updating the source interrupts waiting for new messages right away; messages being processed are still delivered and acknowledged
+    - With `partition`, the source computes the partition of `key` like the [Broker Sink](#broker-partitioning) and replaces `{partition}` in every option of the driver. Without `partition`, the options must not contain it; with it, at least one must
+    - **NATS:** the consumer starts at the beginning of the stream. A durable consumer continues where it stopped. Its `MaxAckPending` is twice `workers`, at least 1,000, the JetStream default; the limit applies across all TRAM replicas that share a durable consumer
+    - **NATS:** with large messages and many workers, NATS can have a lot of data to send to the source at once. If that exceeds what the server buffers for one connection (`max_pending`, 64 MB by default), the server disconnects the source as a slow consumer, and the messages it had sent come again after their acknowledgement deadline. Lower `workers`, or raise `max_pending` above `workers` × message size
+    - **NATS:** a lost connection is retried every 2 seconds, with up to 1 second of jitter, for as long as the source runs. A stream that does not exist when the source starts fails the TRAM stream, which is retried
+    - **Kafka:** offsets are committed per partition, every second and when the source stops, and only up to the first message that is not done yet, so messages finished out of order are never skipped by a restart. A message that is retried comes again after the delay from the same source; its offset stays uncommitted until it is done, so a restart reads it again. A rejected message counts as done; TRAM writes no dead-letter topic
+    - **Kafka:** a topic that does not exist when the source starts fails the TRAM stream, which is retried. A group rebalance hands partitions to other sources; messages of those partitions that were not done yet are read again by their new owner
+    - **AMQP:** the source has credit for twice `workers` messages. AMQP 1.0 has no delayed redelivery: a retried message is held for the delay and then returned as a failed delivery, which counts towards the broker's limit of attempts before it dead-letters the message; it keeps its credit while held. A rejected message is settled as rejected, and the broker's policy decides what happens to it, usually a dead-letter address
+    - **AMQP:** a lost connection is opened again with growing delays, up to 5 seconds; messages not settled on the lost connection are delivered again by the broker. An address the broker does not have fails the TRAM stream when it starts, unless the broker creates addresses on demand
 
 ---
 
@@ -184,7 +197,7 @@ Stages process, transform, or filter data between sources and sinks.
 
 ### CEL Filter Stage
 
-Keeps only the records for which a Common Expression Language (CEL) expression returns true, and passes on a batch containing just those. It decides per log record, metric data point and span, so records with different attribute values that arrive in the same request, resource or scope can be separated. To accept or reject whole events instead, use the [CEL Validator Stage](#cel-validator-stage).
+Keeps only the records for which a CEL expression returns true, decided per log record, metric data point and span. To accept or reject whole events instead, use the [CEL Validator Stage](#cel-validator-stage).
 
 **Type:** `cel_filter`
 
@@ -248,15 +261,16 @@ Keep only spans of one service:
 { "traces": "resource.attributes.exists(a, a.key == 'service.name' && a.value.string_value == 'checkout')" }
 ```
 
-**Behavior Notes:**
-- Kept records are passed on in their original resource and scope; nothing is copied, and containers without remaining records are removed. If no record is kept, nothing is passed on
-- When splitting into branches, write the last branch as the negation of the others, so every record ends up in exactly one branch
-- An expression that fails for a record, e.g. by accessing a missing list index, rejects the whole event. The OTLP source answers with HTTP 422, the Broker Source rejects the message instead of redelivering it
-- Place a batch stage before the filters to merge many small requests first; each branch then receives one filtered batch
+??? note "Behavior"
+
+    - Kept records are passed on in their original resource and scope; nothing is copied, and containers without remaining records are removed. If no record is kept, nothing is passed on
+    - When splitting into branches, write the last branch as the negation of the others, so every record ends up in exactly one branch
+    - An expression that fails for a record, e.g. by accessing a missing list index, rejects the whole event. The OTLP source answers with HTTP 422, the Broker Source rejects the message instead of redelivering it
+    - Place a batch stage before the filters to merge many small requests first; each branch then receives one filtered batch
 
 ### CEL Validator Stage
 
-Checks each incoming event as a whole with Common Expression Language (CEL) expressions and passes it on, drops it, or rejects it. An event is one delivery from the stage's parent: one OTLP request, one broker message, or one batch. The stage never removes individual records; to keep only matching records, use the [CEL Filter Stage](#cel-filter-stage).
+Checks each incoming event as a whole — one OTLP request, one broker message, or one batch — with CEL expressions and passes it on, drops it, or rejects it. To keep only matching records, use the [CEL Filter Stage](#cel-filter-stage).
 
 **Type:** `cel_validator`
 
@@ -318,10 +332,11 @@ Reject log deliveries that contain a record whose `tenant.id` is not a lowercase
 }
 ```
 
-**Behavior Notes:**
-- The decision applies to the whole event. An expression like `log_records.exists(record, record.severity_text == 'ERROR')` passes on a delivery with one ERROR and many INFO records in full, including the INFO records
-- An expression that fails for an event, e.g. by accessing a missing list index, rejects the whole event regardless of `on_mismatch`. The OTLP source answers with HTTP 422, the Broker Source rejects the message instead of redelivering it
-- Place validators with `on_mismatch: reject` before a batch stage, so one invalid delivery does not reject the deliveries batched with it
+??? note "Behavior"
+
+    - The decision applies to the whole event. An expression like `log_records.exists(record, record.severity_text == 'ERROR')` passes on a delivery with one ERROR and many INFO records in full, including the INFO records
+    - An expression that fails for an event, e.g. by accessing a missing list index, rejects the whole event regardless of `on_mismatch`. The OTLP source answers with HTTP 422, the Broker Source rejects the message instead of redelivering it
+    - Place validators with `on_mismatch: reject` before a batch stage, so one invalid delivery does not reject the deliveries batched with it
 
 ### Batch Stage
 
@@ -351,19 +366,20 @@ Merges events that arrive concurrently into one event, so downstream components 
 }
 ```
 
-**Behavior Notes:**
-- Batching happens in memory only. Each caller waits until its batch has been delivered and receives the delivery result, so sources keep acknowledging or rejecting exactly what was delivered, and a slow downstream slows the sources down instead of growing the buffer
-- Batching only helps when events arrive concurrently, e.g. parallel OTLP requests or a Broker Source with several `workers`. A source that sends one event at a time only adds `timeout` to its latency
-- Behind an OTLP source, `timeout` has to stay below the source's `delivery_timeout` (8s by default), together with the other `batch` and `delay` stages on the way to a sink; otherwise the stream is rejected, see [Hold Times](#hold-times)
-- If a caller's context is cancelled (e.g. the OTLP client disconnects or the OTLP source's `delivery_timeout` expires) before the batch flushes, its event is withdrawn and not delivered. Once the flush has started, the event is delivered and the caller waits for the result
-- A delivery error, including a rejection by a later stage, applies to every event in the batch. Place `cel_validator` stages with `on_mismatch: reject` before the batch, so one invalid event does not reject the others
-- `max_bytes` keeps batches below a limit downstream, e.g. the NATS server's `max_payload` (1 MB by default) or the request size a destination accepts. It counts the protobuf encoding of the data, which is what the NATS and OTLP sinks send uncompressed. An event that is larger by itself is sent alone, since events are never split, so the limit downstream can still be exceeded by single large requests. Measuring costs a pass over every event, so it is only done with `max_bytes` set
-- Events are merged by concatenating their resource entries. Resources and scopes that appear in several events are kept as separate entries, which OTLP allows
-- On shutdown, the open batch is delivered before downstream stages and sinks stop
+??? note "Behavior"
+
+    - Batching happens in memory only. Each caller waits until its batch has been delivered and receives the delivery result, so sources keep acknowledging or rejecting exactly what was delivered, and a slow downstream slows the sources down instead of growing the buffer
+    - Batching only helps when events arrive concurrently, e.g. parallel OTLP requests or a Broker Source with several `workers`. A source that sends one event at a time only adds `timeout` to its latency
+    - Behind an OTLP source, `timeout` has to stay below the source's `delivery_timeout` (8s by default), together with the other `batch` and `delay` stages on the way to a sink; otherwise the stream is rejected, see [Hold Times](#hold-times)
+    - If a caller's context is cancelled (e.g. the OTLP client disconnects or the OTLP source's `delivery_timeout` expires) before the batch flushes, its event is withdrawn and not delivered. Once the flush has started, the event is delivered and the caller waits for the result
+    - A delivery error, including a rejection by a later stage, applies to every event in the batch. Place `cel_validator` stages with `on_mismatch: reject` before the batch, so one invalid event does not reject the others
+    - `max_bytes` keeps batches below a limit downstream, e.g. the NATS server's `max_payload` (1 MB by default) or the request size a destination accepts. It counts the protobuf encoding of the data, which is what the NATS and OTLP sinks send uncompressed. An event that is larger by itself is sent alone, since events are never split, so the limit downstream can still be exceeded by single large requests. Measuring costs a pass over every event, so it is only done with `max_bytes` set
+    - Events are merged by concatenating their resource entries. Resources and scopes that appear in several events are kept as separate entries, which OTLP allows
+    - On shutdown, the open batch is delivered before downstream stages and sinks stop
 
 ### Delay Stage
 
-Holds every event back for a fixed duration before passing it on. The caller waits during that time, so a source that sends one event at a time is slowed down accordingly; concurrent events are delayed in parallel. Useful for testing and for simulating slow downstream systems.
+Holds every event back for a fixed duration; the caller waits meanwhile, concurrent events in parallel. Useful for testing and simulating slow downstream systems.
 
 **Type:** `delay`
 
@@ -386,12 +402,13 @@ Holds every event back for a fixed duration before passing it on. The caller wai
 }
 ```
 
-**Behavior Notes:**
-- Behind an OTLP source, the delay counts toward the source's `delivery_timeout` (8s by default). A stream in which the `delay` and `batch` stages on the way to a sink add up to the `delivery_timeout` or more is rejected, see [Hold Times](#hold-times). Raise the `delivery_timeout` for longer delays
+??? note "Behavior"
+
+    - Behind an OTLP source, the delay counts toward the source's `delivery_timeout` (8s by default). A stream in which the `delay` and `batch` stages on the way to a sink add up to the `delivery_timeout` or more is rejected, see [Hold Times](#hold-times). Raise the `delivery_timeout` for longer delays
 
 ### No-op Stage
 
-A pass-through stage that performs no processing. Useful for testing, debugging, or as a placeholder in pipeline designs.
+A pass-through stage that performs no processing — for testing, debugging, or as a placeholder.
 
 **Type:** `noop`
 
@@ -409,7 +426,7 @@ A pass-through stage that performs no processing. Useful for testing, debugging,
 
 ### Value Map Stage
 
-Looks up the value of a source attribute in a table for every log record, metric data point and span, and sets a target attribute to the value the table maps it to. On a miss - the source attribute is missing, or its value has no table entry - the target attribute is set to a default value instead. Every record is passed on; nothing is filtered, dropped or held back. The stage is generic: it knows nothing about specific attributes beyond its configuration.
+Looks up a source attribute in a table for every record and sets a target attribute to the mapped value, or to `default` on a miss (missing attribute or no table entry). Every record is passed on; nothing is filtered, dropped or held back.
 
 **Type:** `value_map`
 
@@ -455,11 +472,12 @@ The target attribute is always set on the record itself, whatever `level` the so
 
 The node metrics framework counts records and durations only, not lookup outcomes, which is why the stage adds its own counters. Unlike the node metrics, they cannot carry the stream name, so they are series per stage name; keep stage names unique per stream to keep the series apart.
 
-**Behavior Notes:**
-- A lookup miss is a defined state, not an error: the record is still passed on, with the target attribute set to `default`
-- Every record is annotated, so the stage always passes on a copy of the event: the containers it annotates (records of each signal) are rebuilt, resources, scopes and metric metadata are shared
-- The table is fixed while the stream runs. To change it, update the stream with a changed spec, through the API, the config sync or a `Stream` resource, or change the config maps a `Stream` resource selects its table from; the usual stream update applies: an update with an identical spec changes nothing, an update with just a changed spec replaces the stage without touching the source
-- The stage holds no events back and does not count toward the [Hold Times](#hold-times)
+??? note "Behavior"
+
+    - A lookup miss is a defined state, not an error: the record is still passed on, with the target attribute set to `default`
+    - Every record is annotated, so the stage always passes on a copy of the event: the containers it annotates (records of each signal) are rebuilt, resources, scopes and metric metadata are shared
+    - The table is fixed while the stream runs. To change it, update the stream with a changed spec, through the API, the config sync or a `Stream` resource, or change the config maps a `Stream` resource selects its table from; the usual stream update applies: an update with an identical spec changes nothing, an update with just a changed spec replaces the stage without touching the source
+    - The stage holds no events back and does not count toward the [Hold Times](#hold-times)
 
 ---
 
@@ -477,7 +495,7 @@ Sinks are the terminal points of a pipeline that consume or export data.
 
 ### Debug Sink
 
-Writes every event to the log on stderr as a `Debug event` record with the attributes `path` (the path the event took through the stream, e.g. `in -> filter -> out`), `records` (the number of log records, data points and spans) and `event` (Go's representation of the OTLP data, which is verbose but complete). Useful for development, testing, and debugging pipelines.
+Writes every event to the log on stderr as a `Debug event` record with the attributes `path` (the path through the stream, e.g. `in -> filter -> out`), `records` (number of log records, data points and spans) and `event` (the full OTLP data). For development, testing and debugging.
 
 **Type:** `debug`
 
@@ -553,15 +571,16 @@ Sends OpenTelemetry Protocol data via HTTP to an OTLP-compatible endpoint. Sends
 }
 ```
 
-**Behavior Notes:**
-- Each signal type of an event is sent as a separate HTTP request to its endpoint. An event can hold several signal types, e.g. after a batch stage; if one request fails, the source retries the whole event, so the others may be sent twice
-- Uses protobuf encoding (`application/x-protobuf` content type) as required by OTLP/HTTP
-- The sink handles URL construction properly, so both `"http://host:4318"` and `"http://host:4318/"` work correctly
-- Non-2xx answers fail the delivery. Client errors that refuse the data itself (4xx except 408 and 429) reject the event, so the OTLP source answers with 422 and the Broker Source rejects the message. Other errors, including 408, 429 and 5xx, can be retried by the source: the OTLP source answers with 503, the Broker Source has the message redelivered
-- Proxy settings are taken from the `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` environment variables
-- Connection pooling is used for better performance with multiple requests
-- Timeout applies to the entire request lifecycle, including connection establishment and reading the response
-- The requests of an event are sent at the same time, at most 16 at once. If one fails in a way that may go away, e.g. with 503, the event fails retriably even if another destination rejected its data, so the source retries all of it. Only if every failed request was rejected is the event rejected
+??? note "Behavior"
+
+    - Each signal type of an event is sent as a separate HTTP request to its endpoint. An event can hold several signal types, e.g. after a batch stage; if one request fails, the source retries the whole event, so the others may be sent twice
+    - Uses protobuf encoding (`application/x-protobuf` content type) as required by OTLP/HTTP
+    - The sink handles URL construction properly, so both `"http://host:4318"` and `"http://host:4318/"` work correctly
+    - Non-2xx answers fail the delivery. Client errors that refuse the data itself (4xx except 408 and 429) reject the event, so the OTLP source answers with 422 and the Broker Source rejects the message. Other errors, including 408, 429 and 5xx, can be retried by the source: the OTLP source answers with 503, the Broker Source has the message redelivered
+    - Proxy settings are taken from the `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` environment variables
+    - Connection pooling is used for better performance with multiple requests
+    - Timeout applies to the entire request lifecycle, including connection establishment and reading the response
+    - The requests of an event are sent at the same time, at most 16 at once. If one fails in a way that may go away, e.g. with 503, the event fails retriably even if another destination rejected its data, so the source retries all of it. Only if every failed request was rejected is the event rejected
 
 #### Routing by URL
 
@@ -596,7 +615,7 @@ With `url_expression`, the sink sends each log record, metric data point and spa
 
 ### Broker Sink
 
-Sends OTLP data to a message broker. The broker is chosen by `driver`, and the driver's options are under a key of the same name, e.g. `nats:`. A CEL expression per signal computes the destination of every record; the records of one signal and destination become one message whose body is the serialized OTLP data, without headers, so any consumer can read it. The broker is set up outside Tram: the sink creates no streams, topics or queues.
+Sends OTLP data to a message broker chosen by `driver` (driver options under `nats:`, `kafka:`, `amqp:`). A CEL expression per signal computes each record's destination; the records of one signal and destination become one message. The broker is set up outside TRAM: the sink creates no streams, topics or queues.
 
 **Type:** `broker`
 
@@ -646,17 +665,18 @@ With partitioning, the expressions also have `partition` (int), the partition of
 }
 ```
 
-**Behavior Notes:**
-- **One signal per destination.** Messages name no signal, so a consumer can only decode a destination that holds one signal. Give each signal its own destinations, e.g. by a signal token in the subject
-- Records keep their resource and scope. If all records of a signal resolve to the same destination, the payload is sent unchanged. Resources that appear in several entries of an event, e.g. after a `batch` stage, stay separate entries in the message, which OTLP allows
-- An event is rejected if a destination expression fails for one of its records, does not return a string, or returns a destination the driver refuses, e.g. a NATS subject with an empty token, whitespace or a wildcard. `get_attr` returns `""` for a missing attribute, so `'logs.' + ...get_attr('team')` gives the invalid `logs.` for records without it. The OTLP source answers with HTTP 422, the Broker Source rejects the message instead of redelivering it
-- A message larger than the broker accepts (NATS: the server's `max_payload`) rejects the event instead of failing on every retry. Messages of the event sent before it stay sent. Keep batches small enough that the largest message per destination stays below the limit
-- The sink encodes and sends the messages of an event one after another without waiting in between, and reports success once the broker has acknowledged every message. If one cannot be sent or is not acknowledged within 10 seconds, the event fails and the source retries it, so messages already stored are stored again
-- **NATS:** JetStream stores each message in the stream whose subjects cover its subject; a subject no stream covers fails the publish (`503` at the OTLP source). Set the streams up before the sink sends, e.g. with NACK or the `nats` CLI
-- **NATS:** each sink has its own connection. A lost connection is retried every 2 seconds, with up to 1 second of jitter, for as long as the sink runs. While disconnected, publishing fails at once instead of being buffered, so the OTLP source answers with `503` and clients retry until NATS is back
-- **Kafka:** destinations are topics, which may contain letters, digits, `.`, `_` and `-`, at most 249 characters. A topic that does not exist fails the send after a few metadata retries (`503` at the OTLP source); Tram creates no topics. Messages have no key, so Kafka spreads them over the topic's partitions; with partitioning, put the partition into the topic name
-- **Kafka:** `max_pending` bounds the records buffered and in flight; a record not acknowledged within 10 seconds, retries included, fails the event
-- **AMQP:** destinations are addresses, in the broker's form; the sink refuses only empty addresses and whitespace and leaves the rest to the broker. Each address gets its own sender link on one connection. Up to `max_pending` messages are sent at once, each waiting for the broker's disposition for up to 10 seconds. A lost connection is opened again on the next message, so the OTLP source answers `503` until the broker is back
+??? note "Behavior"
+
+    - **One signal per destination.** Messages name no signal, so a consumer can only decode a destination that holds one signal. Give each signal its own destinations, e.g. by a signal token in the subject
+    - Records keep their resource and scope. If all records of a signal resolve to the same destination, the payload is sent unchanged. Resources that appear in several entries of an event, e.g. after a `batch` stage, stay separate entries in the message, which OTLP allows
+    - An event is rejected if a destination expression fails for one of its records, does not return a string, or returns a destination the driver refuses, e.g. a NATS subject with an empty token, whitespace or a wildcard. `get_attr` returns `""` for a missing attribute, so `'logs.' + ...get_attr('team')` gives the invalid `logs.` for records without it. The OTLP source answers with HTTP 422, the Broker Source rejects the message instead of redelivering it
+    - A message larger than the broker accepts (NATS: the server's `max_payload`) rejects the event instead of failing on every retry. Messages of the event sent before it stay sent. Keep batches small enough that the largest message per destination stays below the limit
+    - The sink encodes and sends the messages of an event one after another without waiting in between, and reports success once the broker has acknowledged every message. If one cannot be sent or is not acknowledged within 10 seconds, the event fails and the source retries it, so messages already stored are stored again
+    - **NATS:** JetStream stores each message in the stream whose subjects cover its subject; a subject no stream covers fails the publish (`503` at the OTLP source). Set the streams up before the sink sends, e.g. with NACK or the `nats` CLI
+    - **NATS:** each sink has its own connection. A lost connection is retried every 2 seconds, with up to 1 second of jitter, for as long as the sink runs. While disconnected, publishing fails at once instead of being buffered, so the OTLP source answers with `503` and clients retry until NATS is back
+    - **Kafka:** destinations are topics, which may contain letters, digits, `.`, `_` and `-`, at most 249 characters. A topic that does not exist fails the send after a few metadata retries (`503` at the OTLP source); TRAM creates no topics. Messages have no key, so Kafka spreads them over the topic's partitions; with partitioning, put the partition into the topic name
+    - **Kafka:** `max_pending` bounds the records buffered and in flight; a record not acknowledged within 10 seconds, retries included, fails the event
+    - **AMQP:** destinations are addresses, in the broker's form; the sink refuses only empty addresses and whitespace and leaves the rest to the broker. Each address gets its own sender link on one connection. Up to `max_pending` messages are sent at once, each waiting for the broker's disposition for up to 10 seconds. A lost connection is opened again on the next message, so the OTLP source answers `503` until the broker is back
 
 #### Broker Partitioning
 
@@ -681,11 +701,11 @@ With `partition`, the sink computes a partition per record from a key, e.g. the 
 - **Component Type vs Name:** The `type` field in configuration refers to the component implementation type (e.g., `generator`, `cel_validator`), while the `name` field is a user-defined identifier for the component instance within a stream.
 - **Connections:** The `from` field in stages and sinks specifies which component they receive data from.
 - **Tree Structure:** Pipelines form a tree with the source as root, stages as intermediate nodes, and sinks as leaves.
-- **Delivery Guarantee:** Delivery is at-least-once, and Tram does not deduplicate. A sink can receive the same data again, e.g. when a client retries after a `503` although some sinks had already accepted the data, when a broker message is redelivered after one branch of its stream failed, or when a publish succeeded but its acknowledgement was lost. Deduplicate at the destination where duplicates matter.
+- **Delivery Guarantee:** Delivery is at-least-once, and TRAM does not deduplicate. A sink can receive the same data again, e.g. when a client retries after a `503` although some sinks had already accepted the data, when a broker message is redelivered after one branch of its stream failed, or when a publish succeeded but its acknowledgement was lost. Deduplicate at the destination where duplicates matter.
 
 ### Hold Times
 
-A source like OTLP waits for a delivery only for a limited time, its `delivery_timeout`, and then answers with `503`. `batch` stages can hold an event back for up to their `timeout`, `delay` stages for their `delay`. When a stream is created or updated, Tram adds up these hold times on the way from the source to each sink and rejects the stream if the sum reaches the source's limit: every event that does not fill its batch would be cancelled, so the stream would fail as soon as traffic gets low. The error names the stages:
+A source like OTLP waits for a delivery only for a limited time, its `delivery_timeout`, and then answers with `503`. `batch` stages can hold an event back for up to their `timeout`, `delay` stages for their `delay`. When a stream is created or updated, TRAM adds up these hold times on the way from the source to each sink and rejects the stream if the sum reaches the source's limit: every event that does not fill its batch would be cancelled, so the stream would fail as soon as traffic gets low. The error names the stages:
 
 ```
 stream spec is invalid: on the way to sink openobserve-traces, batch-traces (10s) can hold an event for 10s, but source otlp cancels deliveries after 8s

@@ -10,7 +10,7 @@ hide:
 
 <div markdown>
 
-# Tram
+# TRAM
 
 <p class="tram-hero__tagline">A lightweight, extensible pipeline framework for logs, metrics and traces.</p>
 
@@ -22,7 +22,7 @@ hide:
 
 </div>
 
-Tram is a **cloud-native, in-memory data pipeline framework** for building real-time data processing flows. It receives OpenTelemetry data, filters, validates and batches it, and routes it through **tree-structured pipelines** to any number of destinations.
+TRAM is a **cloud-native, in-memory data pipeline framework** for building real-time data processing flows. It receives OpenTelemetry data, filters, validates and batches it, and routes it through **tree-structured pipelines** to any number of destinations.
 
 ```mermaid
 flowchart LR
@@ -101,11 +101,11 @@ curl -X PUT http://localhost:8080/v1/streams/my-pipeline \
 
 - :material-rocket-launch-outline: **[Getting Started](guide/getting-started.md)**
 
-    Install Tram, run it and create your first streams
+    Install TRAM, run it and create your first streams
 
-- :material-sitemap-outline: **[Pipelines](guide/pipelines.md)**
+- :material-sitemap-outline: **[Streams](guide/streams.md)**
 
-    How sources, stages and sinks form a stream
+    How sources, stages and sinks form a stream, and how to update one while it runs
 
 - :material-puzzle: **[Components](components/index.md)**
 

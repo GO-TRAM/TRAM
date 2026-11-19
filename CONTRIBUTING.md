@@ -1,6 +1,6 @@
-# Contributing to Tram
+# Contributing to TRAM
 
-Thank you for your interest in contributing to Tram! This document provides guidelines for contributing to the project.
+Thank you for your interest in contributing to TRAM! This document provides guidelines for contributing to the project.
 
 ---
 
@@ -156,7 +156,7 @@ tram/
 
 ## 🧩 Adding New Components
 
-Tram is designed to be easily extensible. Each component is a package in `internal/adapters/{source|stage|sink}/<name>/` that embeds the matching base type and is registered in the factory next to it.
+TRAM is designed to be easily extensible. Each component is a package in `internal/adapters/{source|stage|sink}/<name>/` that embeds the matching base type and is registered in the factory next to it.
 
 ### Common Patterns
 
@@ -741,18 +741,18 @@ We're happy to help you get started with contributing!
 
 ## 📜 License
 
-Tram is licensed under the [Mozilla Public License 2.0](LICENSE) (MPL-2.0). In short:
+TRAM is licensed under the [Mozilla Public License 2.0](LICENSE) (MPL-2.0). In short:
 
-- You may use, modify, and distribute Tram, including in commercial and proprietary products.
-- If you distribute a modified version of Tram's source files, your modifications to those files must be made available under the MPL-2.0.
-- You may combine Tram with your own code — including proprietary code — in a larger work without having to open your own code (MPL-2.0, Section 3.3 "Larger Work").
+- You may use, modify, and distribute TRAM, including in commercial and proprietary products.
+- If you distribute a modified version of TRAM's source files, your modifications to those files must be made available under the MPL-2.0.
+- You may combine TRAM with your own code — including proprietary code — in a larger work without having to open your own code (MPL-2.0, Section 3.3 "Larger Work").
 
 ### Licensing your contributions (inbound = outbound)
 
-By contributing to Tram, you agree that:
+By contributing to TRAM, you agree that:
 
 1. Your contributions are licensed to everyone under the same [MPL-2.0](LICENSE) as the project.
-2. You accept the [Contributor License Agreement (CLA)](CLA.md), which additionally grants the maintainer the right to relicense your contributions — for example for commercial licenses and premium features built on Tram. You accept the CLA by signing off your commits (`git commit --signoff`) or by stating "I have read and agree to the Tram CLA" in your pull request.
+2. You accept the [Contributor License Agreement (CLA)](CLA.md), which additionally grants the maintainer the right to relicense your contributions — for example for commercial licenses and premium features built on TRAM. You accept the CLA by signing off your commits (`git commit --signoff`) or by stating "I have read and agree to the TRAM CLA" in your pull request.
 3. Submitting a contribution does not oblige the maintainer to accept or merge it.
 
 ### File headers

@@ -1,6 +1,6 @@
 # Kubernetes Operator
 
-Lets Tram run streams described by `Stream` custom resources (`io.tram.core/v1`). The operator is part of the Tram binary and starts together with the server; it is not deployed separately.
+Lets TRAM run streams described by `Stream` custom resources (`io.tram.core/v1`). The operator is part of the TRAM binary and starts together with the server; it is not deployed separately.
 
 ## Running
 
@@ -10,13 +10,13 @@ Lets Tram run streams described by `Stream` custom resources (`io.tram.core/v1`)
    kubectl apply -f internal/adapters/k8scrd/config/crd/bases/io.tram.core_streams.yaml
    ```
 
-2. Start Tram with the operator enabled:
+2. Start TRAM with the operator enabled:
 
    ```sh
    ./tram server --enable-k8s-operator
    ```
 
-   Tram connects with the in-cluster configuration when it runs in a pod, otherwise with the `KUBECONFIG` environment variable or `~/.kube/config`. `--kubeconfig <file>` selects a specific file.
+   TRAM connects with the in-cluster configuration when it runs in a pod, otherwise with the `KUBECONFIG` environment variable or `~/.kube/config`. `--kubeconfig <file>` selects a specific file.
 
 3. Create a `Stream`, e.g. the example in `setup/k8s/`:
 
@@ -24,11 +24,11 @@ Lets Tram run streams described by `Stream` custom resources (`io.tram.core/v1`)
    kubectl apply -f setup/k8s/examples/otlp_basic.yaml
    ```
 
-When Tram runs in a cluster, its service account needs the permissions in `config/rbac/role.yaml` (a `ClusterRole` named `manager-role`), bound with a `ClusterRoleBinding`. With `--watch-namespace`, a `RoleBinding` to that `ClusterRole` in each watched namespace is enough. The role includes reading `Secret` and `ConfigMap` resources, for [references to secrets](#secrets) and [config maps](#config-maps).
+When TRAM runs in a cluster, its service account needs the permissions in `config/rbac/role.yaml` (a `ClusterRole` named `manager-role`), bound with a `ClusterRoleBinding`. With `--watch-namespace`, a `RoleBinding` to that `ClusterRole` in each watched namespace is enough. The role includes reading `Secret` and `ConfigMap` resources, for [references to secrets](#secrets) and [config maps](#config-maps).
 
 ## Selecting Streams
 
-By default every Tram instance with the operator enabled runs every `Stream` resource in the cluster. Two flags limit an instance to some of them; when both are set, a resource has to match both:
+By default every TRAM instance with the operator enabled runs every `Stream` resource in the cluster. Two flags limit an instance to some of them; when both are set, a resource has to match both:
 
 | Flag | Description |
 |------|-------------|
@@ -41,7 +41,7 @@ By default every Tram instance with the operator enabled runs every `Stream` res
 
 ## Engines
 
-An `Engine` (`io.tram.core/v1alpha1`) is a group of Tram instances that `tram manager` runs as a Deployment. A `Stream` names the engines that run it in `spec.engineRefs`, and every instance of each of them runs it:
+An `Engine` (`io.tram.core/v1alpha1`) is a group of TRAM instances that `tram manager` runs as a Deployment. A `Stream` names the engines that run it in `spec.engineRefs`, and every instance of each of them runs it:
 
 ```yaml
 apiVersion: io.tram.core/v1alpha1
@@ -167,8 +167,8 @@ Any value in a component's `spec` can come from a `Secret` in the namespace of t
 ```
 
 - The value replaces the whole object as a string, so a header needs its complete value in the secret, e.g. `Bearer ...`
-- The stream runs with the values, but Tram shows only the references: the API and the files of the file sync never contain a secret's value. A component may still name a value in an error it logs, e.g. an invalid URL, so keep secrets out of values that components check, like URLs
-- Changing a secret restarts the streams that refer to it with the new value. Tram watches only the metadata of secrets and reads a value when it applies a stream, so values are not kept in its cache
+- The stream runs with the values, but TRAM shows only the references: the API and the files of the file sync never contain a secret's value. A component may still name a value in an error it logs, e.g. an invalid URL, so keep secrets out of values that components check, like URLs
+- Changing a secret restarts the streams that refer to it with the new value. TRAM watches only the metadata of secrets and reads a value when it applies a stream, so values are not kept in its cache
 - A missing secret or key keeps the stream from starting and sets `status.active` to `false`; the stream starts once the secret is there. A malformed reference, e.g. without `key`, fails for good until the resource is fixed
 - References work only in `Stream` resources. Streams from the API or the file sync are passed on unchanged, so they cannot read secrets or config maps
 
@@ -204,19 +204,19 @@ data:
 
 - The selector takes `matchLabels` and `matchExpressions`, at least one of them. The value is an object with the keys and values of `data` of every matching config map; `binaryData` is ignored
 - Split a table over as many config maps as needed, e.g. one per router. A key may be in several of them only with the same value. Different values are a conflict: the error names the key and both config maps
-- Creating, changing or deleting a matching config map, or changing labels so that it starts or stops matching, applies the new table. Like with a changed spec, only stages and sinks are replaced; the source keeps running. As with secrets, Tram watches only the metadata of config maps and reads their data when it applies a stream
+- Creating, changing or deleting a matching config map, or changing labels so that it starts or stops matching, applies the new table. Like with a changed spec, only stages and sinks are replaced; the source keeps running. As with secrets, TRAM watches only the metadata of config maps and reads their data when it applies a stream
 - No matching config map, or a conflict, keeps the stream from starting and sets `status.active` to `false`. A stream that already runs keeps running with its last table until the config maps are fixed. A malformed selector, e.g. an empty one, which would match every config map of the namespace, fails for good until the resource is fixed
-- The merged table exists only in Tram's memory: it is never written to a Kubernetes object, so only each config map on its own is bound by the size limit. The API and the file sync show the selector, not the table
-- Every Tram instance that runs the stream holds the whole table, and every reconcile reads all matching config maps. Keep tables of hundreds of thousands of entries in mind when sizing memory
+- The merged table exists only in TRAM's memory: it is never written to a Kubernetes object, so only each config map on its own is bound by the size limit. The API and the file sync show the selector, not the table
+- Every TRAM instance that runs the stream holds the whole table, and every reconcile reads all matching config maps. Keep tables of hundreds of thousands of entries in mind when sizing memory
 
 ## Behavior
 
-- **Names:** a resource runs as the Tram stream `<namespace>.<name>`, e.g. `default.test-stream`, so resources with the same name in different namespaces do not collide. The stream can be read through the API under that name
+- **Names:** a resource runs as the TRAM stream `<namespace>.<name>`, e.g. `default.test-stream`, so resources with the same name in different namespaces do not collide. The stream can be read through the API under that name
 - **Changes:** the stream is created or updated when the resource's `spec`, a secret it refers to, or a config map it selects changes. Status updates and periodic resyncs do not restart it
-- **Status:** `status.active` is `true` once the stream runs, and `false` if building it failed, e.g. because of an invalid component spec. Failed builds are retried with increasing delays. If the stream's source stops later, Tram restarts the stream on its own; `status.active` stays `true` meanwhile
+- **Status:** `status.active` is `true` once the stream runs, and `false` if building it failed, e.g. because of an invalid component spec. Failed builds are retried with increasing delays. If the stream's source stops later, TRAM restarts the stream on its own; `status.active` stays `true` meanwhile
 - **Deletion:** deleting the resource deletes the stream
-- **Scope:** the operator watches `Stream` resources in all namespaces, or in the namespaces from `--watch-namespace`, and with `--engine` only those whose `spec.engineRefs` name the engine; see [Selecting Streams](#selecting-streams). There is no leader election, so every Tram instance with the operator enabled runs every `Stream` resource it selects
-- **Access:** creating a `Stream` lets its author open ports on the Tram pod and send data anywhere Tram can reach, from any namespace. Its author can also have Tram read any secret or config map in the `Stream`'s namespace and send the value along, e.g. as a header to their own URL. Grant `create` on `streams.io.tram.core` only to users you would also trust with the Tram deployment and with the secrets and config maps of that namespace; see [Security](../../../README.md#-security)
+- **Scope:** the operator watches `Stream` resources in all namespaces, or in the namespaces from `--watch-namespace`, and with `--engine` only those whose `spec.engineRefs` name the engine; see [Selecting Streams](#selecting-streams). There is no leader election, so every TRAM instance with the operator enabled runs every `Stream` resource it selects
+- **Access:** creating a `Stream` lets its author open ports on the TRAM pod and send data anywhere TRAM can reach, from any namespace. Its author can also have TRAM read any secret or config map in the `Stream`'s namespace and send the value along, e.g. as a header to their own URL. Grant `create` on `streams.io.tram.core` only to users you would also trust with the TRAM deployment and with the secrets and config maps of that namespace; see [Security](../../../README.md#-security)
 - **File sync:** with `--enable-file-sync`, streams created by the operator are also written to the configuration directory
 
 ## Development
@@ -231,7 +231,7 @@ data:
 | `internal/engines/` | The controllers of `tram manager`: `engine_controller.go` runs Engines, `resources.go` builds their resources, `stream_controller.go` derives engine labels and `status.engines`; with their RBAC markers |
 | `config/crd/bases/`, `config/rbac/` | Generated CRD and RBAC manifests |
 | `config/rbac/manager/` | Generated RBAC of `tram manager` |
-| `operator.go` | Starts the controller manager inside Tram |
+| `operator.go` | Starts the controller manager inside TRAM |
 | `manager.go` | Starts the controller manager of `tram manager`, with leader election; caches only the resources it generates |
 
 After changing types or markers, regenerate the deepcopy code and the manifests with [controller-gen](https://book.kubebuilder.io/reference/controller-gen) v0.22.0:

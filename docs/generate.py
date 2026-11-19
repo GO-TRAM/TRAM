@@ -1,40 +1,48 @@
-"""MkDocs hooks that publish the Markdown files of the repository as pages.
+"""Generates the site pages from the Markdown files of the repository.
 
 README.md, COMPONENTS.md and the other documents stay the single source of
-truth and keep working when browsed on Codeberg. This hook splits them into
-pages of the site along their headings, drops the emojis in front of the
-headings and the horizontal rules between sections, and rewrites their links:
-links to a section point to the page it ended up on, links to docs/assets/ to
-the site's assets, and links to any other file of the repository to the file
-on Codeberg.
+truth and keep working when browsed on Codeberg. Run this script before
+`zensical build` or `zensical serve` (Zensical has no hooks, so the pages
+cannot be generated during the build):
+
+    python docs/generate.py
+    zensical build -f docs/zensical.toml
+
+It splits the documents into pages of the site along their headings, drops
+the emojis in front of the headings and the horizontal rules between
+sections, and rewrites their links: links to a section point to the page it
+ended up on, links to docs/assets/ to the site's assets, and links to any
+other file of the repository to the file on Codeberg. The generated pages
+and the copied assets are written to content/ and gitignored.
 """
 
 import posixpath
 import re
+import shutil
+import unicodedata
 from collections import defaultdict
 from pathlib import Path
 
-from markdown.extensions.toc import slugify
-from mkdocs.structure.files import File, InclusionLevel
-
 REPO = Path(__file__).resolve().parent.parent
-ASSETS = REPO / "docs" / "assets"
+DOCS = REPO / "docs"
+CONTENT = DOCS / "content"
+ASSETS = DOCS / "assets"
 SOURCE_URL = "https://codeberg.org/eljoth/tram/src/branch/main/"
 
 GETTING_STARTED = "guide/getting-started.md"
-PIPELINES = "guide/pipelines.md"
+STREAMS = "guide/streams.md"
 API = "guide/api.md"
 COMPONENTS_INDEX = "components/index.md"
 
 # Title of every generated page, in the order of the navigation.
 TITLES = {
     GETTING_STARTED: "Getting Started",
-    PIPELINES: "Pipelines",
+    STREAMS: "Streams",
     API: "HTTP API",
     "guide/configuration.md": "Configuration Sources",
     "guide/metrics.md": "Metrics",
     "guide/security.md": "Security",
-    COMPONENTS_INDEX: "Components",
+    COMPONENTS_INDEX: "Overview",
     "components/sources.md": "Sources",
     "components/stages.md": "Stages",
     "components/sinks.md": "Sinks",
@@ -50,15 +58,15 @@ TITLES = {
 UNWRAP = True
 SECTIONS = {
     "README.md": {
-        "Tram: A Lightweight, Extensible Data Pipeline Framework": None,
+        "TRAM: A Lightweight, Extensible Data Pipeline Framework": None,
         "Quick Start": (GETTING_STARTED, UNWRAP),
         "API Endpoints": (API, False),
-        "Updating a Stream": (API, False),
+        "Example API Usage": (API, UNWRAP),
         "Metrics": ("guide/metrics.md", UNWRAP),
-        "Example API Usage": (GETTING_STARTED, False),
-        "Core Concepts": (PIPELINES, UNWRAP),
-        "Available Components": (PIPELINES, False),
-        "Advanced Configuration": (PIPELINES, UNWRAP),
+        "Core Concepts": (STREAMS, UNWRAP),
+        "Available Components": (STREAMS, False),
+        "Advanced Configuration": (STREAMS, UNWRAP),
+        "Updating a Stream": (STREAMS, False),
         "Configuration Sources": ("guide/configuration.md", UNWRAP),
         "Security": ("guide/security.md", UNWRAP),
     },
@@ -91,25 +99,11 @@ FENCE = re.compile(r"^\s*(```|~~~)")
 LINK = re.compile(r"(!?\[[^\]]*\]\()([^)\s]+)(\))")
 
 
-def on_files(files, config):
-    chunks, anchors = split_all()
-    for page, title in TITLES.items():
-        content = f"# {title}\n\n" + "".join(
-            rewrite(source, page, text, anchors) for source, text in chunks[page]
-        )
-        files.append(File.generated(config, page, content=content))
-    for asset in ASSETS.rglob("*"):
-        if asset.is_file():
-            files.append(
-                File(
-                    asset.relative_to(ASSETS.parent).as_posix(),
-                    src_dir=str(ASSETS.parent),
-                    dest_dir=config["site_dir"],
-                    use_directory_urls=config["use_directory_urls"],
-                    inclusion=InclusionLevel.NOT_IN_NAV,
-                )
-            )
-    return files
+def slugify(value, separator="-"):
+    """The slug MkDocs and Zensical give a heading, for links to its anchor."""
+    value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    value = re.sub(r"[^\w\s-]", "", value).strip().lower()
+    return re.sub(r"[%s\s]+" % separator, separator, value)
 
 
 def split_all():
@@ -161,7 +155,7 @@ class Splitter:
         if not self.page:
             return
         # An unwrapped heading leaves no anchor; links to it go to the page.
-        self.anchors.setdefault((self.source, slugify(title, "-")), (self.page, not unwrap))
+        self.anchors.setdefault((self.source, slugify(title)), (self.page, not unwrap))
         if not unwrap:
             self.current.append("#" * (level + self.shift) + " " + title + "\n")
 
@@ -199,7 +193,7 @@ def target(source, page, link, anchors):
 
     path, _, anchor = link.partition("#")
     # Codeberg keeps the dash an emoji at the start of a heading leaves in
-    # its anchor (#-security); MkDocs drops it (#security).
+    # its anchor (#-security); the site drops it (#security).
     anchor = anchor.lstrip("-")
     path = posixpath.normpath(posixpath.join(posixpath.dirname(source), path)) if path else source
 
@@ -220,3 +214,29 @@ def target(source, page, link, anchors):
 
 def first_page(source):
     return next(target[0] for target in SECTIONS[source].values() if target)
+
+
+def clean():
+    for page in TITLES:
+        (CONTENT / page).unlink(missing_ok=True)
+    shutil.rmtree(CONTENT / "assets", ignore_errors=True)
+
+
+def main():
+    chunks, anchors = split_all()
+    clean()
+    for page, title in TITLES.items():
+        content = f"# {title}\n\n" + "".join(
+            rewrite(source, page, text, anchors) for source, text in chunks[page]
+        )
+        destination = CONTENT / page
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(content, encoding="utf-8")
+        print(f"generated content/{page}")
+    assets = CONTENT / "assets"
+    shutil.copytree(ASSETS, assets)
+    print(f"copied assets/ to content/assets/ ({len(list(ASSETS.rglob('*')))} entries)")
+
+
+if __name__ == "__main__":
+    main()
