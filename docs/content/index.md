@@ -6,11 +6,9 @@ hide:
 
 <div class="tram-hero" markdown>
 
-![](assets/TRAM.svg){ .tram-hero__logo }
+<h1 class="tram-hero__logo"><img src="assets/TRAM.png" alt="TRAM"></h1>
 
 <div markdown>
-
-# TRAM
 
 <p class="tram-hero__tagline">A lightweight, extensible pipeline framework for logs, metrics and traces.</p>
 

@@ -71,13 +71,12 @@
 }
 
 .tram-hero__logo {
-  flex: 0 0 9rem;
-  width: 9rem;
+  flex: 0 0 20rem;
+  margin: 0;
 }
 
-.md-typeset .tram-hero h1 {
-  margin-bottom: 0.4rem;
-  font-size: 2.6rem;
+.tram-hero__logo img {
+  width: 100%;
 }
 
 .tram-hero__tagline {
