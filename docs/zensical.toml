@@ -50,8 +50,10 @@ extra_css = ["stylesheets/extra.css"]
 
 [project.theme]
 language = "en"
-logo = "assets/TRAM.svg"
-favicon = "assets/TRAM.svg"
+# PNG, not SVG: the SVG wordmark references the custom font 'aAtmospheric',
+# which machines without the font render with a fallback face.
+logo = "assets/TRAM.png"
+favicon = "assets/TRAM.png"
 features = [
   "navigation.instant",
   "navigation.tracking",
