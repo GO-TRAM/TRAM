@@ -746,7 +746,7 @@ When adding new components:
 
 ### Checks on Pull Requests
 
-The CI workflow (`.github/workflows/ci.yml`) runs on GitHub-hosted runners (`ubuntu-latest`) for every pull request and every push to main, as two parallel jobs: `task ci:lint` runs golangci-lint in the version pinned in `Taskfile.yml`, `task ci:test` the unit and end-to-end tests. The runners have Docker, so the broker driver tests (NATS, Kafka, AMQP) run against containers there. The broker end-to-end tests and the operator tests do not run in CI: run `task test:containers` locally when you change a broker component and `task test:envtest` when you change the operator. Pull requests from forks get no secrets, which the checks do not need.
+The CI workflow (`.github/workflows/ci.yml`) runs on GitHub-hosted runners (`ubuntu-latest`) for every pull request and every push to main, as two parallel jobs: `task ci:lint` runs golangci-lint in the version pinned in `Taskfile.yml`, `task ci:test` the unit and end-to-end tests.
 
 The actions the workflows use are pinned to the commit of a release, with the version in a comment; update both together.
 
