@@ -10,11 +10,21 @@ import (
 	"fmt"
 	"os"
 
+	"codeberg.org/eljoth/tram/internal/adapters/configsync"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
+// streamFile is a stream as file sync reads it, plus its test cases, which
+// file sync ignores.
+type streamFile struct {
+	configsync.StreamSpec
+
+	Tests []domain.StreamTest `json:"tests,omitempty"`
+}
+
 // LoadStream reads a stream file: either a bare stream object or a file sync
-// file that wraps it in {"stream": {...}}.
+// file that wraps it in {"stream": {...}}. The stream is read with the same
+// field names as file sync, so a file runs the same in both.
 func LoadStream(path string) (domain.StreamSpec, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -23,15 +33,17 @@ func LoadStream(path string) (domain.StreamSpec, error) {
 	var wrapper struct {
 		Stream json.RawMessage `json:"stream"`
 	}
-	if err := json.Unmarshal(data, &wrapper); err != nil {
+	if err = json.Unmarshal(data, &wrapper); err != nil {
 		return domain.StreamSpec{}, fmt.Errorf("invalid stream file %s: %w", path, err)
 	}
 	if len(wrapper.Stream) > 0 {
 		data = wrapper.Stream
 	}
-	var spec domain.StreamSpec
-	if err := json.Unmarshal(data, &spec); err != nil {
+	var file streamFile
+	if err = json.Unmarshal(data, &file); err != nil {
 		return domain.StreamSpec{}, fmt.Errorf("invalid stream file %s: %w", path, err)
 	}
-	return spec, nil
+	spec := (&configsync.Stream{Stream: file.StreamSpec}).AsDomain()
+	spec.Tests = file.Tests
+	return *spec, nil
 }

@@ -8,6 +8,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -54,7 +55,7 @@ func RunStreamTests(
 	}
 
 	source := &testSource{}
-	if err := tree.Root().AddSource(source); err != nil {
+	if err = tree.Root().AddSource(source); err != nil {
 		return nil, err
 	}
 	captures := map[string]*captureSink{}
@@ -64,17 +65,15 @@ func RunStreamTests(
 		sinkFactory:  captureSinkFactory{captures: captures},
 		metrics:      m,
 	}
-	if err := c.createReceivers(tree); err != nil {
-		stopNodes(tree, false)
-		return nil, err
+	if err = c.createReceivers(tree); err == nil {
+		err = c.wire(tree, true)
 	}
-	if err := c.wire(tree, true); err != nil {
-		stopNodes(tree, false)
-		return nil, err
+	if err != nil {
+		return nil, errors.Join(err, stopNodes(tree, false))
 	}
 	defer func() {
-		if err := stopNodes(tree, false); err != nil {
-			logger.ErrorContext(ctx, "Could not stop test components", slog.Any("error", err))
+		if stopErr := stopNodes(tree, false); stopErr != nil {
+			logger.ErrorContext(ctx, "Could not stop test components", slog.Any("error", stopErr))
 		}
 	}()
 
@@ -106,53 +105,57 @@ func runTest(
 	}
 
 	emitErr := source.emit(ctx, event)
-
-	expectReject := false
-	for _, expected := range test.Expect {
-		if keyword, ok := expected.(string); ok && keyword == "reject" {
-			expectReject = true
-		}
-	}
-	if expectReject {
+	switch {
+	case expectsReject(test):
 		if emitErr == nil {
 			result.Problems = append(result.Problems, "expected the event to be rejected, but it was accepted")
-		} else {
-			result.Passed = true
 		}
-		return result
-	}
-	if emitErr != nil {
+	case emitErr != nil:
 		result.Problems = append(result.Problems, fmt.Sprintf("event rejected unexpectedly: %v", emitErr))
-		return result
-	}
-
-	for _, sinkSpec := range spec.Sinks {
-		capture := captures[sinkSpec.Name]
-		expected, declared := test.Expect[sinkSpec.Name]
-		if keyword, isKeyword := expected.(string); declared && isKeyword && keyword == "drop" {
-			declared = false
-		}
-		if !declared {
-			if len(capture.events) > 0 {
-				result.Problems = append(result.Problems,
-					fmt.Sprintf("sink %s: received %s, expected drop", sinkSpec.Name, describeEvents(capture.events)))
+	default:
+		for _, sinkSpec := range spec.Sinks {
+			if problem := checkSink(sinkSpec.Name, captures[sinkSpec.Name], test); problem != "" {
+				result.Problems = append(result.Problems, problem)
 			}
-			continue
-		}
-		expectedEvent, err := parseEvent(asMap(expected))
-		if err != nil {
-			result.Problems = append(result.Problems, fmt.Sprintf("sink %s: invalid expectation: %v", sinkSpec.Name, err))
-			continue
-		}
-		if !capture.matches(expectedEvent) {
-			result.Problems = append(result.Problems,
-				fmt.Sprintf("sink %s: received %s", sinkSpec.Name, describeEvents(capture.events)))
 		}
 	}
-	if len(result.Problems) == 0 {
-		result.Passed = true
-	}
+	result.Passed = len(result.Problems) == 0
 	return result
+}
+
+// expectsReject reports whether any sink of the test expects "reject".
+func expectsReject(test domain.StreamTest) bool {
+	for _, expected := range test.Expect {
+		if keyword, ok := expected.(string); ok && keyword == "reject" {
+			return true
+		}
+	}
+	return false
+}
+
+// checkSink compares what the sink called name captured with the test's
+// expectation for it and describes the difference, or returns "" if they
+// match. A sink without an expectation, or with "drop", must receive
+// nothing.
+func checkSink(name string, capture *captureSink, test domain.StreamTest) string {
+	expected, declared := test.Expect[name]
+	if keyword, isKeyword := expected.(string); declared && isKeyword && keyword == "drop" {
+		declared = false
+	}
+	if !declared {
+		if len(capture.events) > 0 {
+			return fmt.Sprintf("sink %s: received %s, expected drop", name, describeEvents(capture.events))
+		}
+		return ""
+	}
+	expectedEvent, err := parseEvent(asMap(expected))
+	if err != nil {
+		return fmt.Sprintf("sink %s: invalid expectation: %v", name, err)
+	}
+	if !capture.matches(expectedEvent) {
+		return fmt.Sprintf("sink %s: received %s", name, describeEvents(capture.events))
+	}
+	return ""
 }
 
 // parseEvent turns an OTLP JSON object with one of the keys logs, metrics or
@@ -170,24 +173,29 @@ func parseEvent(raw map[string]any) (*domain.Event, error) {
 		switch signal {
 		case "logs":
 			event.Logs = &logspb.LogsData{}
-			if err := protojson.Unmarshal(data, event.Logs); err != nil {
-				return nil, fmt.Errorf("logs: %w", err)
-			}
+			err = unmarshal(signal, data, event.Logs)
 		case "metrics":
 			event.Metrics = &metricspb.MetricsData{}
-			if err := protojson.Unmarshal(data, event.Metrics); err != nil {
-				return nil, fmt.Errorf("metrics: %w", err)
-			}
+			err = unmarshal(signal, data, event.Metrics)
 		case "traces":
 			event.Traces = &tracepb.TracesData{}
-			if err := protojson.Unmarshal(data, event.Traces); err != nil {
-				return nil, fmt.Errorf("traces: %w", err)
-			}
+			err = unmarshal(signal, data, event.Traces)
 		default:
-			return nil, fmt.Errorf("unknown signal %q, want logs, metrics or traces", signal)
+			err = fmt.Errorf("unknown signal %q, want logs, metrics or traces", signal)
+		}
+		if err != nil {
+			return nil, err
 		}
 	}
 	return event, nil
+}
+
+// unmarshal decodes the OTLP JSON data of signal into msg.
+func unmarshal(signal string, data []byte, msg proto.Message) error {
+	if err := protojson.Unmarshal(data, msg); err != nil {
+		return fmt.Errorf("%s: %w", signal, err)
+	}
+	return nil
 }
 
 func asMap(value any) map[string]any {

@@ -26,6 +26,8 @@ func secretRef(name, key string) map[string]any {
 }
 
 func TestPrepareResolvesStageRefs(t *testing.T) {
+	t.Parallel()
+
 	spec := domain.StreamSpec{
 		Name: "s",
 		Stages: []domain.StageSpec{{
@@ -59,6 +61,8 @@ func TestPrepareResolvesStageRefs(t *testing.T) {
 }
 
 func TestPrepareMissingSecretNamesTheRef(t *testing.T) {
+	t.Parallel()
+
 	spec := domain.StreamSpec{
 		Name: "s",
 		Stages: []domain.StageSpec{{
@@ -77,6 +81,8 @@ func TestPrepareMissingSecretNamesTheRef(t *testing.T) {
 }
 
 func TestPrepareConfigMapSelectorNotResolvable(t *testing.T) {
+	t.Parallel()
+
 	spec := domain.StreamSpec{
 		Name: "s",
 		Stages: []domain.StageSpec{{
@@ -99,10 +105,14 @@ func TestPrepareConfigMapSelectorNotResolvable(t *testing.T) {
 }
 
 func TestPrepareLeavesSourceAndSinkSpecsUntouched(t *testing.T) {
+	t.Parallel()
+
 	spec := domain.StreamSpec{
 		Name:   "s",
 		Source: domain.SourceSpec{Name: "in", Type: "nats", Spec: map[string]any{"token": secretRef("s", "k")}},
-		Sinks:  []domain.SinkSpec{{Name: "out", Type: "nats", From: "in", Spec: map[string]any{"token": secretRef("s", "k")}}},
+		Sinks: []domain.SinkSpec{
+			{Name: "out", Type: "nats", From: "in", Spec: map[string]any{"token": secretRef("s", "k")}},
+		},
 	}
 
 	prepared, err := testrun.Prepare(spec, nil)
@@ -112,6 +122,8 @@ func TestPrepareLeavesSourceAndSinkSpecsUntouched(t *testing.T) {
 }
 
 func TestLoadSecrets(t *testing.T) {
+	t.Parallel()
+
 	path := filepath.Join(t.TempDir(), "secrets.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{"my-secret/token": "v"}`), 0o600))
 

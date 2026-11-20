@@ -109,14 +109,14 @@ func TestExampleTestsPass(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, configs)
 	for _, path := range configs {
-		spec, err := testrun.LoadStream(path)
-		require.NoError(t, err)
+		spec, loadErr := testrun.LoadStream(path)
+		require.NoError(t, loadErr)
 		require.NotEmpty(t, spec.Tests, "%s carries no test cases", path)
 		t.Run(filepath.Base(path), func(t *testing.T) {
 			t.Parallel()
 
-			results, err := core.RunStreamTests(t.Context(), spec, stage.NewFactory(logger), logger)
-			require.NoError(t, err)
+			results, runErr := core.RunStreamTests(t.Context(), spec, stage.NewFactory(logger), logger)
+			require.NoError(t, runErr)
 			for _, result := range results {
 				assert.True(t, result.Passed, "%s: %v", result.Name, result.Problems)
 			}

@@ -93,8 +93,11 @@ func isRef(value any) bool {
 }
 
 func resolveRef(value any, secrets map[string]string) (any, error) {
-	object := value.(map[string]any)
-	valueFrom := object[valueFromKey].(map[string]any)
+	object, _ := value.(map[string]any)
+	valueFrom, ok := object[valueFromKey].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%w: unsupported valueFrom", ErrUnresolvableRef)
+	}
 	if _, isConfigMap := valueFrom[configMapSelectorKey]; isConfigMap {
 		return nil, fmt.Errorf("%w: configMapSelector cannot be resolved locally, provide the value directly",
 			ErrUnresolvableRef)
@@ -120,7 +123,7 @@ func LoadSecrets(path string) (map[string]string, error) {
 		return nil, err
 	}
 	secrets := map[string]string{}
-	if err := json.Unmarshal(data, &secrets); err != nil {
+	if err = json.Unmarshal(data, &secrets); err != nil {
 		return nil, fmt.Errorf("invalid secrets file %s: %w", path, err)
 	}
 	return secrets, nil

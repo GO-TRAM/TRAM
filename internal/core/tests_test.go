@@ -61,6 +61,8 @@ func runTests(t *testing.T, spec domain.StreamSpec) []core.TestResult {
 }
 
 func TestRunStreamTestsPassthrough(t *testing.T) {
+	t.Parallel()
+
 	spec := testStream(nil, []domain.StreamTest{{
 		Name:   "forwards the event",
 		Input:  otlpLogs("hello"),
@@ -73,6 +75,8 @@ func TestRunStreamTestsPassthrough(t *testing.T) {
 }
 
 func TestRunStreamTestsDrop(t *testing.T) {
+	t.Parallel()
+
 	spec := testStream([]domain.StageSpec{{
 		Name: "filter",
 		Type: "filter",
@@ -89,6 +93,8 @@ func TestRunStreamTestsDrop(t *testing.T) {
 }
 
 func TestRunStreamTestsReject(t *testing.T) {
+	t.Parallel()
+
 	spec := testStream([]domain.StageSpec{{
 		Name: "validate",
 		Type: "validation",
@@ -105,6 +111,8 @@ func TestRunStreamTestsReject(t *testing.T) {
 }
 
 func TestRunStreamTestsMismatch(t *testing.T) {
+	t.Parallel()
+
 	spec := testStream(nil, []domain.StreamTest{{
 		Name:   "wrong expectation",
 		Input:  otlpLogs("hello"),
@@ -119,6 +127,8 @@ func TestRunStreamTestsMismatch(t *testing.T) {
 }
 
 func TestRunStreamTestsUnexpectedDelivery(t *testing.T) {
+	t.Parallel()
+
 	spec := testStream(nil, []domain.StreamTest{{
 		Name:   "sink without expectation must receive nothing",
 		Input:  otlpLogs("hello"),
@@ -133,6 +143,8 @@ func TestRunStreamTestsUnexpectedDelivery(t *testing.T) {
 }
 
 func TestRunStreamTestsInvalidInput(t *testing.T) {
+	t.Parallel()
+
 	spec := testStream(nil, []domain.StreamTest{{
 		Name:   "invalid input",
 		Input:  map[string]any{"unknown": map[string]any{}},
