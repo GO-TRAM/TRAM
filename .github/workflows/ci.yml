@@ -39,5 +39,8 @@ jobs:
       - name: Install Task
         run: go install github.com/go-task/task/v3/cmd/task@${TASK_VERSION}
 
+      - name: Start Podman
+        run: systemctl --user start podman.socket
+
       - name: Check
         run: task ci:${{ matrix.target }}
