@@ -19,16 +19,27 @@ const DefaultMarkerPrefix = "tram.encryption"
 // invalid attribute names.
 var ErrInvalidMarkerPrefix = errors.New("invalid marker prefix")
 
+// Markers are the names of the attributes that mark an encrypted record.
+type Markers struct {
+	Algorithm  string
+	KeyID      string
+	WrappedKey string
+}
+
 // MarkerAttributes returns the names of the marker attributes for prefix:
 // "<prefix>.algorithm", "<prefix>.key_id" and "<prefix>.wrapped_key". An
 // empty prefix means the [DefaultMarkerPrefix]. A prefix must not end with a
 // dot or contain whitespace, so the attribute names stay valid.
-func MarkerAttributes(prefix string) (algorithm, keyID, wrappedKey string, err error) {
+func MarkerAttributes(prefix string) (Markers, error) {
 	if prefix == "" {
 		prefix = DefaultMarkerPrefix
 	}
 	if strings.HasSuffix(prefix, ".") || strings.ContainsAny(prefix, " \t\n") {
-		return "", "", "", fmt.Errorf("%w: %q", ErrInvalidMarkerPrefix, prefix)
+		return Markers{}, fmt.Errorf("%w: %q", ErrInvalidMarkerPrefix, prefix)
 	}
-	return prefix + ".algorithm", prefix + ".key_id", prefix + ".wrapped_key", nil
+	return Markers{
+		Algorithm:  prefix + ".algorithm",
+		KeyID:      prefix + ".key_id",
+		WrappedKey: prefix + ".wrapped_key",
+	}, nil
 }

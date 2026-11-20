@@ -8,7 +8,6 @@ package stackitkms_test
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -28,17 +27,18 @@ import (
 func echoKMS(t *testing.T, decryptCalls *atomic.Int32) *httptest.Server {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
 		var payload struct {
 			Data string `json:"data"`
 		}
-		require.NoError(t, json.Unmarshal(body, &payload))
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&payload)) {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		if strings.HasSuffix(r.URL.Path, "/decrypt") {
 			decryptCalls.Add(1)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]string{"data": payload.Data}))
+		assert.NoError(t, json.NewEncoder(w).Encode(map[string]string{"data": payload.Data}))
 	}))
 	t.Cleanup(server.Close)
 	return server

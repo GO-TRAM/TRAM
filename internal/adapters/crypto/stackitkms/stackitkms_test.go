@@ -8,10 +8,8 @@ package stackitkms_test
 import (
 	"encoding/base64"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/go-playground/validator/v10"
@@ -28,17 +26,21 @@ func kmsMock(t *testing.T, wrapped []byte) *httptest.Server {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/v1/projects/p/regions/eu01/keyrings/kr/keys/k/versions/3/encrypt", r.URL.Path)
 		assert.Equal(t, "Bearer token", r.Header.Get("Authorization"))
-		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
 		var payload struct {
 			Data string `json:"data"`
 		}
-		require.NoError(t, json.Unmarshal(body, &payload))
-		_, err = base64.StdEncoding.DecodeString(payload.Data)
-		require.NoError(t, err, "the data key must be sent base64-encoded")
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&payload)) {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, err := base64.StdEncoding.DecodeString(payload.Data)
+		if !assert.NoError(t, err, "the data key must be sent base64-encoded") {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 
 		w.Header().Set("Content-Type", "application/json")
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]string{
+		assert.NoError(t, json.NewEncoder(w).Encode(map[string]string{
 			"data": base64.StdEncoding.EncodeToString(wrapped),
 		}))
 	}))
@@ -83,11 +85,11 @@ func TestMissingOptions(t *testing.T) {
 
 func TestKMSFailure(t *testing.T) {
 	t.Parallel()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	t.Cleanup(server.Close)
 	_, err := stackitkms.New().NewCrypter(spec(server.URL), validator.New())
 	require.ErrorIs(t, err, stackitkms.ErrKMS)
-	assert.True(t, strings.Contains(err.Error(), "wrap"))
+	assert.Contains(t, err.Error(), "wrap")
 }

@@ -115,7 +115,7 @@ func (Driver) parse(opts map[string]any, validator *validator.Validate) (*Spec, 
 	}
 	client, err := kms.NewAPIClient(clientOpts...)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: failed to create KMS client: %v", ErrKMS, err)
+		return nil, nil, fmt.Errorf("%w: failed to create KMS client: %w", ErrKMS, err)
 	}
 	return spec, client, nil
 }
@@ -128,17 +128,17 @@ func keyID(spec *Spec) string {
 func newCrypter(ctx context.Context, spec *Spec, client *kms.APIClient) (*crypter, error) {
 	dek := make([]byte, keySize)
 	if _, err := rand.Read(dek); err != nil {
-		return nil, fmt.Errorf("%w: failed to generate data key: %v", ErrKMS, err)
+		return nil, fmt.Errorf("%w: failed to generate data key: %w", ErrKMS, err)
 	}
 	wrapped, err := client.DefaultAPI.Encrypt(ctx, spec.ProjectID, spec.Region, spec.KeyRingID, spec.KeyID, spec.KeyVersion).
 		EncryptPayload(kms.EncryptPayload{Data: base64.StdEncoding.EncodeToString(dek)}).
 		Execute()
 	if err != nil {
-		return nil, fmt.Errorf("%w: failed to wrap the data key: %v", ErrKMS, err)
+		return nil, fmt.Errorf("%w: failed to wrap the data key: %w", ErrKMS, err)
 	}
 	wrappedKey, err := base64.StdEncoding.DecodeString(wrapped.GetData())
 	if err != nil {
-		return nil, fmt.Errorf("%w: KMS returned no valid wrapped key: %v", ErrKMS, err)
+		return nil, fmt.Errorf("%w: KMS returned no valid wrapped key: %w", ErrKMS, err)
 	}
 
 	gcm, err := newGCM(dek)
@@ -155,11 +155,11 @@ func newCrypter(ctx context.Context, spec *Spec, client *kms.APIClient) (*crypte
 func newGCM(key []byte) (cipher.AEAD, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrKMS, err)
+		return nil, fmt.Errorf("%w: %w", ErrKMS, err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrKMS, err)
+		return nil, fmt.Errorf("%w: %w", ErrKMS, err)
 	}
 	return gcm, nil
 }
@@ -237,7 +237,7 @@ func (d *decrypter) unwrap(ctx context.Context, wrappedKey []byte) ([]byte, erro
 		DecryptPayload(kms.DecryptPayload{Data: cacheKey}).
 		Execute()
 	if err != nil {
-		return nil, fmt.Errorf("%w: failed to unwrap the data key: %v", ErrKMS, err)
+		return nil, fmt.Errorf("%w: failed to unwrap the data key: %w", ErrKMS, err)
 	}
 	dek, err = base64.StdEncoding.DecodeString(decrypted.GetData())
 	if err != nil || len(dek) != keySize {

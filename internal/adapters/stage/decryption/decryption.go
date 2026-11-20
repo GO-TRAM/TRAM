@@ -22,6 +22,7 @@ import (
 
 	"codeberg.org/eljoth/tram/internal/adapters/crypto"
 	"codeberg.org/eljoth/tram/internal/adapters/crypto/drivers"
+	"codeberg.org/eljoth/tram/internal/adapters/driver"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/ports"
@@ -49,14 +50,12 @@ type Decryption struct {
 	decrypter  ports.Decrypter
 	algorithm  string
 	attributes map[string]struct{}
-	attrAlgorithm,
-	attrKeyID,
-	attrWrappedKey string
-	logger *slog.Logger
+	markers    crypto.Markers
+	logger     *slog.Logger
 }
 
 func New(stage domain.StageSpec, validator *validator.Validate, logger *slog.Logger) (*Decryption, error) {
-	generic, opts, driver, err := crypto.Split(stage.Spec, drivers.NewFactory())
+	generic, opts, drv, err := driver.Split(stage.Spec, drivers.NewFactory())
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +63,7 @@ func New(stage domain.StageSpec, validator *validator.Validate, logger *slog.Log
 	if err != nil {
 		return nil, err
 	}
-	decrypter, err := driver.NewDecrypter(opts, validator)
+	decrypter, err := drv.NewDecrypter(opts, validator)
 	if err != nil {
 		return nil, err
 	}
@@ -78,20 +77,18 @@ func New(stage domain.StageSpec, validator *validator.Validate, logger *slog.Log
 	for _, name := range spec.Attributes {
 		attributes[name] = struct{}{}
 	}
-	attrAlgorithm, attrKeyID, attrWrappedKey, err := crypto.MarkerAttributes(spec.MarkerPrefix)
+	markers, err := crypto.MarkerAttributes(spec.MarkerPrefix)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Decryption{
-		Stage:          baseStage,
-		decrypter:      decrypter,
-		algorithm:      algorithm,
-		attributes:     attributes,
-		attrAlgorithm:  attrAlgorithm,
-		attrKeyID:      attrKeyID,
-		attrWrappedKey: attrWrappedKey,
-		logger:         logger.With(slog.String("stage", stage.Name)),
+		Stage:      baseStage,
+		decrypter:  decrypter,
+		algorithm:  algorithm,
+		attributes: attributes,
+		markers:    markers,
+		logger:     logger.With(slog.String("stage", stage.Name)),
 	}, nil
 }
 
@@ -144,18 +141,18 @@ func (s *Decryption) decryptLogs(ctx context.Context, data *logspb.LogsData) (*l
 // without a marker attribute is returned unchanged.
 func (s *Decryption) decryptRecord(ctx context.Context, record *logspb.LogRecord) (*logspb.LogRecord, error) {
 	attrs := record.GetAttributes()
-	algorithm, marked := attrValue(attrs, s.attrAlgorithm)
+	algorithm, marked := attrValue(attrs, s.markers.Algorithm)
 	if !marked {
 		return record, nil
 	}
 	if algorithm != s.algorithm {
 		return nil, fmt.Errorf("%w: record is %q, stage is %q", ErrAlgorithmMismatch, algorithm, s.algorithm)
 	}
-	keyID, _ := attrValue(attrs, s.attrKeyID)
+	keyID, _ := attrValue(attrs, s.markers.KeyID)
 	if keyID != s.decrypter.KeyID() {
 		return nil, fmt.Errorf("%w: record key %q, stage key %q", ErrKeyMismatch, keyID, s.decrypter.KeyID())
 	}
-	wrappedKey, err := wrappedKey(attrs, s.attrWrappedKey)
+	wrappedKey, err := wrappedKey(attrs, s.markers.WrappedKey)
 	if err != nil {
 		return nil, err
 	}
@@ -185,9 +182,13 @@ func (s *Decryption) decryptRecord(ctx context.Context, record *logspb.LogRecord
 
 // decryptBody decrypts the body of a record: a base64 string becomes a string
 // again, bytes become bytes again.
-func (s *Decryption) decryptBody(ctx context.Context, body *commonpb.AnyValue, wrappedKey []byte) (*commonpb.AnyValue, error) {
+func (s *Decryption) decryptBody(
+	ctx context.Context,
+	body *commonpb.AnyValue,
+	wrappedKey []byte,
+) (*commonpb.AnyValue, error) {
 	if body == nil {
-		return nil, nil
+		return nil, nil //nolint:nilnil // A record without a body keeps none.
 	}
 	switch value := body.GetValue().(type) {
 	case *commonpb.AnyValue_StringValue:
@@ -218,7 +219,7 @@ func (s *Decryption) decryptAttributes(
 	out := make([]*commonpb.KeyValue, 0, len(attrs))
 	for _, attr := range attrs {
 		switch attr.GetKey() {
-		case s.attrAlgorithm, s.attrKeyID, s.attrWrappedKey:
+		case s.markers.Algorithm, s.markers.KeyID, s.markers.WrappedKey:
 			continue
 		}
 		if _, listed := s.attributes[attr.GetKey()]; !listed {
@@ -242,7 +243,7 @@ func (s *Decryption) decryptAttributes(
 func (s *Decryption) decryptString(ctx context.Context, encoded string, wrappedKey []byte) (string, error) {
 	ciphertext, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
-		return "", fmt.Errorf("%w: attribute is not base64: %v", ErrDecryptionFailed, err)
+		return "", fmt.Errorf("%w: attribute is not base64: %w", ErrDecryptionFailed, err)
 	}
 	plaintext, err := s.decrypt(ctx, ciphertext, wrappedKey)
 	if err != nil {
@@ -254,7 +255,7 @@ func (s *Decryption) decryptString(ctx context.Context, encoded string, wrappedK
 func (s *Decryption) decrypt(ctx context.Context, ciphertext, wrappedKey []byte) ([]byte, error) {
 	plaintext, err := s.decrypter.Decrypt(ctx, wrappedKey, ciphertext)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrDecryptionFailed, err)
+		return nil, fmt.Errorf("%w: %w", ErrDecryptionFailed, err)
 	}
 	return plaintext, nil
 }
@@ -278,11 +279,14 @@ func wrappedKey(attrs []*commonpb.KeyValue, attrWrappedKey string) ([]byte, erro
 	}
 	wrapped, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
-		return nil, fmt.Errorf("%w: wrapped key is not base64: %v", ErrDecryptionFailed, err)
+		return nil, fmt.Errorf("%w: wrapped key is not base64: %w", ErrDecryptionFailed, err)
 	}
 	return wrapped, nil
 }
 
 func stringAttr(key, value string) *commonpb.KeyValue {
-	return &commonpb.KeyValue{Key: key, Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: value}}}
+	return &commonpb.KeyValue{
+		Key:   key,
+		Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: value}},
+	}
 }

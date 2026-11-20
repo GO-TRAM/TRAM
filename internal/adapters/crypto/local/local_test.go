@@ -71,6 +71,7 @@ func TestKeyFromEnv(t *testing.T) {
 }
 
 func TestKeyFromFile(t *testing.T) {
+	t.Parallel()
 	encoded, _ := testKey(t)
 	path := filepath.Join(t.TempDir(), "key")
 	require.NoError(t, os.WriteFile(path, []byte(encoded+"\n"), 0o600))
@@ -90,7 +91,8 @@ func TestExactlyOneKeySource(t *testing.T) {
 
 func TestInvalidKey(t *testing.T) {
 	t.Parallel()
-	_, err := local.New().NewCrypter(map[string]any{"key": base64.StdEncoding.EncodeToString([]byte("short"))}, validator.New())
+	_, err := local.New().
+		NewCrypter(map[string]any{"key": base64.StdEncoding.EncodeToString([]byte("short"))}, validator.New())
 	require.ErrorIs(t, err, local.ErrInvalidKey)
 	_, err = local.New().NewCrypter(map[string]any{"key": "not-base64!!"}, validator.New())
 	require.ErrorIs(t, err, local.ErrInvalidKey)

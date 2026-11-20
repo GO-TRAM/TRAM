@@ -9,18 +9,16 @@
 package drivers
 
 import (
-	"fmt"
-	"strings"
-
 	"codeberg.org/eljoth/tram/internal/adapters/crypto"
 	"codeberg.org/eljoth/tram/internal/adapters/crypto/local"
 	"codeberg.org/eljoth/tram/internal/adapters/crypto/stackitkms"
+	"codeberg.org/eljoth/tram/internal/adapters/driver"
 )
 
 // Factory resolves crypto drivers by name.
 type Factory struct{}
 
-var _ crypto.DriverFactory = Factory{}
+var _ driver.Factory[crypto.Driver] = Factory{}
 
 // NewFactory returns the factory of all crypto drivers.
 func NewFactory() *Factory { return &Factory{} }
@@ -33,7 +31,6 @@ func (Factory) Driver(name string) (crypto.Driver, error) {
 	case stackitkms.Name:
 		return stackitkms.New(), nil
 	default:
-		return nil, fmt.Errorf("%w %q, available: %s", crypto.ErrUnknownDriver, name,
-			strings.Join([]string{local.Name, stackitkms.Name}, ", "))
+		return nil, driver.Unknown(name, local.Name, stackitkms.Name)
 	}
 }

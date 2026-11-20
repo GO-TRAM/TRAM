@@ -21,6 +21,7 @@ import (
 
 	"codeberg.org/eljoth/tram/internal/adapters/crypto"
 	"codeberg.org/eljoth/tram/internal/adapters/crypto/drivers"
+	"codeberg.org/eljoth/tram/internal/adapters/driver"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/ports"
@@ -48,14 +49,12 @@ type Encryption struct {
 	crypter    ports.Crypter
 	algorithm  string
 	attributes map[string]struct{}
-	attrAlgorithm,
-	attrKeyID,
-	attrWrappedKey string
-	logger *slog.Logger
+	markers    crypto.Markers
+	logger     *slog.Logger
 }
 
 func New(stage domain.StageSpec, validator *validator.Validate, logger *slog.Logger) (*Encryption, error) {
-	generic, opts, driver, err := crypto.Split(stage.Spec, drivers.NewFactory())
+	generic, opts, drv, err := driver.Split(stage.Spec, drivers.NewFactory())
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +62,7 @@ func New(stage domain.StageSpec, validator *validator.Validate, logger *slog.Log
 	if err != nil {
 		return nil, err
 	}
-	crypter, err := driver.NewCrypter(opts, validator)
+	crypter, err := drv.NewCrypter(opts, validator)
 	if err != nil {
 		return nil, err
 	}
@@ -77,20 +76,18 @@ func New(stage domain.StageSpec, validator *validator.Validate, logger *slog.Log
 	for _, name := range spec.Attributes {
 		attributes[name] = struct{}{}
 	}
-	attrAlgorithm, attrKeyID, attrWrappedKey, err := crypto.MarkerAttributes(spec.MarkerPrefix)
+	markers, err := crypto.MarkerAttributes(spec.MarkerPrefix)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Encryption{
-		Stage:          baseStage,
-		crypter:        crypter,
-		algorithm:      algorithm,
-		attributes:     attributes,
-		attrAlgorithm:  attrAlgorithm,
-		attrKeyID:      attrKeyID,
-		attrWrappedKey: attrWrappedKey,
-		logger:         logger.With(slog.String("stage", stage.Name)),
+		Stage:      baseStage,
+		crypter:    crypter,
+		algorithm:  algorithm,
+		attributes: attributes,
+		markers:    markers,
+		logger:     logger.With(slog.String("stage", stage.Name)),
 	}, nil
 }
 
@@ -167,7 +164,7 @@ func (s *Encryption) encryptRecord(record *logspb.LogRecord) (*logspb.LogRecord,
 // bytes stay bytes, both holding nonce and ciphertext.
 func (s *Encryption) encryptBody(body *commonpb.AnyValue) (*commonpb.AnyValue, error) {
 	if body == nil {
-		return nil, nil
+		return nil, nil //nolint:nilnil // A record without a body keeps none.
 	}
 	switch value := body.GetValue().(type) {
 	case *commonpb.AnyValue_StringValue:
@@ -189,11 +186,15 @@ func (s *Encryption) encryptBody(body *commonpb.AnyValue) (*commonpb.AnyValue, e
 	}
 }
 
+// markerCount is the number of marker attributes: algorithm, key ID and
+// wrapped key.
+const markerCount = 3
+
 // encryptAttributes returns a copy of attrs with every listed attribute
 // encrypted and the encryption attributes set. A listed attribute that is
 // missing is skipped; one with a non-string value rejects the event.
 func (s *Encryption) encryptAttributes(attrs []*commonpb.KeyValue) ([]*commonpb.KeyValue, error) {
-	out := make([]*commonpb.KeyValue, len(attrs), len(attrs)+3)
+	out := make([]*commonpb.KeyValue, len(attrs), len(attrs)+markerCount)
 	copy(out, attrs)
 	for i, attr := range out {
 		if _, listed := s.attributes[attr.GetKey()]; !listed {
@@ -209,10 +210,10 @@ func (s *Encryption) encryptAttributes(attrs []*commonpb.KeyValue) ([]*commonpb.
 		}
 		out[i] = stringValue(attr.GetKey(), base64.StdEncoding.EncodeToString(encrypted))
 	}
-	out = setStringAttr(out, s.attrAlgorithm, s.algorithm)
-	out = setStringAttr(out, s.attrKeyID, s.crypter.KeyID())
+	out = setStringAttr(out, s.markers.Algorithm, s.algorithm)
+	out = setStringAttr(out, s.markers.KeyID, s.crypter.KeyID())
 	if wrapped := s.crypter.WrappedKey(); wrapped != nil {
-		out = setStringAttr(out, s.attrWrappedKey, base64.StdEncoding.EncodeToString(wrapped))
+		out = setStringAttr(out, s.markers.WrappedKey, base64.StdEncoding.EncodeToString(wrapped))
 	}
 	return out, nil
 }
@@ -220,13 +221,16 @@ func (s *Encryption) encryptAttributes(attrs []*commonpb.KeyValue) ([]*commonpb.
 func (s *Encryption) encrypt(plaintext []byte) ([]byte, error) {
 	encrypted, err := s.crypter.Encrypt(plaintext)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrEncryptionFailed, err)
+		return nil, fmt.Errorf("%w: %w", ErrEncryptionFailed, err)
 	}
 	return encrypted, nil
 }
 
 func stringValue(key, value string) *commonpb.KeyValue {
-	return &commonpb.KeyValue{Key: key, Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: value}}}
+	return &commonpb.KeyValue{
+		Key:   key,
+		Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: value}},
+	}
 }
 
 // setStringAttr returns a copy of attrs with the attribute key set to a string

@@ -29,9 +29,11 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
-var (
-	key      = base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
-	otherKey = base64.StdEncoding.EncodeToString([]byte("fedcba9876543210fedcba9876543210"))
+// key and otherKey are base64-encoded 32-byte test keys:
+// "0123456789abcdef0123456789abcdef" and "fedcba9876543210fedcba9876543210".
+const (
+	key      = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+	otherKey = "ZmVkY2JhOTg3NjU0MzIxMGZlZGNiYTk4NzY1NDMyMTA="
 )
 
 type capture struct{ events []*domain.Event }
@@ -146,8 +148,8 @@ func TestRoundtripThroughEncryptionStage(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "team-0", team)
 	for _, marker := range []string{decryption.AttrAlgorithm, decryption.AttrKeyID, decryption.AttrWrappedKey} {
-		_, ok := attrOf(out, marker)
-		assert.False(t, ok, "marker attribute %s must be removed", marker)
+		_, found := attrOf(out, marker)
+		assert.False(t, found, "marker attribute %s must be removed", marker)
 	}
 }
 
@@ -254,8 +256,8 @@ func TestCustomMarkerPrefix(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "a@b.c", email)
 	for _, marker := range []string{"acme.crypto.algorithm", "acme.crypto.key_id", "acme.crypto.wrapped_key"} {
-		_, ok := attrOf(out, marker)
-		assert.False(t, ok, "marker %s must be removed", marker)
+		_, found := attrOf(out, marker)
+		assert.False(t, found, "marker %s must be removed", marker)
 	}
 }
 

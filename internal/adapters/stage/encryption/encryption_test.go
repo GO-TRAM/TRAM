@@ -27,8 +27,8 @@ import (
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
-// key is the base64-encoded 32-byte test key.
-var key = base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+// key is the base64-encoded 32-byte test key "0123456789abcdef0123456789abcdef".
+const key = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
 
 func rawKey() []byte {
 	k, _ := base64.StdEncoding.DecodeString(key)

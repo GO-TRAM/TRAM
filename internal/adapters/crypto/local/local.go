@@ -14,6 +14,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -114,7 +115,7 @@ func readKey(spec *Spec) ([]byte, error) {
 	if spec.KeyFile != "" {
 		data, err := os.ReadFile(spec.KeyFile)
 		if err != nil {
-			return nil, fmt.Errorf("%w: failed to read key file: %v", ErrInvalidKey, err)
+			return nil, fmt.Errorf("%w: failed to read key file: %w", ErrInvalidKey, err)
 		}
 		encoded = string(data)
 	}
@@ -142,14 +143,14 @@ type crypter struct {
 func newCrypter(key []byte) (*crypter, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidKey, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidKey, err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidKey, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidKey, err)
 	}
 	sum := sha256.Sum256(key)
-	return &crypter{gcm: gcm, keyID: "local:sha256:" + fmt.Sprintf("%x", sum[:8])}, nil
+	return &crypter{gcm: gcm, keyID: "local:sha256:" + hex.EncodeToString(sum[:8])}, nil
 }
 
 // Encrypt returns nonce and AES-256-GCM ciphertext of plaintext.

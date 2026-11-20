@@ -28,37 +28,10 @@ func BenchmarkNotifyLogs(b *testing.B) {
 	}
 
 	for _, variant := range variants {
-		enc, err := encryption.New(
-			domain.StageSpec{Name: "enc", From: "source", Spec: localSpec(key, variant.attributes...)},
-			validator.New(),
-			slog.Default(),
-		)
-		if err != nil {
-			b.Fatal(err)
-		}
-		stage, err := decryption.New(
-			domain.StageSpec{Name: "dec", From: "enc", Spec: localSpec(key, variant.attributes...)},
-			validator.New(),
-			slog.Default(),
-		)
-		if err != nil {
-			b.Fatal(err)
-		}
-
+		enc, stage := newStages(b, variant.attributes)
 		for _, shape := range otlpgen.Shapes() {
 			shape.Teams = 2
-			c := &capture{}
-			if err := enc.Subscribe(c); err != nil {
-				b.Fatal(err)
-			}
-			plain := &domain.Event{Logs: otlpgen.Logs(shape)}
-			if err := enc.Notify(context.Background(), plain); err != nil {
-				b.Fatal(err)
-			}
-			if len(c.events) != 1 {
-				b.Fatal("expected one encrypted event")
-			}
-			encrypted := c.events[0]
+			encrypted := encryptedLogs(b, enc, shape)
 
 			b.Run(variant.name+"/"+shape.String(), func(b *testing.B) {
 				b.ReportAllocs()
@@ -71,4 +44,43 @@ func BenchmarkNotifyLogs(b *testing.B) {
 			})
 		}
 	}
+}
+
+// newStages returns an encryption stage and the decryption stage that
+// reverses it, both encrypting the body and attributes.
+func newStages(b *testing.B, attributes []string) (*encryption.Encryption, *decryption.Decryption) {
+	b.Helper()
+	enc, err := encryption.New(
+		domain.StageSpec{Name: "enc", From: "source", Spec: localSpec(key, attributes...)},
+		validator.New(),
+		slog.Default(),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	dec, err := decryption.New(
+		domain.StageSpec{Name: "dec", From: "enc", Spec: localSpec(key, attributes...)},
+		validator.New(),
+		slog.Default(),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	return enc, dec
+}
+
+// encryptedLogs returns logs of shape as enc passes them on.
+func encryptedLogs(b *testing.B, enc *encryption.Encryption, shape otlpgen.Shape) *domain.Event {
+	b.Helper()
+	c := &capture{}
+	if err := enc.Subscribe(c); err != nil {
+		b.Fatal(err)
+	}
+	if err := enc.Notify(context.Background(), &domain.Event{Logs: otlpgen.Logs(shape)}); err != nil {
+		b.Fatal(err)
+	}
+	if len(c.events) != 1 {
+		b.Fatal("expected one encrypted event")
+	}
+	return c.events[0]
 }
