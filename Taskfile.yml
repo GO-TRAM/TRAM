@@ -9,10 +9,10 @@ version: '3'
 vars:
   BINARY: tram
   IMAGE: tram:dev
-  # The directories of the packages to lint and test: all but tools/loadgen, a
-  # local tool that is not part of the repository.
+  # The packages to lint and test, as directories relative to the module:
+  # all but tools/loadgen, a local tool that is not part of the repository.
   PACKAGES:
-    sh: go list -f '{{`{{.Dir}}`}}' ./... | grep -v /tools/loadgen | tr '\n' ' '
+    sh: go list ./... | grep -v /tools/loadgen | sed "s#^$(go list -m)#.#" | tr '\n' ' '
   # Podman if installed, Docker otherwise; set CONTAINER_TOOL=docker to choose.
   CONTAINER_TOOL:
     sh: command -v podman >/dev/null 2>&1 && echo podman || echo docker
