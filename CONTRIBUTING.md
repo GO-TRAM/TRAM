@@ -145,7 +145,7 @@ tram/
 │   ├── scenario/                     # End-to-end pipeline benchmarks
 │   └── testutil/                     # Test helpers: OTLP payloads (otlpgen), broker containers (natstest, kafkatest, amqptest), tcpproxy
 ├── pkg/gen/go/api/proto/stream/v1/   # Generated protobuf, gRPC and gateway code
-├── setup/                            # Example configurations: config/, k8s/, nats/
+├── examples/                            # Example configurations: config/, k8s/, nats/
 ├── tools/benchreport/                # Generates BENCHMARK.md
 ├── docs/assets/                      # Images used in the documentation
 ├── buf.yaml, buf.gen.yaml, buf.lock  # Protobuf generation

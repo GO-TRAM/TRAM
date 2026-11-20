@@ -252,22 +252,22 @@ tasks:
   nats:up:
     desc: Start a local NATS server with JetStream on localhost:4222
     cmds:
-      - '{{.CONTAINER_TOOL}} compose -f setup/nats/docker-compose.yaml up -d'
+      - '{{.CONTAINER_TOOL}} compose -f examples/nats/docker-compose.yaml up -d'
 
   nats:down:
     desc: Stop the local NATS server
     cmds:
-      - '{{.CONTAINER_TOOL}} compose -f setup/nats/docker-compose.yaml down'
+      - '{{.CONTAINER_TOOL}} compose -f examples/nats/docker-compose.yaml down'
 
   demo:up:
-    desc: Start the demo that sends logs, metrics and traces through Tram to OpenObserve, with Grafana on localhost:3000 (see setup/demo/README.md)
+    desc: Start the demo that sends logs, metrics and traces through Tram to OpenObserve, with Grafana on localhost:3000 (see examples/demo/README.md)
     cmds:
-      - '{{.CONTAINER_TOOL}} compose -f setup/demo/compose.yaml up -d --build'
+      - '{{.CONTAINER_TOOL}} compose -f examples/demo/compose.yaml up -d --build'
 
   demo:down:
     desc: Stop the demo and remove its containers
     cmds:
-      - '{{.CONTAINER_TOOL}} compose -f setup/demo/compose.yaml down'
+      - '{{.CONTAINER_TOOL}} compose -f examples/demo/compose.yaml down'
 
   k8s:crd:
     desc: Install the Stream CRD into the current Kubernetes context

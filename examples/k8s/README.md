@@ -20,10 +20,10 @@ kubectl apply --server-side -f internal/adapters/k8scrd/config/crd/bases/
 kubectl apply -f internal/adapters/k8scrd/config/rbac/role.yaml -f internal/adapters/k8scrd/config/rbac/manager/role.yaml
 
 # The manager; replace the image tram:dev in the file with yours
-kubectl apply -f setup/k8s/manager.yaml
+kubectl apply -f examples/k8s/manager.yaml
 
 # The Engine that runs the examples
-kubectl apply -f setup/k8s/examples/engine.yaml
+kubectl apply -f examples/k8s/examples/engine.yaml
 kubectl wait engine/demo --for=condition=Ready
 ```
 
@@ -31,14 +31,14 @@ kubectl wait engine/demo --for=condition=Ready
 
 ```bash
 # Deploy a basic OTLP forwarding stream
-kubectl apply -f setup/k8s/examples/otlp_basic.yaml
+kubectl apply -f examples/k8s/examples/otlp_basic.yaml
 
 # Check the stream: labeled engine.tram.io/demo and active
 kubectl get streams --show-labels
 kubectl get engines
 
 # Or deploy every example at once, with the Engine
-kubectl apply -f setup/k8s/examples/
+kubectl apply -f examples/k8s/examples/
 ```
 
 ## Layout

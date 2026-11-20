@@ -50,7 +50,18 @@ These examples demonstrate using the OTLP sink in Tram for various use cases.
 - Filters logs based on customer attribute
 - Shows how to use CEL expressions in filters
 - Sends filtered data to customer-specific endpoint
+- Carries test cases in `tests`; run them with `tram test otlp_with_filters.json`
 - **Kubernetes version**: [../k8s/examples/otlp_with_filters.yaml](../k8s/examples/otlp_with_filters.yaml)
+
+## Testing Examples
+
+An example can carry test cases in the `tests` field of its stream. They are never run by loading the stream; run them explicitly:
+
+```bash
+tram test examples/config/otlp_with_filters.json
+```
+
+See [Testing a Stream](../../README.md#testing-a-stream) for the format of test cases.
 
 #### [`otlp_with_validation.json`](otlp_with_validation.json)
 **Purpose**: OTLP forwarding with CEL validation.
