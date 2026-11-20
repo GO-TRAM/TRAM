@@ -442,7 +442,7 @@ Besides the API, streams can be managed from two further sources. All of them ch
 ### File Sync
 
 ```bash
-./tram server --enable-file-sync --config-directory config
+./tram server --enable-file-sync --config-dir config
 ```
 
 Every `<name>.json` file in the directory describes one stream, in the same format as the API request body (`{"stream": {...}}`); see `examples/config/` for examples. The file name, without `.json`, is the stream name. The sync works in both directions:

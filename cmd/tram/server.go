@@ -54,7 +54,7 @@ func newServerCmd(logger *slog.Logger) *cobra.Command {
 	flags := cmd.Flags()
 	flags.StringVar(&opts.grpcEndpoint, "grpc-endpoint", "localhost:50051", "gRPC server endpoint")
 	flags.StringVar(&opts.httpEndpoint, "http-endpoint", "localhost:8080", "HTTP server endpoint")
-	flags.StringVarP(&opts.configDir, "config-directory", "c", "config", "Configuration directory")
+	flags.StringVarP(&opts.configDir, "config-dir", "c", "config", "Configuration directory")
 	flags.BoolVar(&opts.enableK8sOperator, "enable-k8s-operator", false, "Enable the Kubernetes operator")
 	flags.BoolVar(&opts.enableFileSync, "enable-file-sync", false, "Enable the file sync")
 	flags.StringVar(&opts.kubeconfig, "kubeconfig", "", "Kubernetes config file")
