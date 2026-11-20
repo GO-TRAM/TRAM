@@ -68,7 +68,12 @@ func TestStreamSpecEqual(t *testing.T) {
 			Name:   "s",
 			Source: domain.SourceSpec{Name: "in", Type: "otlp", Spec: map[string]any{"http_port": float64(4318)}},
 			Stages: []domain.StageSpec{
-				{Name: "f", Type: "cel_filter", From: "in", Spec: map[string]any{"logs": "true"}},
+				{
+					Name: "f",
+					Type: "filter",
+					From: "in",
+					Spec: map[string]any{"driver": "cel", "cel": map[string]any{"logs": "true"}},
+				},
 			},
 			Sinks: []domain.SinkSpec{{Name: "out", Type: "debug", From: "f"}},
 		}

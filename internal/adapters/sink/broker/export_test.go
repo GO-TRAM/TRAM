@@ -11,6 +11,7 @@ import (
 	"github.com/go-playground/validator/v10"
 
 	contract "codeberg.org/eljoth/tram/internal/adapters/broker"
+	"codeberg.org/eljoth/tram/internal/adapters/driver"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
@@ -19,7 +20,7 @@ func NewWithDrivers(
 	sink domain.SinkSpec,
 	validator *validator.Validate,
 	logger *slog.Logger,
-	driverFactory contract.DriverFactory[contract.PublisherDriver],
+	driverFactory driver.Factory[contract.PublisherDriver],
 ) (*Sink, error) {
 	return newSink(sink, validator, logger, driverFactory)
 }

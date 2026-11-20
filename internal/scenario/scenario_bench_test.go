@@ -68,8 +68,8 @@ func scenarios() []scenario {
 			build: func(e *env) ([]domain.StageSpec, []domain.SinkSpec) {
 				const teamZero = "record.attributes.exists(a, a.key == 'team' && a.value.string_value == 'team-0')"
 				return []domain.StageSpec{
-					{Name: "team-zero", Type: "cel_filter", From: "in", Spec: map[string]any{"logs": teamZero}},
-					{Name: "other-teams", Type: "cel_filter", From: "in", Spec: map[string]any{"logs": "!" + teamZero}},
+					{Name: "team-zero", Type: "filter", From: "in", Spec: celFilter(teamZero)},
+					{Name: "other-teams", Type: "filter", From: "in", Spec: celFilter("!" + teamZero)},
 				}, []domain.SinkSpec{
 					e.natsSink("out-a", "team-zero"),
 					e.natsSink("out-b", "other-teams"),
@@ -82,8 +82,8 @@ func scenarios() []scenario {
 			teams:  1,
 			build: func(e *env) ([]domain.StageSpec, []domain.SinkSpec) {
 				return []domain.StageSpec{{
-					Name: "filter", Type: "cel_filter", From: "in",
-					Spec: map[string]any{"logs": "record.attributes.exists(a, a.key == 'team')"},
+					Name: "filter", Type: "filter", From: "in",
+					Spec: celFilter("record.attributes.exists(a, a.key == 'team')"),
 				}}, []domain.SinkSpec{e.natsSink("out", "filter")}
 			},
 		},
@@ -385,4 +385,10 @@ func waitForMessages(b *testing.B, js jetstream.JetStream, stream string, want u
 		time.Sleep(2 * time.Millisecond)
 	}
 	b.Fatalf("stream %s did not receive %d messages", stream, want)
+}
+
+// celFilter is the spec of a filter stage with the CEL driver that keeps the
+// log records expression keeps.
+func celFilter(expression string) map[string]any {
+	return map[string]any{"driver": "cel", "cel": map[string]any{"logs": expression}}
 }

@@ -21,6 +21,7 @@ import (
 	contract "codeberg.org/eljoth/tram/internal/adapters/broker"
 	"codeberg.org/eljoth/tram/internal/adapters/broker/drivers"
 	"codeberg.org/eljoth/tram/internal/adapters/broker/partition"
+	"codeberg.org/eljoth/tram/internal/adapters/driver"
 	"codeberg.org/eljoth/tram/internal/adapters/source/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
@@ -59,9 +60,9 @@ func newSource(
 	source domain.SourceSpec,
 	validator *validator.Validate,
 	logger *slog.Logger,
-	driverFactory contract.DriverFactory[contract.SubscriberDriver],
+	driverFactory driver.Factory[contract.SubscriberDriver],
 ) (*Source, error) {
-	generic, opts, driver, err := contract.Split(source.Spec, driverFactory)
+	generic, opts, drv, err := driver.Split(source.Spec, driverFactory)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +74,7 @@ func newSource(
 		return nil, err
 	}
 	logger = logger.With(slog.String("source", source.Name))
-	subscriber, err := driver.NewSubscriber(opts, contract.SubscriberConfig{
+	subscriber, err := drv.NewSubscriber(opts, contract.SubscriberConfig{
 		Name:     "source " + source.Name,
 		Capacity: workersOf(b.Spec()),
 	}, logger)

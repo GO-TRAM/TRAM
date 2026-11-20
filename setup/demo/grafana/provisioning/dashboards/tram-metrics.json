@@ -1,7 +1,7 @@
 {
   "uid": "tram-metrics",
   "title": "Metrics through Tram",
-  "description": "Metrics that the OTLP clients send to Tram and Tram forwards to OpenObserve. Tram's metrics cel_filter stage drops every metric whose name starts with debug., so only checkout.orders arrives.",
+  "description": "Metrics that the OTLP clients send to Tram and Tram forwards to OpenObserve. Tram's metrics filter stage drops every metric whose name starts with debug., so only checkout.orders arrives.",
   "editable": true,
   "refresh": "10s",
   "time": {

@@ -39,7 +39,7 @@ Configuration used in all scenarios:
 
 - **Broker sink (NATS driver):** one subject per service (`'<stream>.' + ...get_attr('service.name')`), so events with 10 services are published as 10 messages
 - **batch:** `max_records: 1000`, `timeout: "10ms"`
-- **Split:** two `cel_filter` stages, `team == 'team-0'` and its negation, each with its own broker sink; the payload alternates between two teams
+- **Split:** two `filter` stages with the CEL driver, `team == 'team-0'` and its negation, each with its own broker sink; the payload alternates between two teams
 - **Broker source (NATS driver):** durable consumer, `workers` equal to the number of callers; the messages are in the stream before the measurement starts
 
 <!-- BEGIN benchreport:scenarios -->
@@ -71,7 +71,7 @@ Configuration used in all scenarios:
 | 8 | 100 (1 service) | 62 k | 620 | 9.59 µs | 104 k | 13.09 ms | 13.92 ms | 54 | ±1% |
 | 8 | 1000 (10 services) | 1.49 M | 1.5 k | 6.12 µs | 164 k | 5.23 ms | 7.31 ms | 53 | ±0% |
 
-#### `otlp-split-nats`: OTLP → 2 × cel_filter → 2 × NATS
+#### `otlp-split-nats`: OTLP → 2 × filter → 2 × NATS
 
 | Callers | Records per event | Records/s | Events/s | CPU per record | Records/s per core | p50 latency | p99 latency | Allocs per record | Spread |
 |---|---|---|---|---|---|---|---|---|---|
@@ -85,7 +85,7 @@ Configuration used in all scenarios:
 | 8 | 100 (1 service) | 655 k | 6.5 k | 16.23 µs | 62 k | 1.24 ms | 1.81 ms | 88 | ±1% |
 | 8 | 1000 (10 services) | 1.04 M | 1.0 k | 12.59 µs | 79 k | 7.66 ms | 9.55 ms | 86 | ±0% |
 
-#### `nats-filter-nats`: NATS → cel_filter → NATS
+#### `nats-filter-nats`: NATS → filter → NATS
 
 | Callers | Records per event | Records/s | Events/s | CPU per record | Records/s per core | p50 latency | p99 latency | Allocs per record | Spread |
 |---|---|---|---|---|---|---|---|---|---|
@@ -109,8 +109,8 @@ CPU needed for pure processing, from the CPU per record of the scenarios above. 
 | Pipeline | CPU per record | Cores for 100 k records/s | Cores for 1 M records/s |
 |---|---|---|---|
 | Batched: OTLP → batch → NATS, 1,000 records per request, 8 callers | 6.12 µs | 0.6 | 6.1 |
-| Split: OTLP → 2 × cel_filter → 2 × NATS, 1,000 records per request, 8 callers | 12.59 µs | 1.3 | 12.6 |
-| Forwarding: NATS → cel_filter → NATS, 1,000 records per message, 8 workers | 6.80 µs | 0.7 | 6.8 |
+| Split: OTLP → 2 × filter → 2 × NATS, 1,000 records per request, 8 callers | 12.59 µs | 1.3 | 12.6 |
+| Forwarding: NATS → filter → NATS, 1,000 records per message, 8 workers | 6.80 µs | 0.7 | 6.8 |
 | Unbatched: OTLP → NATS, 1 record per request, 8 callers | 95.20 µs | 9.5 | 95.2 |
 <!-- END benchreport:sizing -->
 
@@ -136,12 +136,12 @@ Idle CPU is shown for 1,000 streams only; for fewer streams it is below the nois
 <!-- BEGIN benchreport:streams -->
 | Stream | Streams | Build | Heap | Goroutines | NATS connections | NATS messages/s, idle | Idle CPU of a core |
 |---|---|---|---|---|---|---|---|
-| NATS (1 worker) → cel_filter → NATS | 10 | 1.3 ms | 336 KiB | 10.0 | 2.0 | 0.00 | – |
-| NATS (1 worker) → cel_filter → NATS | 100 | 1.2 ms | 332 KiB | 10.0 | 2.0 | 0.00 | – |
-| NATS (1 worker) → cel_filter → NATS | 1,000 | 1.1 ms | 330 KiB | 10.0 | 2.0 | 0.00 | 0.0027 % |
-| NATS (4 workers) → cel_filter → NATS | 10 | 1.1 ms | 333 KiB | 10.0 | 2.0 | 0.00 | – |
-| NATS (4 workers) → cel_filter → NATS | 100 | 1.1 ms | 330 KiB | 10.0 | 2.0 | 0.00 | – |
-| NATS (4 workers) → cel_filter → NATS | 1,000 | 1.1 ms | 330 KiB | 10.0 | 2.0 | 0.00 | 0.0027 % |
+| NATS (1 worker) → filter → NATS | 10 | 1.3 ms | 336 KiB | 10.0 | 2.0 | 0.00 | – |
+| NATS (1 worker) → filter → NATS | 100 | 1.2 ms | 332 KiB | 10.0 | 2.0 | 0.00 | – |
+| NATS (1 worker) → filter → NATS | 1,000 | 1.1 ms | 330 KiB | 10.0 | 2.0 | 0.00 | 0.0027 % |
+| NATS (4 workers) → filter → NATS | 10 | 1.1 ms | 333 KiB | 10.0 | 2.0 | 0.00 | – |
+| NATS (4 workers) → filter → NATS | 100 | 1.1 ms | 330 KiB | 10.0 | 2.0 | 0.00 | – |
+| NATS (4 workers) → filter → NATS | 1,000 | 1.1 ms | 330 KiB | 10.0 | 2.0 | 0.00 | 0.0027 % |
 | OTLP → batch → NATS | 10 | 628.40 µs | 205 KiB | 4.0 | 1.0 | 0.00 | – |
 | OTLP → batch → NATS | 100 | 610.90 µs | 201 KiB | 4.0 | 1.0 | 0.00 | – |
 | OTLP → batch → NATS | 1,000 | 617.70 µs | 200 KiB | 4.0 | 1.0 | 0.00 | 0.0014 % |
@@ -152,16 +152,16 @@ What a number of streams costs when every replica runs all of them, projected fr
 <!-- BEGIN benchreport:streams-fleet -->
 | Stream | Streams | Replicas | Heap per replica | Idle CPU per replica, of a core | NATS connections | NATS messages/s, idle |
 |---|---|---|---|---|---|---|
-| NATS (1 worker) → cel_filter → NATS | 100 | 1 | 32 MiB | 0.27 % | 200 | 0 |
-| NATS (1 worker) → cel_filter → NATS | 100 | 10 | 32 MiB | 0.27 % | 2.0 k | 0 |
-| NATS (1 worker) → cel_filter → NATS | 1,000 | 1 | 322 MiB | 2.7 % | 2.0 k | 0 |
-| NATS (1 worker) → cel_filter → NATS | 1,000 | 3 | 322 MiB | 2.7 % | 6.0 k | 0 |
-| NATS (1 worker) → cel_filter → NATS | 1,000 | 10 | 322 MiB | 2.7 % | 20 k | 0 |
-| NATS (4 workers) → cel_filter → NATS | 100 | 1 | 32 MiB | 0.27 % | 200 | 0 |
-| NATS (4 workers) → cel_filter → NATS | 100 | 10 | 32 MiB | 0.27 % | 2.0 k | 0 |
-| NATS (4 workers) → cel_filter → NATS | 1,000 | 1 | 322 MiB | 2.7 % | 2.0 k | 0 |
-| NATS (4 workers) → cel_filter → NATS | 1,000 | 3 | 322 MiB | 2.7 % | 6.0 k | 0 |
-| NATS (4 workers) → cel_filter → NATS | 1,000 | 10 | 322 MiB | 2.7 % | 20 k | 0 |
+| NATS (1 worker) → filter → NATS | 100 | 1 | 32 MiB | 0.27 % | 200 | 0 |
+| NATS (1 worker) → filter → NATS | 100 | 10 | 32 MiB | 0.27 % | 2.0 k | 0 |
+| NATS (1 worker) → filter → NATS | 1,000 | 1 | 322 MiB | 2.7 % | 2.0 k | 0 |
+| NATS (1 worker) → filter → NATS | 1,000 | 3 | 322 MiB | 2.7 % | 6.0 k | 0 |
+| NATS (1 worker) → filter → NATS | 1,000 | 10 | 322 MiB | 2.7 % | 20 k | 0 |
+| NATS (4 workers) → filter → NATS | 100 | 1 | 32 MiB | 0.27 % | 200 | 0 |
+| NATS (4 workers) → filter → NATS | 100 | 10 | 32 MiB | 0.27 % | 2.0 k | 0 |
+| NATS (4 workers) → filter → NATS | 1,000 | 1 | 322 MiB | 2.7 % | 2.0 k | 0 |
+| NATS (4 workers) → filter → NATS | 1,000 | 3 | 322 MiB | 2.7 % | 6.0 k | 0 |
+| NATS (4 workers) → filter → NATS | 1,000 | 10 | 322 MiB | 2.7 % | 20 k | 0 |
 | OTLP → batch → NATS | 100 | 1 | 20 MiB | 0.14 % | 100 | 0 |
 | OTLP → batch → NATS | 100 | 10 | 20 MiB | 0.14 % | 1.0 k | 0 |
 | OTLP → batch → NATS | 1,000 | 1 | 196 MiB | 1.4 % | 1.0 k | 0 |
@@ -188,10 +188,10 @@ Costs of single components, measured in isolation. Per-record costs are measured
 | Broker source (NATS), 1 worker | 1.61 µs | 34.2 | 621 k | ±5% |
 | Broker source (NATS), 8 workers | 270.0 ns | 34.2 | 3.70 M | ±1% |
 | OTLP source: decoding a request | 1.48 µs | 34.3 | 677 k | ±10% ⚠️ |
-| cel_filter, keeping half of the records | 1.77 µs | 16.6 | 565 k | ±9% |
-| cel_filter, keeping all records | 920.0 ns | 8.0 | 1.09 M | ±24% ⚠️ |
-| cel_validator, record-level expression | 1.07 µs | 9.1 | 931 k | ±18% ⚠️ |
-| cel_validator, resource-level expression | 13.5 ns | 0.1 | 73.86 M | ±14% ⚠️ |
+| filter (CEL), keeping half of the records | 1.77 µs | 16.6 | 565 k | ±9% |
+| filter (CEL), keeping all records | 920.0 ns | 8.0 | 1.09 M | ±24% ⚠️ |
+| validation (CEL), record-level expression | 1.07 µs | 9.1 | 931 k | ±18% ⚠️ |
+| validation (CEL), resource-level expression | 13.5 ns | 0.1 | 73.86 M | ±14% ⚠️ |
 | Record filter helper without CEL | 8.0 ns | 0.0 | 124.60 M | ±3% |
 | batch, 8 concurrent callers | 0.5 ns | 0.0 | 2.10 G | ±7% |
 | noop stage | 1.1 ns | 0.0 | 947.87 M | ±8% |
@@ -216,7 +216,7 @@ Fixed costs per event, independent of its size. They dominate when events are sm
 - **Batching needs concurrent callers.** Each caller of a `batch` stage waits for its batch to be delivered. With a single caller, batches never fill and every event waits for `timeout`; see `otlp-batch-nats` with 1 caller
 - **Keep the number of subjects per event low.** The broker sink publishes one message per subject. It sends them all at once and waits for their acknowledgements together, so many subjects cost little time, but every message still costs CPU on TRAM and the NATS server
 - **Give a broker source enough workers.** `workers` is the number of messages processed at the same time, so a `batch` stage after the source holds at most that many messages. The source acknowledges a message once its batch is delivered, so a source with a `batch` stage handles at most `workers / timeout` messages per second: 20 workers and a timeout of 1 s cap it at 20 messages/s per replica, however fast the sink is
-- **Prefer resource-level CEL expressions.** They are evaluated once per resource instead of once per record when used in `cel_validator`; per record, CEL costs about as much as decoding the record
+- **Prefer resource-level CEL expressions.** They are evaluated once per resource instead of once per record when used in a `validation` stage; per record, CEL costs about as much as decoding the record
 - **Many consumers filtering one stream make NATS the limit.** Each filtered consumer searches the stream for its next matching message. With hundreds of them on one stream, NATS spends its CPU on that search and, on slow storage, on reading blocks from disk; see [Load Test on Kubernetes](#load-test-on-kubernetes)
 - **Prefer `retention: interest` for streams that only pass data on.** NATS removes a message once every consumer acknowledged it, so the stream stays small while consumers keep up and still holds the backlog of one that falls behind, up to `max_age`
 

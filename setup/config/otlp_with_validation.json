@@ -11,13 +11,16 @@
     "stages": [
       {
         "name": "validator_stage",
-        "type": "cel_validator",
+        "type": "validation",
         "from": "otlp_source",
         "spec": {
-          "logs": "logs.resource_logs.all(resLog, resLog.resource.attributes.exists(attr, attr.key == 'service.name'))",
-          "metrics": "metrics.resource_metrics.all(resMetric, resMetric.resource.attributes.exists(attr, attr.key == 'service.name'))",
-          "traces": "traces.resource_spans.all(resSpan, resSpan.resource.attributes.exists(attr, attr.key == 'service.name'))",
-          "on_mismatch": "reject"
+          "driver": "cel",
+          "on_mismatch": "reject",
+          "cel": {
+            "logs": "logs.resource_logs.all(resLog, resLog.resource.attributes.exists(attr, attr.key == 'service.name'))",
+            "metrics": "metrics.resource_metrics.all(resMetric, resMetric.resource.attributes.exists(attr, attr.key == 'service.name'))",
+            "traces": "traces.resource_spans.all(resSpan, resSpan.resource.attributes.exists(attr, attr.key == 'service.name'))"
+          }
         }
       }
     ],

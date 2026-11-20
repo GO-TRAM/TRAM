@@ -101,13 +101,13 @@ These configurations match the exact scenarios used in the Tram benchmarks (see 
 - **Kubernetes version**: [../k8s/examples/benchmark_otlp_batch_nats.yaml](../k8s/examples/benchmark_otlp_batch_nats.yaml)
 
 #### [`benchmark_otlp_split_nats.json`](benchmark_otlp_split_nats.json)
-**Purpose**: Exact configuration for the `otlp-split-nats` benchmark scenario: **OTLP → 2 × cel_filter → 2 × NATS**
-- Splits data into team-0 and other teams using CEL filters
+**Purpose**: Exact configuration for the `otlp-split-nats` benchmark scenario: **OTLP → 2 × filter → 2 × NATS**
+- Splits data into team-0 and other teams using filter stages with the CEL driver
 - Matches the benchmark configuration exactly
 - **Kubernetes version**: [../k8s/examples/benchmark_otlp_split_nats.yaml](../k8s/examples/benchmark_otlp_split_nats.yaml)
 
 #### [`benchmark_nats_filter_nats.json`](benchmark_nats_filter_nats.json)
-**Purpose**: Exact configuration for the `nats-filter-nats` benchmark scenario: **NATS → cel_filter → NATS**
+**Purpose**: Exact configuration for the `nats-filter-nats` benchmark scenario: **NATS → filter → NATS**
 - Uses durable consumer with 8 workers as specified in benchmarks
 - **Kubernetes version**: [../k8s/examples/benchmark_nats_filter_nats.yaml](../k8s/examples/benchmark_nats_filter_nats.yaml)
 

@@ -23,6 +23,7 @@ import (
 	contract "codeberg.org/eljoth/tram/internal/adapters/broker"
 	"codeberg.org/eljoth/tram/internal/adapters/broker/brokertest"
 	"codeberg.org/eljoth/tram/internal/adapters/broker/partition"
+	"codeberg.org/eljoth/tram/internal/adapters/driver"
 	"codeberg.org/eljoth/tram/internal/adapters/source/broker"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
@@ -80,7 +81,7 @@ func spec(extra map[string]any) map[string]any {
 func newSource(m *brokertest.Memory, s map[string]any) (*broker.Source, error) {
 	return broker.NewWithDrivers(domain.SourceSpec{Name: "in", Spec: s},
 		validator.New(validator.WithRequiredStructEnabled()), slog.New(slog.DiscardHandler),
-		contract.Drivers[contract.SubscriberDriver]{brokertest.MemoryName: m})
+		driver.Set[contract.SubscriberDriver]{brokertest.MemoryName: m})
 }
 
 // run starts the source and stops it when the test ends.
@@ -193,8 +194,10 @@ func TestPartitionSelectsTheKeysDestination(t *testing.T) {
 	c := &collector{}
 	run(t, src, c)
 
-	require.Eventually(t, func() bool { return c.count() == 1 }, waitFor, tick)
-	assert.Equal(t, brokertest.Outcome{Acked: 1}, m.Outcome(dest, "d"))
+	// The source acknowledges after the event is delivered, so wait for the
+	// outcome rather than the delivery.
+	require.Eventually(t, func() bool { return m.Outcome(dest, "d") == brokertest.Outcome{Acked: 1} }, waitFor, tick)
+	assert.Equal(t, 1, c.count())
 }
 
 func TestStopBeforeRun(t *testing.T) {

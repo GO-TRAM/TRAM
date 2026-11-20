@@ -52,7 +52,7 @@ services:
       - tram
     restart: on-failure
 
-  # Sends DEBUG logs, which the "logs" cel_filter stage in Tram drops.
+  # Sends DEBUG logs, which the "logs" filter stage in Tram drops.
   debug-noise:
     image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.162.0
     command:
@@ -101,7 +101,7 @@ services:
       net.ipv4.tcp_tw_reuse: "1"
       net.ipv4.ip_local_port_range: "1024 65535"
 
-  # Sends the gauge debug.cache.size, which the "metrics" cel_filter stage in
+  # Sends the gauge debug.cache.size, which the "metrics" filter stage in
   # Tram drops like every metric whose name starts with "debug.".
   debug-noise-metrics:
     image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.162.0
@@ -143,7 +143,7 @@ services:
       - tram
     restart: on-failure
 
-  # Sends traces of the "debug-noise" service, which the "traces" cel_filter
+  # Sends traces of the "debug-noise" service, which the "traces" filter
   # stage in Tram drops.
   debug-noise-traces:
     image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.162.0

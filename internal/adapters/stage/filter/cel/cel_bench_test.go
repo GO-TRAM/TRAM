@@ -3,15 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 // SPDX-License-Identifier: MPL-2.0
 
-package celfilter_test
+package cel_test
 
 import (
-	"log/slog"
 	"testing"
 
-	"github.com/go-playground/validator/v10"
-
-	"codeberg.org/eljoth/tram/internal/adapters/stage/celfilter"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
@@ -31,12 +27,7 @@ func BenchmarkCELFilter(b *testing.B) {
 	}
 
 	for _, expr := range expressions {
-		logger := slog.Default()
-		filter, err := celfilter.New(
-			domain.StageSpec{Name: "filter", Spec: map[string]any{"logs": expr.logs}},
-			validator.New(),
-			logger,
-		)
+		filter, err := newStage("filter", "", map[string]any{"logs": expr.logs})
 		if err != nil {
 			b.Fatal(err)
 		}

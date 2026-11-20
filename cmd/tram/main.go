@@ -13,6 +13,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// logo is printed by commands that are not written yet.
+//
+//nolint:unused // Used later.
 const logo = `
                                                                                                    :::
                                                                                                     :::
@@ -70,6 +73,5 @@ backends.`,
 	root.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level: debug, info, warn or error")
 	root.AddCommand(newServerCmd(logger))
 	root.AddCommand(newManagerCmd(logger))
-	root.AddCommand(newTestCmd(logger))
 	return root
 }

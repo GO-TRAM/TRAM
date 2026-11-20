@@ -263,5 +263,8 @@ func captureSinkSpec(name, from string) domain.SinkSpec {
 }
 
 func customerFilter(name, from, expression string) domain.StageSpec {
-	return domain.StageSpec{Name: name, Type: "cel_filter", From: from, Spec: map[string]any{"logs": expression}}
+	return domain.StageSpec{Name: name, Type: "filter", From: from, Spec: map[string]any{
+		"driver": "cel",
+		"cel":    map[string]any{"logs": expression},
+	}}
 }

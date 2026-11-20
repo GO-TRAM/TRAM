@@ -142,7 +142,7 @@ curl -X DELETE http://localhost:8080/v1/streams/my-pipeline
 |--------|------|--------|-------------|
 | `tram_node_records_total` | Counter | `stream`, `node`, `kind`, `signal` | Records the node received: log records, metric data points and spans. `kind` is `source`, `stage` or `sink`, `signal` is `logs`, `metrics` or `traces` |
 | `tram_node_records_out_total` | Counter | `stream`, `node`, `kind`, `signal` | Records a source or stage passed on: log records, metric data points and spans. With several children, each record counts once, not once per child. Sinks pass nothing on |
-| `tram_node_duration_seconds` | Histogram | `stream`, `node`, `kind`, `outcome` | Time the node took to handle an event. `outcome` is `ok`, `rejected` (the event was refused for good, e.g. by a `cel_validator`), `cancelled` (the caller gave up, e.g. an OTLP client that closed its connection) or `error`. An expired `delivery_timeout` counts as `error`, since then TRAM took too long |
+| `tram_node_duration_seconds` | Histogram | `stream`, `node`, `kind`, `outcome` | Time the node took to handle an event. `outcome` is `ok`, `rejected` (the event was refused for good, e.g. by a `validation` stage), `cancelled` (the caller gave up, e.g. an OTLP client that closed its connection) or `error`. An expired `delivery_timeout` counts as `error`, since then TRAM took too long |
 | `tram_source_request_size_bytes` | Histogram | `stream`, `node`, `kind`, `encoding`, `body` | Size of the requests a source decoded events from, such as the OTLP source. `body` is `received` (as sent, e.g. gzip-compressed) or `decoded` (after undoing the content encoding), `encoding` is `gzip` or `identity`. Sources that consume messages, like the broker source, report nothing |
 
 The endpoint also serves the Go runtime (`go_*`) and process (`process_*`) metrics.
@@ -170,7 +170,7 @@ sum by (stream, body) (rate(tram_source_request_size_bytes_sum[5m]))
   / sum by (stream) (rate(tram_source_request_size_bytes_count{body="received"}[5m]))
 ```
 
-A stage that drops every record of a signal, such as a `cel_filter` with `"false"` for it, has no output series for that signal, so drop the `signal` label or use `or vector(0)` when comparing per signal.
+A stage that drops every record of a signal, such as a `filter` whose CEL expression for it is `"false"`, has no output series for that signal, so drop the `signal` label or use `or vector(0)` when comparing per signal.
 
 ### Choosing the metrics of a stream
 
@@ -231,7 +231,7 @@ Source → [Stage] → Sink
 | Type | Components |
 |------|-------------|
 | **Sources** | `broker`, `generator`, `otlp` |
-| **Stages** | `batch`, `cel_filter`, `cel_validator`, `delay`, `noop`, `value_map` |
+| **Stages** | `batch`, `delay`, `filter`, `noop`, `validation`, `value_map` |
 | **Sinks** | `broker`, `debug`, `otlp` |
 
 For detailed documentation on each component and its configuration, see [COMPONENTS.md](COMPONENTS.md).
@@ -339,9 +339,9 @@ flowchart LR
     nats --> src2["broker source<br>topic 1"]
     otlp_in(["otlp source"])
 
-    src1 --> val1["cel_validator"]
-    src2 --> val2["cel_validator"]
-    otlp_in --> val3["cel_validator"]
+    src1 --> val1["validation"]
+    src2 --> val2["validation"]
+    otlp_in --> val3["validation"]
 
     val1 --> sink1(["otlp sink"])
     val2 --> sink2(["debug sink"])

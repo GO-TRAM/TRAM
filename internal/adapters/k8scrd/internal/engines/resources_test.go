@@ -124,7 +124,8 @@ func TestBuildResourcesFromSpec(t *testing.T) {
 	e.Spec = tramv1alpha1.EngineSpec{
 		Image:           "registry.example.com/tram:1.14.0",
 		ImagePullPolicy: corev1.PullIfNotPresent,
-		Resources:       corev1.ResourceRequirements{Requests: corev1.ResourceList{}, Limits: corev1.ResourceList{}},
+		//nolint:exhaustive // Empty lists, set no resources.
+		Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{}, Limits: corev1.ResourceList{}},
 		Autoscaling: &tramv1alpha1.AutoscalingSpec{
 			Enabled: true, MinReplicas: new(int32(3)), MaxReplicas: new(int32(24)),
 			TargetCPUUtilizationPercentage: new(int32(70)),

@@ -20,10 +20,10 @@ import (
 
 	"codeberg.org/eljoth/tram/internal/adapters/stage"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/batch"
-	"codeberg.org/eljoth/tram/internal/adapters/stage/celfilter"
-	"codeberg.org/eljoth/tram/internal/adapters/stage/celvalidator"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/delay"
+	"codeberg.org/eljoth/tram/internal/adapters/stage/filter"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/noop"
+	"codeberg.org/eljoth/tram/internal/adapters/stage/validation"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/valuemap"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
@@ -107,17 +107,23 @@ func TestStagesLeaveTheSharedEventUnchanged(t *testing.T) {
 			check: func(t *testing.T, out *collector) { assert.Equal(t, sent, out.records()) },
 		},
 		{
-			name: celvalidator.Type,
-			spec: domain.StageSpec{Type: celvalidator.Type, Spec: map[string]any{
-				"logs":        "logs.resource_logs.all(r, r.scope_logs.all(s, s.log_records.all(l, l.attributes.exists(a, a.key == 'team'))))",
+			name: validation.Type,
+			spec: domain.StageSpec{Type: validation.Type, Spec: map[string]any{
+				"driver":      "cel",
 				"on_mismatch": "reject",
+				"cel": map[string]any{
+					"logs": "logs.resource_logs.all(r, r.scope_logs.all(s, s.log_records.all(l, l.attributes.exists(a, a.key == 'team'))))",
+				},
 			}},
 			check: func(t *testing.T, out *collector) { assert.Equal(t, sent, out.records()) },
 		},
 		{
-			name: celfilter.Type,
-			spec: domain.StageSpec{Type: celfilter.Type, Spec: map[string]any{
-				"logs": "record.attributes.exists(a, a.key == 'team' && a.value.string_value == 'team-0')",
+			name: filter.Type,
+			spec: domain.StageSpec{Type: filter.Type, Spec: map[string]any{
+				"driver": "cel",
+				"cel": map[string]any{
+					"logs": "record.attributes.exists(a, a.key == 'team' && a.value.string_value == 'team-0')",
+				},
 			}},
 			check: func(t *testing.T, out *collector) {
 				records := out.logRecords()

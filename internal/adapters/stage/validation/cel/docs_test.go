@@ -3,23 +3,19 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 // SPDX-License-Identifier: MPL-2.0
 
-package celvalidator_test
+package cel_test
 
 import (
 	"context"
 	"strings"
 	"testing"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 
-	"log/slog"
-
-	"codeberg.org/eljoth/tram/internal/adapters/stage/celvalidator"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
@@ -183,12 +179,12 @@ func TestDocumentedBehavior(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			cel, err := celvalidator.New(domain.StageSpec{Name: "cel", Spec: c.spec}, validator.New(), slog.Default())
+			stage, err := newStage("cel", c.spec)
 			require.NoError(t, err)
 			sub := &captureSubscriber{}
-			require.NoError(t, cel.Subscribe(sub))
+			require.NoError(t, stage.Subscribe(sub))
 
-			err = cel.Notify(t.Context(), c.event)
+			err = stage.Notify(t.Context(), c.event)
 			if c.expectReject {
 				require.ErrorIs(t, err, domain.ErrEventRejected)
 				assert.Empty(t, sub.events)

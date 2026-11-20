@@ -6,19 +6,17 @@
 // Package drivers is the one place that knows the concrete broker drivers. The
 // broker sink creates a [PublisherFactory] and the broker source a
 // [SubscriberFactory] to resolve the `driver` of their spec; their tests inject
-// another [broker.DriverFactory] instead.
+// another [driver.Factory] instead.
 package drivers
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/go-playground/validator/v10"
 
 	"codeberg.org/eljoth/tram/internal/adapters/broker"
 	"codeberg.org/eljoth/tram/internal/adapters/broker/amqp"
 	"codeberg.org/eljoth/tram/internal/adapters/broker/kafka"
 	"codeberg.org/eljoth/tram/internal/adapters/broker/nats"
+	"codeberg.org/eljoth/tram/internal/adapters/driver"
 )
 
 // PublisherFactory returns the publishing side of the driver a spec names, for
@@ -27,7 +25,7 @@ type PublisherFactory struct {
 	validator *validator.Validate
 }
 
-var _ broker.DriverFactory[broker.PublisherDriver] = (*PublisherFactory)(nil)
+var _ driver.Factory[broker.PublisherDriver] = (*PublisherFactory)(nil)
 
 func NewPublisherFactory(validator *validator.Validate) *PublisherFactory {
 	return &PublisherFactory{validator: validator}
@@ -35,7 +33,7 @@ func NewPublisherFactory(validator *validator.Validate) *PublisherFactory {
 
 // Driver returns the publishing side of the driver called name.
 func (f *PublisherFactory) Driver(name string) (broker.PublisherDriver, error) {
-	return driver(f.validator, name)
+	return newDriver(f.validator, name)
 }
 
 // SubscriberFactory returns the subscribing side of the driver a spec names,
@@ -44,7 +42,7 @@ type SubscriberFactory struct {
 	validator *validator.Validate
 }
 
-var _ broker.DriverFactory[broker.SubscriberDriver] = (*SubscriberFactory)(nil)
+var _ driver.Factory[broker.SubscriberDriver] = (*SubscriberFactory)(nil)
 
 func NewSubscriberFactory(validator *validator.Validate) *SubscriberFactory {
 	return &SubscriberFactory{validator: validator}
@@ -52,13 +50,13 @@ func NewSubscriberFactory(validator *validator.Validate) *SubscriberFactory {
 
 // Driver returns the subscribing side of the driver called name.
 func (f *SubscriberFactory) Driver(name string) (broker.SubscriberDriver, error) {
-	return driver(f.validator, name)
+	return newDriver(f.validator, name)
 }
 
-// driver creates the driver called name. Drivers are stateless, so it creates
+// newDriver creates the driver called name. Drivers are stateless, so it creates
 // one per call; a driver that holds state, such as shared connections, would be
 // cached by the factories and closed by their owner.
-func driver(validator *validator.Validate, name string) (broker.Driver, error) {
+func newDriver(validator *validator.Validate, name string) (broker.Driver, error) {
 	switch name {
 	case amqp.Name:
 		return amqp.New(validator), nil
@@ -67,7 +65,6 @@ func driver(validator *validator.Validate, name string) (broker.Driver, error) {
 	case nats.Name:
 		return nats.New(validator), nil
 	default:
-		return nil, fmt.Errorf("%w %q, available: %s", broker.ErrUnknownDriver, name,
-			strings.Join([]string{amqp.Name, kafka.Name, nats.Name}, ", "))
+		return nil, driver.Unknown(name, amqp.Name, kafka.Name, nats.Name)
 	}
 }

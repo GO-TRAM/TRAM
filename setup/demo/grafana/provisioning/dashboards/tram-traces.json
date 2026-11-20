@@ -1,7 +1,7 @@
 {
   "uid": "tram-traces",
   "title": "Traces through Tram",
-  "description": "Traces that the OTLP clients send to Tram and Tram forwards to OpenObserve. Tram's traces cel_filter stage drops all spans of the debug-noise service, so only checkout shows up.",
+  "description": "Traces that the OTLP clients send to Tram and Tram forwards to OpenObserve. Tram's traces filter stage drops all spans of the debug-noise service, so only checkout shows up.",
   "editable": true,
   "refresh": "10s",
   "time": {

@@ -8,8 +8,6 @@ package broker
 import "errors"
 
 var (
-	// ErrUnknownDriver is a driver name no driver is registered for.
-	ErrUnknownDriver = errors.New("unknown broker driver")
 	// ErrInvalidDestination is a destination no message can be published to.
 	ErrInvalidDestination = errors.New("invalid destination")
 	// ErrMessageTooLarge is a message above the broker's maximum size.

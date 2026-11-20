@@ -149,13 +149,13 @@ These configurations match the exact scenarios used in the Tram benchmarks (see 
 - **JSON version**: [../config/benchmark_otlp_batch_nats.json](../config/benchmark_otlp_batch_nats.json)
 
 #### [`benchmark_otlp_split_nats.yaml`](examples/benchmark_otlp_split_nats.yaml)
-**Purpose**: Exact configuration for the `otlp-split-nats` benchmark scenario: OTLP → 2 × cel_filter → 2 × NATS
+**Purpose**: Exact configuration for the `otlp-split-nats` benchmark scenario: OTLP → 2 × filter → 2 × NATS
 - Receives OTLP data on port 4326
 - Splits into team-0 and other teams as specified in benchmarks
 - **JSON version**: [../config/benchmark_otlp_split_nats.json](../config/benchmark_otlp_split_nats.json)
 
 #### [`benchmark_nats_filter_nats.yaml`](examples/benchmark_nats_filter_nats.yaml)
-**Purpose**: Exact configuration for the `nats-filter-nats` benchmark scenario: NATS → cel_filter → NATS
+**Purpose**: Exact configuration for the `nats-filter-nats` benchmark scenario: NATS → filter → NATS
 - Uses durable consumer with workers as in benchmarks
 - **JSON version**: [../config/benchmark_nats_filter_nats.json](../config/benchmark_nats_filter_nats.json)
 

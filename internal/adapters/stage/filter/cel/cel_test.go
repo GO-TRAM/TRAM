@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 // SPDX-License-Identifier: MPL-2.0
 
-package celfilter_test
+package cel_test
 
 import (
 	"context"
@@ -21,7 +21,9 @@ import (
 
 	"log/slog"
 
-	"codeberg.org/eljoth/tram/internal/adapters/stage/celfilter"
+	"codeberg.org/eljoth/tram/internal/adapters/driver"
+	"codeberg.org/eljoth/tram/internal/adapters/stage/filter"
+	"codeberg.org/eljoth/tram/internal/adapters/stage/filter/cel"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
@@ -36,10 +38,20 @@ func (c *capture) Notify(_ context.Context, e *domain.Event) error {
 	return nil
 }
 
-func newFilter(t *testing.T, spec map[string]any) (*celfilter.CELFilter, *capture) {
+// newStage creates a filter stage with the CEL driver and opts as its options.
+func newStage(name, from string, opts map[string]any) (*filter.Filter, error) {
+	v := validator.New()
+	return filter.New(
+		domain.StageSpec{Name: name, From: from, Spec: map[string]any{"driver": cel.Name, cel.Name: opts}},
+		v,
+		slog.Default(),
+		driver.Set[filter.Driver]{cel.Name: cel.New(v)},
+	)
+}
+
+func newFilter(t *testing.T, spec map[string]any) (*filter.Filter, *capture) {
 	t.Helper()
-	logger := slog.Default()
-	f, err := celfilter.New(domain.StageSpec{Name: "filter", From: "source", Spec: spec}, validator.New(), logger)
+	f, err := newStage("filter", "source", spec)
 	require.NoError(t, err)
 	c := &capture{}
 	require.NoError(t, f.Subscribe(c))
@@ -99,25 +111,25 @@ func TestNew(t *testing.T) {
 			name:        "invalid logs",
 			spec:        map[string]any{"logs": "record.unknown_field"},
 			expectErr:   true,
-			expectErrIs: celfilter.ErrCELInvalidLogsExpression,
+			expectErrIs: cel.ErrInvalidLogsExpression,
 		},
 		{
 			name:        "non-bool logs",
 			spec:        map[string]any{"logs": "record.severity_text"},
 			expectErr:   true,
-			expectErrIs: celfilter.ErrCELInvalidLogsExpression,
+			expectErrIs: cel.ErrInvalidLogsExpression,
 		},
 		{
 			name:        "invalid metrics",
 			spec:        map[string]any{"metrics": "metric.name +"},
 			expectErr:   true,
-			expectErrIs: celfilter.ErrCELInvalidMetricsExpression,
+			expectErrIs: cel.ErrInvalidMetricsExpression,
 		},
 		{
 			name:        "wrong variable for traces",
 			spec:        map[string]any{"traces": "record.severity_text == 'x'"},
 			expectErr:   true,
-			expectErrIs: celfilter.ErrCELInvalidTracesExpression,
+			expectErrIs: cel.ErrInvalidTracesExpression,
 		},
 	}
 
@@ -125,7 +137,7 @@ func TestNew(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := celfilter.New(domain.StageSpec{Name: "filter", Spec: c.spec}, validator.New(), slog.Default())
+			_, err := newStage("filter", "", c.spec)
 			if !c.expectErr {
 				assert.NoError(t, err)
 				return
@@ -339,7 +351,7 @@ func TestEvaluationErrorRejectsEvent(t *testing.T) {
 
 	err := f.Notify(t.Context(), customerLogs("A"))
 	require.ErrorIs(t, err, domain.ErrEventRejected)
-	require.ErrorIs(t, err, celfilter.ErrCELEvaluation)
+	require.ErrorIs(t, err, cel.ErrEvaluation)
 	assert.Empty(t, out.events)
 }
 

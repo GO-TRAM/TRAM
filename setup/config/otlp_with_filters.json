@@ -11,10 +11,13 @@
     "stages": [
       {
         "name": "customer_filter",
-        "type": "cel_filter",
+        "type": "filter",
         "from": "otlp_source",
         "spec": {
-          "logs": "record.attributes.exists(attr, attr.key == 'customer' && attr.value.string_value == 'A')"
+          "driver": "cel",
+          "cel": {
+            "logs": "record.attributes.exists(attr, attr.key == 'customer' && attr.value.string_value == 'A')"
+          }
         }
       }
     ],

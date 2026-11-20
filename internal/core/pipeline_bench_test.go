@@ -95,10 +95,13 @@ func topologies() []topology {
 		{name: "noop", stages: noopChain(1), sinks: 1},
 		{name: "noop-x5", stages: noopChain(5), sinks: 1},
 		{name: "cel-record-attribute", stages: []domain.StageSpec{{
-			Name: "cel", Type: "cel_validator", From: "in",
+			Name: "cel", Type: "validation", From: "in",
 			Spec: map[string]any{
-				"logs":        "logs.resource_logs.all(r, r.scope_logs.all(s, s.log_records.all(l, l.attributes.exists(a, a.key == 'team'))))",
+				"driver":      "cel",
 				"on_mismatch": "drop",
+				"cel": map[string]any{
+					"logs": "logs.resource_logs.all(r, r.scope_logs.all(s, s.log_records.all(l, l.attributes.exists(a, a.key == 'team'))))",
+				},
 			},
 		}}, sinks: 1},
 		{name: "fanout-4-sinks", sinks: 4},

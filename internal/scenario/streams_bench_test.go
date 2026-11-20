@@ -60,8 +60,8 @@ func streamShapes() []streamShape {
 						},
 					}},
 					Stages: []domain.StageSpec{{
-						Name: "filter", Type: "cel_filter", From: "in",
-						Spec: map[string]any{"logs": "record.attributes.exists(a, a.key == 'team')"},
+						Name: "filter", Type: "filter", From: "in",
+						Spec: celFilter("record.attributes.exists(a, a.key == 'team')"),
 					}},
 					Sinks: []domain.SinkSpec{e.sink(i, "filter")},
 				}

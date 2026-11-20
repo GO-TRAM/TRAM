@@ -1,7 +1,7 @@
 {
   "uid": "tram-logs",
   "title": "Logs through Tram",
-  "description": "Logs that the OTLP clients send to Tram and Tram forwards to OpenObserve. DEBUG logs are dropped by Tram's logs cel_filter stage, so only the checkout service shows up.",
+  "description": "Logs that the OTLP clients send to Tram and Tram forwards to OpenObserve. DEBUG logs are dropped by Tram's logs filter stage, so only the checkout service shows up.",
   "editable": true,
   "refresh": "10s",
   "time": {

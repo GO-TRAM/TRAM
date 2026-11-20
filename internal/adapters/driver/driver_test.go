@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 // SPDX-License-Identifier: MPL-2.0
 
-package broker_test
+package driver_test
 
 import (
 	"testing"
@@ -11,22 +11,21 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"codeberg.org/eljoth/tram/internal/adapters/broker"
-	"codeberg.org/eljoth/tram/internal/adapters/broker/brokertest"
+	"codeberg.org/eljoth/tram/internal/adapters/driver"
 )
 
-func TestDriversDriver(t *testing.T) {
+func TestSetDriver(t *testing.T) {
 	t.Parallel()
 
-	m := brokertest.NewMemory(0)
-	drivers := broker.Drivers[broker.PublisherDriver]{"memory": m}
+	m := &struct{ name string }{"memory"}
+	drivers := driver.Set[*struct{ name string }]{"memory": m}
 
 	got, err := drivers.Driver("memory")
 	require.NoError(t, err)
 	assert.Same(t, m, got)
 
 	_, err = drivers.Driver("kafka")
-	require.ErrorIs(t, err, broker.ErrUnknownDriver)
+	require.ErrorIs(t, err, driver.ErrUnknown)
 	assert.Contains(t, err.Error(), "available: memory")
 }
 
@@ -48,7 +47,7 @@ func TestOptions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := broker.Options(tt.spec, "nats")
+			got, err := driver.Options(tt.spec, "nats")
 			if tt.wantErr {
 				assert.Error(t, err)
 				return

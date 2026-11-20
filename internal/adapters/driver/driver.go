@@ -3,7 +3,16 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 // SPDX-License-Identifier: MPL-2.0
 
-package broker
+// Package driver resolves the driver a component spec names. A component that
+// is a concept with exchangeable technologies, such as the broker sink or the
+// filter stage, names its technology in the `driver` field and holds the
+// driver's options under the driver's name, e.g.
+//
+//	driver: nats
+//	nats: {url: ...}
+//
+// Fields beside them are the component's own and apply to every driver.
+package driver
 
 import (
 	"errors"
@@ -13,31 +22,33 @@ import (
 	"strings"
 )
 
-// DriverFactory returns the driver a spec names in its `driver` field, as the
-// side D of a driver: [PublisherDriver] for the broker sink, [SubscriberDriver]
-// for the broker source.
-type DriverFactory[D any] interface {
+// ErrUnknown is a driver name no driver is registered for.
+var ErrUnknown = errors.New("unknown driver")
+
+// Factory returns the driver a spec names in its `driver` field.
+type Factory[D any] interface {
 	Driver(name string) (D, error)
 }
 
-// Drivers is a fixed set of drivers by name, a [DriverFactory] for tests that
-// inject a driver such as the in-memory one.
-type Drivers[D any] map[string]D
+// Set is a fixed set of drivers by name, a [Factory] for components whose
+// drivers need no setup and for tests that inject a driver.
+type Set[D any] map[string]D
 
-var (
-	_ DriverFactory[PublisherDriver]  = Drivers[PublisherDriver](nil)
-	_ DriverFactory[SubscriberDriver] = Drivers[SubscriberDriver](nil)
-)
+var _ Factory[any] = Set[any](nil)
 
 // Driver returns the driver called name.
-func (d Drivers[D]) Driver(name string) (D, error) {
-	driver, ok := d[name]
+func (s Set[D]) Driver(name string) (D, error) {
+	driver, ok := s[name]
 	if !ok {
 		var zero D
-		return zero, fmt.Errorf("%w %q, available: %s", ErrUnknownDriver, name,
-			strings.Join(slices.Sorted(maps.Keys(d)), ", "))
+		return zero, Unknown(name, slices.Sorted(maps.Keys(s))...)
 	}
 	return driver, nil
+}
+
+// Unknown is the error for a driver name that is not one of available.
+func Unknown(name string, available ...string) error {
+	return fmt.Errorf("%w %q, available: %s", ErrUnknown, name, strings.Join(available, ", "))
 }
 
 // Options returns the options of the driver called name from a component spec
@@ -58,7 +69,7 @@ func Options(spec map[string]any, name string) (map[string]any, error) {
 // Split takes a component spec apart: the spec without the driver's options,
 // the options, and the driver its `driver` field names. Options of another
 // driver stay in the spec, where the component refuses them as unknown.
-func Split[D any](spec map[string]any, drivers DriverFactory[D]) (map[string]any, map[string]any, D, error) {
+func Split[D any](spec map[string]any, drivers Factory[D]) (map[string]any, map[string]any, D, error) {
 	var zero D
 	name, _ := spec["driver"].(string)
 	if name == "" {

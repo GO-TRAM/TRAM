@@ -19,6 +19,7 @@ import (
 
 	contract "codeberg.org/eljoth/tram/internal/adapters/broker"
 	"codeberg.org/eljoth/tram/internal/adapters/broker/drivers"
+	"codeberg.org/eljoth/tram/internal/adapters/driver"
 	"codeberg.org/eljoth/tram/internal/adapters/sink/base"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
@@ -53,9 +54,9 @@ func newSink(
 	sink domain.SinkSpec,
 	validator *validator.Validate,
 	logger *slog.Logger,
-	driverFactory contract.DriverFactory[contract.PublisherDriver],
+	driverFactory driver.Factory[contract.PublisherDriver],
 ) (*Sink, error) {
-	generic, opts, driver, err := contract.Split(sink.Spec, driverFactory)
+	generic, opts, drv, err := driver.Split(sink.Spec, driverFactory)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +69,7 @@ func newSink(
 		return nil, err
 	}
 	logger = logger.With(slog.String("sink", sink.Name))
-	publisher, err := driver.NewPublisher(opts, contract.PublisherConfig{
+	publisher, err := drv.NewPublisher(opts, contract.PublisherConfig{
 		Name:       "sink " + sink.Name,
 		MaxPending: maxPending(b.Spec()),
 	}, logger)

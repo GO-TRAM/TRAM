@@ -136,5 +136,10 @@ func TestReconnectsAfterAnOutage(t *testing.T) {
 	p.Restore()
 	require.Eventually(t, func() bool { return publish("after") == nil }, 20*time.Second, 100*time.Millisecond,
 		"the publisher connects again")
-	assert.Equal(t, "after", receive(), "the subscriber connects again")
+	// Delivery is at least once: the ack of "before" may not have reached the
+	// broker before the cut, and "lost" may have been stored although its
+	// publish failed, so both can arrive again before "after".
+	for body := receive(); body != "after"; body = receive() {
+		require.Contains(t, []string{"before", "lost"}, body, "the subscriber connects again")
+	}
 }

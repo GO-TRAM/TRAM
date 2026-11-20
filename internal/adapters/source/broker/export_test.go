@@ -11,6 +11,7 @@ import (
 	"github.com/go-playground/validator/v10"
 
 	contract "codeberg.org/eljoth/tram/internal/adapters/broker"
+	"codeberg.org/eljoth/tram/internal/adapters/driver"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
@@ -19,7 +20,7 @@ func NewWithDrivers(
 	source domain.SourceSpec,
 	validator *validator.Validate,
 	logger *slog.Logger,
-	driverFactory contract.DriverFactory[contract.SubscriberDriver],
+	driverFactory driver.Factory[contract.SubscriberDriver],
 ) (*Source, error) {
 	return newSource(source, validator, logger, driverFactory)
 }
