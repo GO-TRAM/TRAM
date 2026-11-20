@@ -24,7 +24,11 @@ env:
 
 jobs:
   check:
-    runs-on: codeberg-small
+    runs-on: codeberg-medium
+    # Lint and tests run as parallel jobs, each within the runner's time limit.
+    strategy:
+      matrix:
+        target: [lint, test]
     container:
       image: docker.io/library/golang:1.27
     env:
@@ -52,11 +56,13 @@ jobs:
 
       - name: Check
         working-directory: src
-        run: task ci
+        run: task ci:${{ matrix.target }}
 
   image:
     needs: check
-    runs-on: codeberg-small
+    # vfs writes a full copy of every layer, and Codeberg counts written files
+    # against the runner's memory.
+    runs-on: codeberg-medium
     # Buildah builds without a Docker daemon. Unprivileged, it needs chroot
     # isolation and the vfs storage driver.
     container:

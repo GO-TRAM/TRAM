@@ -1,5 +1,5 @@
-# Validates pull requests and pushes to main with `task ci`: golangci-lint,
-# unit and end-to-end tests. The container tests (NATS, Kafka, AMQP) skip
+# Validates pull requests and pushes to main with golangci-lint (`task ci:lint`)
+# and unit and end-to-end tests (`task ci:test`), as two parallel jobs. The container tests (NATS, Kafka, AMQP) skip
 # themselves without a container runtime; run them locally with
 # `task test:containers`.
 name: CI
@@ -16,7 +16,11 @@ concurrency:
 
 jobs:
   check:
-    runs-on: codeberg-small
+    runs-on: codeberg-medium
+    # Lint and tests run as parallel jobs, each within the runner's time limit.
+    strategy:
+      matrix:
+        target: [lint, test]
     container:
       image: docker.io/library/golang:1.27
     env:
@@ -42,4 +46,4 @@ jobs:
 
       - name: Check
         working-directory: src
-        run: task ci
+        run: task ci:${{ matrix.target }}
