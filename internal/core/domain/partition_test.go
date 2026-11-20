@@ -17,8 +17,8 @@ import (
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/proto"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
-	"codeberg.org/eljoth/tram/internal/testutil/otlpfuzz"
+	"codeberg.org/tram/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/testutil/otlpfuzz"
 )
 
 func keyOf(attrs []*commonpb.KeyValue) string {

@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"codeberg.org/eljoth/tram/internal/testutil/natstest"
+	"codeberg.org/tram/tram/internal/testutil/natstest"
 )
 
 const (
@@ -229,7 +229,7 @@ func parse(output []byte) (map[string]result, metadata) {
 		line := scanner.Text()
 		switch {
 		case strings.HasPrefix(line, "pkg: "):
-			pkg = strings.TrimPrefix(strings.TrimPrefix(line, "pkg: "), "codeberg.org/eljoth/tram/")
+			pkg = strings.TrimPrefix(strings.TrimPrefix(line, "pkg: "), "codeberg.org/tram/tram/")
 		case strings.HasPrefix(line, "cpu: "):
 			meta.cpu = strings.TrimPrefix(line, "cpu: ")
 		case strings.HasPrefix(line, commitPrefix):

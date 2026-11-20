@@ -16,9 +16,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"codeberg.org/eljoth/tram/internal/core"
-	"codeberg.org/eljoth/tram/internal/core/domain"
-	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
+	"codeberg.org/tram/tram/internal/core"
+	"codeberg.org/tram/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/testutil/otlpgen"
 )
 
 // recorder is a branch of a fanout that records the events it receives. If

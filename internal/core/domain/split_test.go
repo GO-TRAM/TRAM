@@ -16,7 +16,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 func teamAttrs(name string) []*commonpb.KeyValue {

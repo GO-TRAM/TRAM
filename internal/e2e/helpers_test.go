@@ -25,12 +25,12 @@ import (
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	"google.golang.org/protobuf/proto"
 
-	"codeberg.org/eljoth/tram/internal/adapters/sink"
-	"codeberg.org/eljoth/tram/internal/adapters/source"
-	"codeberg.org/eljoth/tram/internal/adapters/stage"
-	"codeberg.org/eljoth/tram/internal/core"
-	"codeberg.org/eljoth/tram/internal/core/domain"
-	"codeberg.org/eljoth/tram/internal/ports"
+	"codeberg.org/tram/tram/internal/adapters/sink"
+	"codeberg.org/tram/tram/internal/adapters/source"
+	"codeberg.org/tram/tram/internal/adapters/stage"
+	"codeberg.org/tram/tram/internal/core"
+	"codeberg.org/tram/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/ports"
 )
 
 const isCustomerA = "record.attributes.exists(a, a.key == 'customer' && a.value.string_value == 'A')"

@@ -9,10 +9,10 @@
 package drivers
 
 import (
-	"codeberg.org/eljoth/tram/internal/adapters/crypto"
-	"codeberg.org/eljoth/tram/internal/adapters/crypto/local"
-	"codeberg.org/eljoth/tram/internal/adapters/crypto/stackitkms"
-	"codeberg.org/eljoth/tram/internal/adapters/driver"
+	"codeberg.org/tram/tram/internal/adapters/crypto"
+	"codeberg.org/tram/tram/internal/adapters/crypto/local"
+	"codeberg.org/tram/tram/internal/adapters/crypto/stackitkms"
+	"codeberg.org/tram/tram/internal/adapters/driver"
 )
 
 // Factory resolves crypto drivers by name.

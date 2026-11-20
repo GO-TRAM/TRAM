@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"codeberg.org/eljoth/tram/internal/adapters/crypto/stackitkms"
+	"codeberg.org/tram/tram/internal/adapters/crypto/stackitkms"
 )
 
 // echoKMS answers Encrypt and Decrypt by echoing the payload's data back, so

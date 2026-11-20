@@ -13,10 +13,10 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"codeberg.org/eljoth/tram/internal/adapters/sink/broker"
-	"codeberg.org/eljoth/tram/internal/core/domain"
-	"codeberg.org/eljoth/tram/internal/testutil/natstest"
-	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
+	"codeberg.org/tram/tram/internal/adapters/sink/broker"
+	"codeberg.org/tram/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/testutil/natstest"
+	"codeberg.org/tram/tram/internal/testutil/otlpgen"
 )
 
 // Publishes to NATS through the NATS driver.

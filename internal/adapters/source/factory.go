@@ -11,10 +11,10 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	"codeberg.org/eljoth/tram/internal/adapters/source/broker"
-	"codeberg.org/eljoth/tram/internal/adapters/source/generator"
-	"codeberg.org/eljoth/tram/internal/adapters/source/otlp"
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/adapters/source/broker"
+	"codeberg.org/tram/tram/internal/adapters/source/generator"
+	"codeberg.org/tram/tram/internal/adapters/source/otlp"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 type Factory struct {

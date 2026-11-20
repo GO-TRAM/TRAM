@@ -14,10 +14,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
-const meterName = "codeberg.org/eljoth/tram/internal/core"
+const meterName = "codeberg.org/tram/tram/internal/core"
 
 const (
 	outcomeOK        = "ok"

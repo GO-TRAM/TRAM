@@ -23,8 +23,8 @@ import (
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 
-	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/adapters/stage/base"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 const Type = "value_map"
@@ -33,7 +33,7 @@ const Type = "value_map"
 // Like the core's metrics, the meters read the globally configured provider,
 // which serves them on /metrics in the Prometheus format. The stage does not
 // know its stream, so its metrics carry the node and signal attributes only.
-const meterName = "codeberg.org/eljoth/tram/internal/adapters/stage/valuemap"
+const meterName = "codeberg.org/tram/tram/internal/adapters/stage/valuemap"
 
 // Outcomes of a lookup, in the order of their metrics. A miss is a defined
 // state, not an error: the record receives the default value.

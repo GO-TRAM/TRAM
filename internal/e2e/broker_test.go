@@ -21,9 +21,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"codeberg.org/eljoth/tram/internal/adapters/broker/partition"
-	"codeberg.org/eljoth/tram/internal/core/domain"
-	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
+	"codeberg.org/tram/tram/internal/adapters/broker/partition"
+	"codeberg.org/tram/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/testutil/otlpgen"
 )
 
 // The broker sink and source with the NATS driver. TRAM creates no streams,

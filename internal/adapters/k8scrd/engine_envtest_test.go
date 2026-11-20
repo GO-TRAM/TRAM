@@ -30,9 +30,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/yaml"
 
-	"codeberg.org/eljoth/tram/internal/adapters/k8scrd"
-	tramv1 "codeberg.org/eljoth/tram/internal/adapters/k8scrd/api/v1"
-	tramv1alpha1 "codeberg.org/eljoth/tram/internal/adapters/k8scrd/api/v1alpha1"
+	"codeberg.org/tram/tram/internal/adapters/k8scrd"
+	tramv1 "codeberg.org/tram/tram/internal/adapters/k8scrd/api/v1"
+	tramv1alpha1 "codeberg.org/tram/tram/internal/adapters/k8scrd/api/v1alpha1"
 )
 
 const (
@@ -445,7 +445,7 @@ func TestManagerRunsEnginesWithItsClusterRole(t *testing.T) {
 
 // examplesDir is examples/k8s/examples, relative to this package.
 func examplesDir() string {
-	return filepath.Join("..", "..", "..", "setup", "k8s", "examples")
+	return filepath.Join("..", "..", "..", "examples", "k8s", "examples")
 }
 
 // readManifests returns the objects of a YAML file with one or more documents.

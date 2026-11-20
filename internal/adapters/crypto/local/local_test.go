@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"codeberg.org/eljoth/tram/internal/adapters/crypto/local"
+	"codeberg.org/tram/tram/internal/adapters/crypto/local"
 )
 
 func testKey(t *testing.T) (string, []byte) {

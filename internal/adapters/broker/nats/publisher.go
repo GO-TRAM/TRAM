@@ -15,7 +15,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"codeberg.org/eljoth/tram/internal/adapters/broker"
+	"codeberg.org/tram/tram/internal/adapters/broker"
 )
 
 // Without it, a publish whose acknowledgement is lost, e.g. while NATS

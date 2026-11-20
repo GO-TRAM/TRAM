@@ -8,7 +8,7 @@ package batch
 import (
 	"time"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 const (

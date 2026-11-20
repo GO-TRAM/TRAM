@@ -13,7 +13,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"golang.org/x/sync/errgroup"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 type Source[T any] struct {

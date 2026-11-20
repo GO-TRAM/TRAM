@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"codeberg.org/eljoth/tram/internal/adapters/crypto/stackitkms"
+	"codeberg.org/tram/tram/internal/adapters/crypto/stackitkms"
 )
 
 // kmsMock answers the KMS Encrypt operation with a fixed wrapped key.

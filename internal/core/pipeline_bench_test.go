@@ -14,11 +14,11 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	sourcebase "codeberg.org/eljoth/tram/internal/adapters/source/base"
-	"codeberg.org/eljoth/tram/internal/adapters/stage"
-	"codeberg.org/eljoth/tram/internal/core"
-	"codeberg.org/eljoth/tram/internal/core/domain"
-	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
+	sourcebase "codeberg.org/tram/tram/internal/adapters/source/base"
+	"codeberg.org/tram/tram/internal/adapters/stage"
+	"codeberg.org/tram/tram/internal/core"
+	"codeberg.org/tram/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/testutil/otlpgen"
 )
 
 type benchSource struct {

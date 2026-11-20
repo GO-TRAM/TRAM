@@ -10,7 +10,7 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 func (c *Core) SetRestartDelays(minDelay, maxDelay time.Duration) {

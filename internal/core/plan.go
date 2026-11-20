@@ -10,7 +10,7 @@ import (
 	"errors"
 	"slices"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 // PlanStream validates spec and resolved like an upsert would and reports

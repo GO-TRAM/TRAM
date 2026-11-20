@@ -7,8 +7,8 @@
 site_name = "TRAM"
 site_description = "A lightweight, extensible pipeline framework for logs, metrics and traces"
 site_url = "https://gotram.dev/"
-repo_url = "https://codeberg.org/eljoth/tram"
-repo_name = "eljoth/tram"
+repo_url = "https://codeberg.org/TRAM/TRAM"
+repo_name = "TRAM/TRAM"
 
 docs_dir = "content"
 site_dir = "site"
@@ -79,7 +79,7 @@ repo = "simple/codeberg"
 
 [[project.extra.social]]
 icon = "fontawesome/brands/codeberg"
-link = "https://codeberg.org/eljoth/tram"
+link = "https://codeberg.org/TRAM/TRAM"
 name = "TRAM on Codeberg"
 
 [project.markdown_extensions]

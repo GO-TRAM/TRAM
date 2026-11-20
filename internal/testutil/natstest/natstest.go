@@ -13,7 +13,7 @@ import (
 	tcnats "github.com/testcontainers/testcontainers-go/modules/nats"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"codeberg.org/eljoth/tram/internal/testutil/containertest"
+	"codeberg.org/tram/tram/internal/testutil/containertest"
 )
 
 const Image = "nats:2.11"

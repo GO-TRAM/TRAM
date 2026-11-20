@@ -14,8 +14,8 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	"codeberg.org/eljoth/tram/internal/adapters/broker"
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/adapters/broker"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 // Name is the driver's name, the `driver` field of a broker spec and the key

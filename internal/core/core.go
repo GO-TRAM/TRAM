@@ -15,8 +15,8 @@ import (
 
 	"go.opentelemetry.io/otel"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
-	"codeberg.org/eljoth/tram/internal/ports"
+	"codeberg.org/tram/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/ports"
 )
 
 const (

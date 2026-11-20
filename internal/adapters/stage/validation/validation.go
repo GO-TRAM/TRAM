@@ -20,9 +20,9 @@ import (
 	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 
-	"codeberg.org/eljoth/tram/internal/adapters/driver"
-	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/adapters/driver"
+	"codeberg.org/tram/tram/internal/adapters/stage/base"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 const (

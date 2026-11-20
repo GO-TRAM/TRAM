@@ -12,8 +12,8 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/require"
 
-	"codeberg.org/eljoth/tram/internal/adapters/source/generator"
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/adapters/source/generator"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 func TestRunReturnsAfterStop(t *testing.T) {

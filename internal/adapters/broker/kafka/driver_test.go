@@ -16,10 +16,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"codeberg.org/eljoth/tram/internal/adapters/broker"
-	"codeberg.org/eljoth/tram/internal/adapters/broker/brokertest"
-	kafkadriver "codeberg.org/eljoth/tram/internal/adapters/broker/kafka"
-	"codeberg.org/eljoth/tram/internal/testutil/kafkatest"
+	"codeberg.org/tram/tram/internal/adapters/broker"
+	"codeberg.org/tram/tram/internal/adapters/broker/brokertest"
+	kafkadriver "codeberg.org/tram/tram/internal/adapters/broker/kafka"
+	"codeberg.org/tram/tram/internal/testutil/kafkatest"
 )
 
 func newDriver() *kafkadriver.Driver {

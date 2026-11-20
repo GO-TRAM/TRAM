@@ -16,7 +16,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"codeberg.org/eljoth/tram/internal/testutil/containertest"
+	"codeberg.org/tram/tram/internal/testutil/containertest"
 )
 
 const (

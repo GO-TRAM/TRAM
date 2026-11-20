@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"codeberg.org/eljoth/tram/internal/adapters/stage/validation"
-	"codeberg.org/eljoth/tram/internal/adapters/stage/validation/cel"
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/adapters/stage/validation"
+	"codeberg.org/tram/tram/internal/adapters/stage/validation/cel"
+	"codeberg.org/tram/tram/internal/core/domain"
 
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"

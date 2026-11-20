@@ -12,12 +12,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"codeberg.org/eljoth/tram/internal/adapters/broker"
-	"codeberg.org/eljoth/tram/internal/adapters/broker/amqp"
-	"codeberg.org/eljoth/tram/internal/adapters/broker/drivers"
-	"codeberg.org/eljoth/tram/internal/adapters/broker/kafka"
-	"codeberg.org/eljoth/tram/internal/adapters/broker/nats"
-	"codeberg.org/eljoth/tram/internal/adapters/driver"
+	"codeberg.org/tram/tram/internal/adapters/broker"
+	"codeberg.org/tram/tram/internal/adapters/broker/amqp"
+	"codeberg.org/tram/tram/internal/adapters/broker/drivers"
+	"codeberg.org/tram/tram/internal/adapters/broker/kafka"
+	"codeberg.org/tram/tram/internal/adapters/broker/nats"
+	"codeberg.org/tram/tram/internal/adapters/driver"
 )
 
 func TestFactories(t *testing.T) {

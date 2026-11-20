@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	kafkadriver "codeberg.org/eljoth/tram/internal/adapters/broker/kafka"
+	kafkadriver "codeberg.org/tram/tram/internal/adapters/broker/kafka"
 )
 
 func TestTrackerMarksOnlyAfterEveryRecordBefore(t *testing.T) {

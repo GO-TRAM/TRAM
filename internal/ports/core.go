@@ -8,7 +8,7 @@ package ports
 import (
 	"context"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 type Core interface {

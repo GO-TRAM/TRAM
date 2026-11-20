@@ -10,13 +10,13 @@ import (
 	"fmt"
 	"testing"
 
-	"codeberg.org/eljoth/tram/internal/adapters/api"
+	"codeberg.org/tram/tram/internal/adapters/api"
 
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 func TestToStatus(t *testing.T) {

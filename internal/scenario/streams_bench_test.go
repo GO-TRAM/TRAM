@@ -19,12 +19,12 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"codeberg.org/eljoth/tram/internal/adapters/sink"
-	"codeberg.org/eljoth/tram/internal/adapters/source"
-	"codeberg.org/eljoth/tram/internal/adapters/stage"
-	"codeberg.org/eljoth/tram/internal/core"
-	"codeberg.org/eljoth/tram/internal/core/domain"
-	"codeberg.org/eljoth/tram/internal/testutil/natstest"
+	"codeberg.org/tram/tram/internal/adapters/sink"
+	"codeberg.org/tram/tram/internal/adapters/source"
+	"codeberg.org/tram/tram/internal/adapters/stage"
+	"codeberg.org/tram/tram/internal/core"
+	"codeberg.org/tram/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/testutil/natstest"
 )
 
 const (

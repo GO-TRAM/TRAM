@@ -11,7 +11,7 @@ import (
 	"log/slog"
 	"time"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 func newTree(spec domain.StreamSpec) (*domain.Tree, error) {

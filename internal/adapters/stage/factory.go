@@ -11,18 +11,18 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	"codeberg.org/eljoth/tram/internal/adapters/driver"
-	"codeberg.org/eljoth/tram/internal/adapters/stage/batch"
-	"codeberg.org/eljoth/tram/internal/adapters/stage/decryption"
-	"codeberg.org/eljoth/tram/internal/adapters/stage/delay"
-	"codeberg.org/eljoth/tram/internal/adapters/stage/encryption"
-	"codeberg.org/eljoth/tram/internal/adapters/stage/filter"
-	celfilter "codeberg.org/eljoth/tram/internal/adapters/stage/filter/cel"
-	"codeberg.org/eljoth/tram/internal/adapters/stage/noop"
-	"codeberg.org/eljoth/tram/internal/adapters/stage/validation"
-	celvalidation "codeberg.org/eljoth/tram/internal/adapters/stage/validation/cel"
-	"codeberg.org/eljoth/tram/internal/adapters/stage/valuemap"
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/adapters/driver"
+	"codeberg.org/tram/tram/internal/adapters/stage/batch"
+	"codeberg.org/tram/tram/internal/adapters/stage/decryption"
+	"codeberg.org/tram/tram/internal/adapters/stage/delay"
+	"codeberg.org/tram/tram/internal/adapters/stage/encryption"
+	"codeberg.org/tram/tram/internal/adapters/stage/filter"
+	celfilter "codeberg.org/tram/tram/internal/adapters/stage/filter/cel"
+	"codeberg.org/tram/tram/internal/adapters/stage/noop"
+	"codeberg.org/tram/tram/internal/adapters/stage/validation"
+	celvalidation "codeberg.org/tram/tram/internal/adapters/stage/validation/cel"
+	"codeberg.org/tram/tram/internal/adapters/stage/valuemap"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 // Factory creates the stages. It is the one place that knows the concrete

@@ -18,9 +18,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	tramv1 "codeberg.org/eljoth/tram/internal/adapters/k8scrd/api/v1"
-	tramv1alpha1 "codeberg.org/eljoth/tram/internal/adapters/k8scrd/api/v1alpha1"
-	"codeberg.org/eljoth/tram/internal/adapters/k8scrd/internal/engines"
+	tramv1 "codeberg.org/tram/tram/internal/adapters/k8scrd/api/v1"
+	tramv1alpha1 "codeberg.org/tram/tram/internal/adapters/k8scrd/api/v1alpha1"
+	"codeberg.org/tram/tram/internal/adapters/k8scrd/internal/engines"
 )
 
 const mapperLabel = "engine.tram.io/mapper"
