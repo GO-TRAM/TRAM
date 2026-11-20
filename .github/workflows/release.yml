@@ -67,9 +67,6 @@ jobs:
     # isolation and the vfs storage driver.
     container:
       image: quay.io/buildah/stable:latest
-    env:
-      BUILDAH_ISOLATION: chroot
-      STORAGE_DRIVER: vfs
     steps:
       - name: Check out the tag
         run: |
@@ -81,6 +78,7 @@ jobs:
         working-directory: src
         run: |
           buildah build --quiet --platform linux/amd64,linux/arm64 --manifest tram .
+          buildah manifest inspect tram
 
       - name: Push
         env:
