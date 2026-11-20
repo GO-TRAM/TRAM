@@ -31,11 +31,14 @@ jobs:
       # A secret PAGES_TOKEN (access token with write access to the repository)
       # takes precedence, in case the automatic token may not push.
       TOKEN: ${{ secrets.PAGES_TOKEN || forgejo.token }}
+      # Canonical repository path, with the casing of the clone URL allowlist.
+      # FORGEJO_REPOSITORY may report a differently cased owner or repo name.
+      REPO: TRAM/TRAM
     steps:
       - name: Check out main
         run: |
           git clone --depth 1 --branch "${FORGEJO_REF_NAME}" \
-            "https://token:${TOKEN}@${FORGEJO_SERVER_URL#https://}/${FORGEJO_REPOSITORY}.git" src
+            "https://token:${TOKEN}@${FORGEJO_SERVER_URL#https://}/${REPO}.git" src
           git -C src checkout --quiet "${FORGEJO_SHA}"
 
       - name: Build site
@@ -47,7 +50,7 @@ jobs:
 
       - name: Push to pages branch
         run: |
-          remote="https://token:${TOKEN}@${FORGEJO_SERVER_URL#https://}/${FORGEJO_REPOSITORY}.git"
+          remote="https://token:${TOKEN}@${FORGEJO_SERVER_URL#https://}/${REPO}.git"
           if git clone --quiet --depth 1 --branch pages "$remote" pages; then
             find pages -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
           else
