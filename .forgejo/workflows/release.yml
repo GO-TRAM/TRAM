@@ -1,0 +1,95 @@
+# Builds and publishes the container image for a version tag on main, e.g.
+# v0.1.0 from `task release:minor`. The image is pushed to Codeberg's registry
+# for amd64 and arm64, tagged with the version without the leading v (0.1.0)
+# and as latest.
+#
+# Needs two repository secrets: REGISTRY_USER, the Codeberg user to push as,
+# and REGISTRY_TOKEN, an access token of that user with package write access.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  # Canonical repository path, with the casing of the clone URL allowlist.
+  REPO: TRAM/TRAM
+  # Image names must be lowercase.
+  IMAGE: codeberg.org/tram/tram
+
+jobs:
+  check:
+    runs-on: codeberg-medium
+    # Lint and tests run as parallel jobs, each within the runner's time limit.
+    strategy:
+      matrix:
+        target: [lint, test]
+    container:
+      image: docker.io/library/golang:1.27
+    env:
+      TASK_VERSION: v3.54.0
+    steps:
+      - name: Check out the tag and main
+        run: |
+          git clone --quiet --branch main \
+            "https://token:${FORGEJO_TOKEN}@${FORGEJO_SERVER_URL#https://}/${REPO}.git" src
+          cd src
+          git fetch --quiet origin "+${FORGEJO_REF}:${FORGEJO_REF}"
+          git checkout --quiet --detach "${FORGEJO_SHA}"
+          git log --oneline -1
+
+      - name: Require the tag to be on main
+        working-directory: src
+        run: |
+          if ! git merge-base --is-ancestor "${FORGEJO_SHA}" origin/main; then
+            echo "${FORGEJO_REF_NAME} is not on main; only tags on main are released" >&2
+            exit 1
+          fi
+
+      - name: Install Task
+        run: go install github.com/go-task/task/v3/cmd/task@${TASK_VERSION}
+
+      - name: Check
+        working-directory: src
+        run: task ci:${{ matrix.target }}
+
+  image:
+    needs: check
+    # vfs writes a full copy of every layer, and Codeberg counts written files
+    # against the runner's memory.
+    runs-on: codeberg-medium
+    # Buildah builds without a Docker daemon. Unprivileged, it needs chroot
+    # isolation and the vfs storage driver.
+    container:
+      image: quay.io/buildah/stable:latest
+    env:
+      BUILDAH_ISOLATION: chroot
+      STORAGE_DRIVER: vfs
+    steps:
+      - name: Check out the tag
+        run: |
+          dnf install --quiet --assumeyes git-core
+          git clone --quiet --depth 1 --branch "${FORGEJO_REF_NAME}" \
+            "https://token:${FORGEJO_TOKEN}@${FORGEJO_SERVER_URL#https://}/${REPO}.git" src
+
+      - name: Build
+        working-directory: src
+        run: |
+          buildah build --quiet --platform linux/amd64,linux/arm64 --manifest tram .
+
+      - name: Push
+        env:
+          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          version="${FORGEJO_REF_NAME#v}"
+          echo "${REGISTRY_TOKEN}" | buildah login --username "${REGISTRY_USER}" --password-stdin codeberg.org
+          for tag in "${version}" latest; do
+            buildah manifest push --all tram "docker://${IMAGE}:${tag}"
+          done
+          echo "Pushed ${IMAGE}:${version} and ${IMAGE}:latest"

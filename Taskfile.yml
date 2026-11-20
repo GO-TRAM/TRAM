@@ -42,8 +42,11 @@ vars:
   PROTOC_GEN_GO_GRPC_VERSION: v1.5.1
   GRPC_GATEWAY_VERSION: v2.26.1
   CONTROLLER_GEN_VERSION: v0.22.0
-  GOLANGCI_LINT_VERSION: v2.14.0
+  GOLANGCI_LINT_VERSION: v2.15.0
   SETUP_ENVTEST_VERSION: v0.25.2
+  # svu computes release versions from the tags; run with `go run`, so it
+  # needs no install.
+  SVU_VERSION: v3.4.4
   ENVTEST_K8S_VERSION: 1.37.0
 
 tasks:
@@ -107,6 +110,24 @@ tasks:
     desc: Run everything a change should pass, without containers - lint, unit and end-to-end tests
     cmds:
       - task: lint
+      - task: test:unit
+      - task: test:e2e
+
+  ci:
+    desc: Run what the CI workflows run, ci:lint and ci:test, one after the other
+    cmds:
+      - task: ci:lint
+      - task: ci:test
+
+  ci:lint:
+    desc: Run the CI lint job - install the pinned golangci-lint, then task lint
+    cmds:
+      - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}}
+      - task: lint
+
+  ci:test:
+    desc: Run the CI test job - unit and end-to-end tests
+    cmds:
       - task: test:unit
       - task: test:e2e
 
@@ -246,6 +267,52 @@ tasks:
     deps: [image:build]
     cmds:
       - '{{.CONTAINER_TOOL}} run --rm -p 8080:8080 -p 50051:50051 {{.IMAGE}} {{.CLI_ARGS}}'
+
+  # --- Release -------------------------------------------------------------
+
+  release:next:
+    desc: Tag the version the Conventional Commits since the last tag call for (at least a patch) and push it
+    cmds:
+      - task: release
+        vars: { BUMP: next --always }
+
+  release:patch:
+    desc: Tag the next patch version on main and push it; the release workflow then builds and publishes the image
+    cmds:
+      - task: release
+        vars: { BUMP: patch }
+
+  release:minor:
+    desc: Tag the next minor version on main and push it; the release workflow then builds and publishes the image
+    cmds:
+      - task: release
+        vars: { BUMP: minor }
+
+  release:major:
+    desc: Tag the next major version on main and push it; the release workflow then builds and publishes the image
+    cmds:
+      - task: release
+        vars: { BUMP: major }
+
+  release:
+    internal: true
+    requires:
+      vars: [BUMP]
+    vars:
+      VERSION:
+        sh: go run github.com/caarlos0/svu/v3@{{.SVU_VERSION}} {{.BUMP}}
+    preconditions:
+      - sh: test "$(git branch --show-current)" = main
+        msg: Releases are tagged on main; switch to main first
+      - sh: test -z "$(git status --porcelain --untracked-files=no)"
+        msg: The working tree has uncommitted changes
+      - sh: git fetch --quiet origin main && test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+        msg: main differs from origin/main; pull or push first
+    cmds:
+      - task: check
+      - git tag -a {{.VERSION}} -m "Release {{.VERSION}}"
+      - git push origin {{.VERSION}}
+      - echo "Tagged and pushed {{.VERSION}}"
 
   # --- Local services ------------------------------------------------------
 
