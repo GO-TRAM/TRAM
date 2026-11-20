@@ -1,5 +1,5 @@
 # Builds the documentation in docs/ with Zensical and publishes it to the
-# root of the pages branch, which GitHub Pages serves at https://eljoth.github.io/tram/
+# root of the pages branch, which GitHub Pages serves at https://go-tram.github.io/TRAM/
 # through a webhook of the repository.
 name: Pages
 
@@ -28,16 +28,13 @@ jobs:
     container:
       image: python:3.13
     env:
-      # A secret PAGES_TOKEN (access token with write access to the repository)
-      # takes precedence, in case the automatic token may not push.
-      TOKEN: ${{ secrets.PAGES_TOKEN || github.token }}
       # Canonical repository path
       REPO: GO-TRAM/TRAM
     steps:
       - name: Check out main
         run: |
           git clone --depth 1 --branch "${GITHUB_REF_NAME}" \
-            "https://${TOKEN}@github.com/${REPO}.git" src
+            "https://${GITHUB_TOKEN}@github.com/${REPO}.git" src
           git -C src checkout --quiet "${GITHUB_SHA}"
 
       - name: Build site
@@ -49,7 +46,14 @@ jobs:
 
       - name: Push to pages branch
         run: |
-          remote="https://${TOKEN}@github.com/${REPO}.git"
+          # Configure git to use SSH
+          mkdir -p ~/.ssh
+          echo "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+          # Clone or init pages branch
+          remote="git@github.com:${REPO}.git"
           if git clone --quiet --depth 1 --branch pages "$remote" pages; then
             find pages -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
           else
@@ -68,3 +72,5 @@ jobs:
           fi
           git commit --quiet -m "Publish documentation from ${GITHUB_SHA}"
           git push origin pages
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
