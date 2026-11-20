@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"codeberg.org/eljoth/tram/internal/adapters/broker/brokertest"
+	"codeberg.org/tram/tram/internal/adapters/broker/brokertest"
 )
 
 func TestMemoryConformance(t *testing.T) {

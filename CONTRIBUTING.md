@@ -35,7 +35,7 @@ Only needed to regenerate code (`task generate`), installed with `task tools`:
 
 ```bash
 # Clone the repository
-git clone https://codeberg.org/eljoth/tram.git
+git clone https://codeberg.org/TRAM/TRAM.git tram
 cd tram
 
 # Install Go dependencies
@@ -206,8 +206,8 @@ import (
 	"sync"
 	"time"
 
-	"codeberg.org/eljoth/tram/internal/adapters/source/base"
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/adapters/source/base"
+	"codeberg.org/tram/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
@@ -323,8 +323,8 @@ package severity
 import (
 	"context"
 
-	"codeberg.org/eljoth/tram/internal/adapters/stage/base"
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/adapters/stage/base"
+	"codeberg.org/tram/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
@@ -403,8 +403,8 @@ import (
 	"net/http"
 	"time"
 
-	"codeberg.org/eljoth/tram/internal/adapters/sink/base"
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/adapters/sink/base"
+	"codeberg.org/tram/tram/internal/core/domain"
 	"github.com/go-playground/validator/v10"
 	"google.golang.org/protobuf/proto"
 )

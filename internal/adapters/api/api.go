@@ -19,8 +19,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"codeberg.org/eljoth/tram/internal/ports"
-	v1 "codeberg.org/eljoth/tram/pkg/gen/go/api/proto/stream/v1"
+	"codeberg.org/tram/tram/internal/ports"
+	v1 "codeberg.org/tram/tram/pkg/gen/go/api/proto/stream/v1"
 )
 
 const (

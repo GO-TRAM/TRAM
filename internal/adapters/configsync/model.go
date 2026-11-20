@@ -8,7 +8,7 @@ package configsync
 import (
 	"reflect"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 type SourceSpec struct {

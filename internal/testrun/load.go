@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"os"
 
-	"codeberg.org/eljoth/tram/internal/adapters/configsync"
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/adapters/configsync"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 // streamFile is a stream as file sync reads it, plus its test cases, which

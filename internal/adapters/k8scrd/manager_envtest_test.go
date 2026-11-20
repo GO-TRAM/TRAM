@@ -24,8 +24,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/yaml"
 
-	"codeberg.org/eljoth/tram/internal/adapters/k8scrd"
-	tramv1 "codeberg.org/eljoth/tram/internal/adapters/k8scrd/api/v1"
+	"codeberg.org/tram/tram/internal/adapters/k8scrd"
+	tramv1 "codeberg.org/tram/tram/internal/adapters/k8scrd/api/v1"
 )
 
 const (

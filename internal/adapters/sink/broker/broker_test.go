@@ -17,13 +17,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	contract "codeberg.org/eljoth/tram/internal/adapters/broker"
-	"codeberg.org/eljoth/tram/internal/adapters/broker/brokertest"
-	"codeberg.org/eljoth/tram/internal/adapters/broker/partition"
-	"codeberg.org/eljoth/tram/internal/adapters/driver"
-	"codeberg.org/eljoth/tram/internal/adapters/sink/broker"
-	"codeberg.org/eljoth/tram/internal/core/domain"
-	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
+	contract "codeberg.org/tram/tram/internal/adapters/broker"
+	"codeberg.org/tram/tram/internal/adapters/broker/brokertest"
+	"codeberg.org/tram/tram/internal/adapters/broker/partition"
+	"codeberg.org/tram/tram/internal/adapters/driver"
+	"codeberg.org/tram/tram/internal/adapters/sink/broker"
+	"codeberg.org/tram/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/testutil/otlpgen"
 )
 
 const byTeam = "'out.' + record.attributes.get_attr('team')"

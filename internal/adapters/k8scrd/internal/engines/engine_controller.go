@@ -34,8 +34,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	tramv1 "codeberg.org/eljoth/tram/internal/adapters/k8scrd/api/v1"
-	tramv1alpha1 "codeberg.org/eljoth/tram/internal/adapters/k8scrd/api/v1alpha1"
+	tramv1 "codeberg.org/tram/tram/internal/adapters/k8scrd/api/v1"
+	tramv1alpha1 "codeberg.org/tram/tram/internal/adapters/k8scrd/api/v1alpha1"
 )
 
 // handoverFieldOwner co-owns the Deployment's replicas while they are handed

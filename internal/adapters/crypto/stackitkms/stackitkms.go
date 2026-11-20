@@ -24,8 +24,8 @@ import (
 	"github.com/stackitcloud/stackit-sdk-go/core/config"
 	kms "github.com/stackitcloud/stackit-sdk-go/services/kms/v1api"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
-	"codeberg.org/eljoth/tram/internal/ports"
+	"codeberg.org/tram/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/ports"
 )
 
 // Name is the driver's name in a component spec's `driver` field.

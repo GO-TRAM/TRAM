@@ -12,11 +12,11 @@ package drivers
 import (
 	"github.com/go-playground/validator/v10"
 
-	"codeberg.org/eljoth/tram/internal/adapters/broker"
-	"codeberg.org/eljoth/tram/internal/adapters/broker/amqp"
-	"codeberg.org/eljoth/tram/internal/adapters/broker/kafka"
-	"codeberg.org/eljoth/tram/internal/adapters/broker/nats"
-	"codeberg.org/eljoth/tram/internal/adapters/driver"
+	"codeberg.org/tram/tram/internal/adapters/broker"
+	"codeberg.org/tram/tram/internal/adapters/broker/amqp"
+	"codeberg.org/tram/tram/internal/adapters/broker/kafka"
+	"codeberg.org/tram/tram/internal/adapters/broker/nats"
+	"codeberg.org/tram/tram/internal/adapters/driver"
 )
 
 // PublisherFactory returns the publishing side of the driver a spec names, for

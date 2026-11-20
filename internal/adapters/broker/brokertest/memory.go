@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"codeberg.org/eljoth/tram/internal/adapters/broker"
+	"codeberg.org/tram/tram/internal/adapters/broker"
 )
 
 // MemoryName is the name to register the memory driver under.

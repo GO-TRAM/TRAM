@@ -8,14 +8,14 @@ package source_test
 import (
 	"log/slog"
 
-	"codeberg.org/eljoth/tram/internal/adapters/source"
+	"codeberg.org/tram/tram/internal/adapters/source"
 
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 func TestFactoryUnknownType(t *testing.T) {

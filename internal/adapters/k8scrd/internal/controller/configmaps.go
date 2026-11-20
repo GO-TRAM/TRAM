@@ -21,7 +21,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	tramv1 "codeberg.org/eljoth/tram/internal/adapters/k8scrd/api/v1"
+	tramv1 "codeberg.org/tram/tram/internal/adapters/k8scrd/api/v1"
 )
 
 // configMapIndex indexes Stream resources that select config maps.

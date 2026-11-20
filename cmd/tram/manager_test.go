@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"codeberg.org/eljoth/tram/internal/adapters/k8scrd"
+	"codeberg.org/tram/tram/internal/adapters/k8scrd"
 )
 
 // Not parallel: the manager sets controller-runtime's global logger.

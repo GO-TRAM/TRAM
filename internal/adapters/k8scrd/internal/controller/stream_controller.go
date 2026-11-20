@@ -40,9 +40,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	tramv1 "codeberg.org/eljoth/tram/internal/adapters/k8scrd/api/v1"
-	"codeberg.org/eljoth/tram/internal/core/domain"
-	"codeberg.org/eljoth/tram/internal/ports"
+	tramv1 "codeberg.org/tram/tram/internal/adapters/k8scrd/api/v1"
+	"codeberg.org/tram/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/ports"
 )
 
 type StreamReconciler struct {

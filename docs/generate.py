@@ -27,7 +27,7 @@ REPO = Path(__file__).resolve().parent.parent
 DOCS = REPO / "docs"
 CONTENT = DOCS / "content"
 ASSETS = DOCS / "assets"
-SOURCE_URL = "https://codeberg.org/eljoth/tram/src/branch/main/"
+SOURCE_URL = "https://codeberg.org/TRAM/TRAM/src/branch/main/"
 
 GETTING_STARTED = "guide/getting-started.md"
 STREAMS = "guide/streams.md"

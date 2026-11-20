@@ -11,11 +11,11 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	"codeberg.org/eljoth/tram/internal/adapters/sink/broker"
-	"codeberg.org/eljoth/tram/internal/adapters/sink/debug"
-	"codeberg.org/eljoth/tram/internal/adapters/sink/noop"
-	"codeberg.org/eljoth/tram/internal/adapters/sink/otlp"
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/adapters/sink/broker"
+	"codeberg.org/tram/tram/internal/adapters/sink/debug"
+	"codeberg.org/tram/tram/internal/adapters/sink/noop"
+	"codeberg.org/tram/tram/internal/adapters/sink/otlp"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 type Factory struct {

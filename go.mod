@@ -1,4 +1,4 @@
-module codeberg.org/eljoth/tram
+module codeberg.org/tram/tram
 
 go 1.27.2
 

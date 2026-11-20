@@ -11,8 +11,8 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	"codeberg.org/eljoth/tram/internal/adapters/sink/base"
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/adapters/sink/base"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 const Type = "debug"

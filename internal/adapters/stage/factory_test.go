@@ -13,10 +13,10 @@ import (
 
 	"log/slog"
 
-	"codeberg.org/eljoth/tram/internal/adapters/stage"
-	"codeberg.org/eljoth/tram/internal/adapters/stage/filter"
-	"codeberg.org/eljoth/tram/internal/adapters/stage/validation"
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/adapters/stage"
+	"codeberg.org/tram/tram/internal/adapters/stage/filter"
+	"codeberg.org/tram/tram/internal/adapters/stage/validation"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 func TestFactoryUnknownType(t *testing.T) {

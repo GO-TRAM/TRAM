@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"codeberg.org/eljoth/tram/internal/adapters/broker/partition"
+	"codeberg.org/tram/tram/internal/adapters/broker/partition"
 )
 
 const (

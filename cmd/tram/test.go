@@ -11,9 +11,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"codeberg.org/eljoth/tram/internal/adapters/stage"
-	"codeberg.org/eljoth/tram/internal/core"
-	"codeberg.org/eljoth/tram/internal/testrun"
+	"codeberg.org/tram/tram/internal/adapters/stage"
+	"codeberg.org/tram/tram/internal/core"
+	"codeberg.org/tram/tram/internal/testrun"
 )
 
 type testOptions struct {

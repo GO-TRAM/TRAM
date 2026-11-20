@@ -14,9 +14,9 @@ import (
 	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	tracespb "go.opentelemetry.io/proto/otlp/trace/v1"
 
-	"codeberg.org/eljoth/tram/internal/adapters/broker/partition"
-	"codeberg.org/eljoth/tram/internal/adapters/sink/celentry"
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/tram/tram/internal/adapters/broker/partition"
+	"codeberg.org/tram/tram/internal/adapters/sink/celentry"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 const (

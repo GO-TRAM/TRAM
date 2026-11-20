@@ -8,8 +8,8 @@ package controller
 import (
 	"context"
 
-	tramv1 "codeberg.org/eljoth/tram/internal/adapters/k8scrd/api/v1"
-	"codeberg.org/eljoth/tram/internal/core/domain"
+	tramv1 "codeberg.org/tram/tram/internal/adapters/k8scrd/api/v1"
+	"codeberg.org/tram/tram/internal/core/domain"
 )
 
 func ToDomain(name string, s tramv1.Stream) (*domain.StreamSpec, error) {
