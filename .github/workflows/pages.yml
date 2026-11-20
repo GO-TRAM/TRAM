@@ -1,5 +1,5 @@
 # Builds the documentation in docs/ with Zensical and publishes it to the
-# root of the pages branch, which Codeberg Pages serves at https://gotram.dev/
+# root of the pages branch, which GitHub Pages serves at https://eljoth.github.io/tram/
 # through a webhook of the repository.
 name: Pages
 
@@ -14,7 +14,7 @@ on:
       - BENCHMARK.md
       - CONTRIBUTING.md
       - internal/adapters/k8scrd/README.md
-      - .forgejo/workflows/pages.yml
+      - .github/workflows/pages.yml
   workflow_dispatch:
 
 concurrency:
@@ -23,23 +23,22 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: codeberg-small
+    runs-on: ubuntu-latest
     # Has git and Python, so the job needs neither Node.js nor actions.
     container:
       image: python:3.13
     env:
       # A secret PAGES_TOKEN (access token with write access to the repository)
       # takes precedence, in case the automatic token may not push.
-      TOKEN: ${{ secrets.PAGES_TOKEN || forgejo.token }}
-      # Canonical repository path, with the casing of the clone URL allowlist.
-      # FORGEJO_REPOSITORY may report a differently cased owner or repo name.
-      REPO: TRAM/TRAM
+      TOKEN: ${{ secrets.PAGES_TOKEN || github.token }}
+      # Canonical repository path
+      REPO: GO-TRAM/TRAM
     steps:
       - name: Check out main
         run: |
-          git clone --depth 1 --branch "${FORGEJO_REF_NAME}" \
-            "https://token:${TOKEN}@${FORGEJO_SERVER_URL#https://}/${REPO}.git" src
-          git -C src checkout --quiet "${FORGEJO_SHA}"
+          git clone --depth 1 --branch "${GITHUB_REF_NAME}" \
+            "https://${TOKEN}@github.com/${REPO}.git" src
+          git -C src checkout --quiet "${GITHUB_SHA}"
 
       - name: Build site
         working-directory: src
@@ -50,7 +49,7 @@ jobs:
 
       - name: Push to pages branch
         run: |
-          remote="https://token:${TOKEN}@${FORGEJO_SERVER_URL#https://}/${REPO}.git"
+          remote="https://${TOKEN}@github.com/${REPO}.git"
           if git clone --quiet --depth 1 --branch pages "$remote" pages; then
             find pages -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
           else
@@ -60,12 +59,12 @@ jobs:
           cp -r src/docs/site/. pages/
 
           cd pages
-          git config user.name "Forgejo Actions"
-          git config user.email "actions@noreply.codeberg.org"
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
           git add --all
           if git diff --cached --quiet; then
             echo "Site unchanged, nothing to publish"
             exit 0
           fi
-          git commit --quiet -m "Publish documentation from ${FORGEJO_SHA}"
+          git commit --quiet -m "Publish documentation from ${GITHUB_SHA}"
           git push origin pages
