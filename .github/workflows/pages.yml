@@ -46,13 +46,14 @@ jobs:
 
       - name: Push to pages branch
         run: |
-          # Configure git to use SSH
-          mkdir -p ~/.ssh
-          echo "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          ssh_dir="${HOME}/.ssh"
+          mkdir -p "$ssh_dir"
+          chmod 700 "$ssh_dir"
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > "$ssh_dir/id_deploy"
+          chmod 600 "$ssh_dir/id_deploy"
+          ssh-keyscan -t ed25519,rsa,ecdsa github.com > "$ssh_dir/known_hosts" 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i $ssh_dir/id_deploy -o IdentitiesOnly=yes -o UserKnownHostsFile=$ssh_dir/known_hosts -o StrictHostKeyChecking=yes"
 
-          # Clone or init pages branch
           remote="git@github.com:${REPO}.git"
           if git clone --quiet --depth 1 --branch pages "$remote" pages; then
             find pages -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
