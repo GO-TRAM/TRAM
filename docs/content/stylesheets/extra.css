@@ -76,7 +76,7 @@
 }
 
 .tram-hero__logo {
-  width: 16rem;
+  width: 25rem;
   margin: 0;
   padding: 1.5rem 2rem;
   border-radius: 1rem;
@@ -90,6 +90,11 @@
 .tram-hero__logo img {
   display: block;
   width: 100%;
+}
+
+/* The wordmark is not a section heading; hide its permalink anchor. */
+.tram-hero__logo .headerlink {
+  display: none;
 }
 
 .tram-hero__tagline {
