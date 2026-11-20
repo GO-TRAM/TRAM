@@ -45,8 +45,8 @@ These examples demonstrate using the OTLP sink in Tram for various use cases.
 - 200ms timeout for batch flush
 - **Kubernetes version**: [../k8s/examples/otlp_batch.yaml](../k8s/examples/otlp_batch.yaml)
 
-#### [`otlp_with_filters.json`](otlp_with_filters.json)
-**Purpose**: OTLP forwarding with CEL filtering.
+#### [`otlp_with_filters.json`](../tests/otlp_with_filters.json)
+**Purpose**: OTLP forwarding with CEL filtering. Lives in `../tests/` because it carries test cases.
 - Filters logs based on customer attribute
 - Shows how to use CEL expressions in filters
 - Sends filtered data to customer-specific endpoint
@@ -238,7 +238,7 @@ All example configurations in this directory have corresponding Kubernetes YAML 
 - `config/otlp_basic.json` ↔ `k8s/examples/otlp_basic.yaml`
 - `config/otlp_secure.json` ↔ `k8s/examples/otlp_secure.yaml`
 - `config/otlp_batch.json` ↔ `k8s/examples/otlp_batch.yaml`
-- `config/otlp_with_filters.json` ↔ `k8s/examples/otlp_with_filters.yaml`
+- `tests/otlp_with_filters.json` ↔ `k8s/examples/otlp_with_filters.yaml`
 - `config/otlp_with_validation.json` ↔ `k8s/examples/otlp_with_validation.yaml`
 - `config/otlp_multi_sink.json` ↔ `k8s/examples/otlp_multi_sink.yaml`
 - `config/otlp_nats_bridge.json` ↔ `k8s/examples/otlp_nats_bridge.yaml`

@@ -67,6 +67,7 @@ SECTIONS = {
         "Available Components": (STREAMS, False),
         "Advanced Configuration": (STREAMS, UNWRAP),
         "Updating a Stream": (STREAMS, False),
+        "Testing a Stream": (STREAMS, False),
         "Configuration Sources": ("guide/configuration.md", UNWRAP),
         "Security": ("guide/security.md", UNWRAP),
     },

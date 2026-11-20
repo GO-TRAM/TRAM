@@ -7,7 +7,7 @@ This demo runs Tram between OTLP clients and [OpenObserve](https://openobserve.a
 From the repository root:
 
 ```sh
-task demo:up      # or: docker compose -f setup/demo/compose.yaml up -d --build
+task demo:up      # or: docker compose -f examples/demo/compose.yaml up -d --build
 ```
 
 Then open:
@@ -21,7 +21,7 @@ Then open:
 Data shows up in the dashboards a few seconds after start. Stop the demo with:
 
 ```sh
-task demo:down    # or: docker compose -f setup/demo/compose.yaml down
+task demo:down    # or: docker compose -f examples/demo/compose.yaml down
 ```
 
 Task uses Podman if it is installed and Docker otherwise; set `CONTAINER_TOOL=docker` to choose.
@@ -57,7 +57,7 @@ otlp (:4318) ────┼─ metrics ─ batch-metrics ─ openobserve-metric
 - **`batch-logs`**, **`batch-metrics`** and **`batch-traces`** merge concurrent requests, flushing at 100, 10 and 5 records or after 5s. A batch stage answers a request only after its batch has been delivered, so the clients wait for OpenObserve to accept their data and slow down when it cannot keep up. A client that sends one request at a time gets one request through per flush, so `max_records` has to fit the number of requests that arrive at the same time: with 200 `checkout` workers, the batches of `batch-logs` fill up long before the timeout. The 5s stay below the OTLP source's `delivery_timeout` of 8s, which Tram requires, see [Hold Times](../../COMPONENTS.md#hold-times).
 - **`openobserve-logs`**, **`openobserve-metrics`** and **`openobserve-traces`** are `otlp` sinks that send to OpenObserve's OTLP endpoint `http://openobserve:5080/api/default` with Basic auth. The `stream-name` header puts logs into the OpenObserve stream `tram_logs` and traces into `tram_traces`.
 
-The file sync reads the configuration at startup. After editing the stream, restart Tram with `docker compose -f setup/demo/compose.yaml restart tram`.
+The file sync reads the configuration at startup. After editing the stream, restart Tram with `docker compose -f examples/demo/compose.yaml restart tram`.
 
 ## Grafana
 
@@ -92,7 +92,7 @@ On one CPU, Tram handles about 24,000 requests/s. Beyond that it slows the clien
 
 The limits add up to about 3.3 GB, plus about 30 MB per generator, so give the Docker or Podman VM at least 4 GB; Podman's default of 2 GB is not enough under high load. If OpenObserve is killed for lack of memory anyway, it restarts on its own, and Tram answers with `503` meanwhile, which the clients retry; the data OpenObserve held is lost.
 
-To test the load yourself, start more `checkout` instances, e.g. `docker compose -f setup/demo/compose.yaml up -d --scale checkout=8`, and watch the **Tram internals** dashboard.
+To test the load yourself, start more `checkout` instances, e.g. `docker compose -f examples/demo/compose.yaml up -d --scale checkout=8`, and watch the **Tram internals** dashboard.
 
 ## Credentials
 

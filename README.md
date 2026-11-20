@@ -289,7 +289,7 @@ curl -X PUT http://localhost:8080/v1/streams/fanout-example \
 EOF
 ```
 
-The `broker` sink with `driver: nats` needs a NATS server with JetStream enabled, e.g. `docker compose -f setup/nats/docker-compose.yaml up -d`, and a stream for its subjects, which TRAM does not create: `nats stream add telemetry --subjects 'logs.>' --defaults`.
+The `broker` sink with `driver: nats` needs a NATS server with JetStream enabled, e.g. `docker compose -f examples/nats/docker-compose.yaml up -d`, and a stream for its subjects, which TRAM does not create: `nats stream add telemetry --subjects 'logs.>' --defaults`.
 
 ### Chained Stages
 
@@ -397,6 +397,44 @@ If the source of a stream stops on its own, e.g. because the NATS stream of a br
 
 ---
 
+## Testing a Stream
+
+A stream can carry test cases in `tests`. They are never run by loading the stream; only an explicit test run executes them:
+
+```bash
+tram test stream.json [--secrets secrets.json]
+```
+
+The file holds either a bare stream object or a file sync file that wraps it in `{"stream": {...}}`, like the examples in `examples/tests/`; see `examples/tests/otlp_with_filters.json` for a stream with test cases.
+
+The stream is loaded into its own in-memory tree: the source is replaced by a test source that emits the test inputs, and every sink by a capture sink, so no external system is contacted. The stages are the real stages and process the events.
+
+Each test has a `name`, an `input` event and the expected outcome per sink in `expect`:
+
+- `"out": <event>` — sink `out` must receive exactly this event. Events are OTLP JSON objects with one of the keys `logs`, `metrics` or `traces`
+- `"out": "drop"` — sink `out` must receive nothing
+- `"out": "reject"` — the event must be rejected by a stage
+- a sink without an entry in `expect` must receive nothing
+
+```json
+"tests": [
+  {
+    "name": "keeps real logs",
+    "input":  {"logs": {"resourceLogs": [{"scopeLogs": [{"logRecords": [{"body": {"stringValue": "hello"}}]}]}]}},
+    "expect": {"out": {"logs": {"resourceLogs": [{"scopeLogs": [{"logRecords": [{"body": {"stringValue": "hello"}}]}]}]}}}
+  },
+  {
+    "name": "drops noise",
+    "input":  {"logs": {"resourceLogs": [{"scopeLogs": [{"logRecords": [{"body": {"stringValue": "noise"}}]}]}]}},
+    "expect": {"out": "drop"}
+  }
+]
+```
+
+`--secrets` reads a JSON file mapping `"<name>/<key>"` to values and resolves `secretKeyRef` references in stage specs. A reference that cannot be resolved is an error naming the reference, never its value. Source and sink specs are not used by a test run. The exit code is 0 when all tests pass and 1 otherwise.
+
+---
+
 ## ⚙️ Configuration Sources
 
 Besides the API, streams can be managed from two further sources. All of them change the same set of streams.
@@ -407,7 +445,7 @@ Besides the API, streams can be managed from two further sources. All of them ch
 ./tram server --enable-file-sync --config-directory config
 ```
 
-Every `<name>.json` file in the directory describes one stream, in the same format as the API request body (`{"stream": {...}}`); see `setup/config/` for examples. The file name, without `.json`, is the stream name. The sync works in both directions:
+Every `<name>.json` file in the directory describes one stream, in the same format as the API request body (`{"stream": {...}}`); see `examples/config/` for examples. The file name, without `.json`, is the stream name. The sync works in both directions:
 
 - Adding, changing or deleting a file creates, updates or deletes the stream
 - Streams created or changed through the API or the Kubernetes operator are written to files (new files are readable only by the owner, mode `0600`), and deleted streams have their file removed
@@ -423,7 +461,7 @@ kubectl apply -f internal/adapters/k8scrd/config/crd/bases/io.tram.core_streams.
 
 The operator watches `Stream` resources (`io.tram.core/v1`) and runs each as a stream named `<namespace>.<name>`. It uses the in-cluster configuration or the current kubeconfig context; `--kubeconfig` selects another file. By default every TRAM instance runs every `Stream` resource in the cluster, including those that name engines. With `--watch-namespace` limits an instance to some namespaces, and `--engine` to the `Stream` resources of one Engine. See [the operator documentation](internal/adapters/k8scrd/README.md) for details.
 
-Alternatively, `tram manager` runs `Engine` resources (`io.tram.core/v1alpha1`) as Deployments of TRAM instances, and a `Stream` names the engines that run it in `spec.engineRefs`; see [Engines](internal/adapters/k8scrd/README.md#engines) and `setup/k8s/`.
+Alternatively, `tram manager` runs `Engine` resources (`io.tram.core/v1alpha1`) as Deployments of TRAM instances, and a `Stream` names the engines that run it in `spec.engineRefs`; see [Engines](internal/adapters/k8scrd/README.md#engines) and `examples/k8s/`.
 
 ---
 

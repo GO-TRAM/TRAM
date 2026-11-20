@@ -8,6 +8,7 @@ package e2e_test
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -26,6 +27,7 @@ import (
 	sourcebroker "codeberg.org/eljoth/tram/internal/adapters/source/broker"
 	"codeberg.org/eljoth/tram/internal/adapters/source/generator"
 	sourceotlp "codeberg.org/eljoth/tram/internal/adapters/source/otlp"
+	"codeberg.org/eljoth/tram/internal/adapters/stage"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/batch"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/delay"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/filter"
@@ -33,7 +35,9 @@ import (
 	"codeberg.org/eljoth/tram/internal/adapters/stage/noop"
 	stagevalidation "codeberg.org/eljoth/tram/internal/adapters/stage/validation"
 	celvalidation "codeberg.org/eljoth/tram/internal/adapters/stage/validation/cel"
+	"codeberg.org/eljoth/tram/internal/core"
 	"codeberg.org/eljoth/tram/internal/core/domain"
+	"codeberg.org/eljoth/tram/internal/testrun"
 )
 
 type exampleComponent struct {
@@ -51,9 +55,13 @@ type exampleStream struct {
 func TestExamplesAreValid(t *testing.T) {
 	t.Parallel()
 
-	configs, err := filepath.Glob("../../setup/config/*.json")
+	configs, err := filepath.Glob("../../examples/config/*.json")
 	require.NoError(t, err)
 	require.NotEmpty(t, configs)
+	testConfigs, err := filepath.Glob("../../examples/tests/*.json")
+	require.NoError(t, err)
+	require.NotEmpty(t, testConfigs)
+	configs = append(configs, testConfigs...)
 	for _, path := range configs {
 		t.Run(filepath.Base(path), func(t *testing.T) {
 			t.Parallel()
@@ -66,7 +74,7 @@ func TestExamplesAreValid(t *testing.T) {
 		})
 	}
 
-	manifests, err := filepath.Glob("../../setup/k8s/examples/*.yaml")
+	manifests, err := filepath.Glob("../../examples/k8s/examples/*.yaml")
 	require.NoError(t, err)
 	require.NotEmpty(t, manifests)
 	for _, path := range manifests {
@@ -87,6 +95,31 @@ func TestExamplesAreValid(t *testing.T) {
 			assert.Empty(t, validation.IsDNS1123Subdomain(manifest.Metadata.Name),
 				"Kubernetes rejects the name %q", manifest.Metadata.Name)
 			checkExample(t, manifest.Spec)
+		})
+	}
+}
+
+// TestExampleTestsPass runs the test cases of the examples in examples/tests/,
+// the same way `tram test` does.
+func TestExampleTestsPass(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	configs, err := filepath.Glob("../../examples/tests/*.json")
+	require.NoError(t, err)
+	require.NotEmpty(t, configs)
+	for _, path := range configs {
+		spec, loadErr := testrun.LoadStream(path)
+		require.NoError(t, loadErr)
+		require.NotEmpty(t, spec.Tests, "%s carries no test cases", path)
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			t.Parallel()
+
+			results, runErr := core.RunStreamTests(t.Context(), spec, stage.NewFactory(logger), logger)
+			require.NoError(t, runErr)
+			for _, result := range results {
+				assert.True(t, result.Passed, "%s: %v", result.Name, result.Problems)
+			}
 		})
 	}
 }

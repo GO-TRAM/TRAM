@@ -18,10 +18,10 @@ Lets TRAM run streams described by `Stream` custom resources (`io.tram.core/v1`)
 
    TRAM connects with the in-cluster configuration when it runs in a pod, otherwise with the `KUBECONFIG` environment variable or `~/.kube/config`. `--kubeconfig <file>` selects a specific file.
 
-3. Create a `Stream`, e.g. the example in `setup/k8s/`:
+3. Create a `Stream`, e.g. the example in `examples/k8s/`:
 
    ```sh
-   kubectl apply -f setup/k8s/examples/otlp_basic.yaml
+   kubectl apply -f examples/k8s/examples/otlp_basic.yaml
    ```
 
 When TRAM runs in a cluster, its service account needs the permissions in `config/rbac/role.yaml` (a `ClusterRole` named `manager-role`), bound with a `ClusterRoleBinding`. With `--watch-namespace`, a `RoleBinding` to that `ClusterRole` in each watched namespace is enough. The role includes reading `Secret` and `ConfigMap` resources, for [references to secrets](#secrets) and [config maps](#config-maps).
@@ -102,7 +102,7 @@ spec:
   source: ...
 ```
 
-`setup/k8s/manager.yaml` deploys the manager, and `setup/k8s/examples/` holds an Engine and Streams that run on it.
+`examples/k8s/manager.yaml` deploys the manager, and `examples/k8s/examples/` holds an Engine and Streams that run on it.
 
 ### The Manager
 

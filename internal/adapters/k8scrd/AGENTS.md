@@ -21,7 +21,7 @@ config/rbac/manager/role.yaml              Generated RBAC of `tram manager` (DO 
 hack/boilerplate.go.txt                    Header for generated files
 ```
 
-Example resources live in `setup/k8s/` at the repository root.
+Example resources live in `examples/k8s/` at the repository root.
 
 ## Critical Rules
 

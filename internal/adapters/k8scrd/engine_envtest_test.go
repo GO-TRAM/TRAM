@@ -443,7 +443,7 @@ func TestManagerRunsEnginesWithItsClusterRole(t *testing.T) {
 	c.requireLabels(t, ns, "s", map[string]string{mapperLabel: ""})
 }
 
-// examplesDir is setup/k8s/examples, relative to this package.
+// examplesDir is examples/k8s/examples, relative to this package.
 func examplesDir() string {
 	return filepath.Join("..", "..", "..", "setup", "k8s", "examples")
 }
@@ -464,7 +464,7 @@ func readManifests(t *testing.T, path string) []*unstructured.Unstructured {
 	return objs
 }
 
-// The examples in setup/k8s/examples pass the validation of the CRDs, and
+// The examples in examples/k8s/examples pass the validation of the CRDs, and
 // every Stream runs on the example Engine, on a port of its own that the
 // Engine declares, so all of them can run on it at once.
 func TestExamplesAreValid(t *testing.T) {

@@ -64,6 +64,9 @@ type StreamSpec struct {
 	Stages  []StageSpec
 	Sinks   []SinkSpec
 	Metrics MetricsSpec
+	// Tests are test cases of the stream. They are never run by loading the
+	// stream; only an explicit test run executes them.
+	Tests []StreamTest `json:"tests,omitempty"`
 }
 
 func (s SourceSpec) Equal(o SourceSpec) bool {
