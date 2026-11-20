@@ -9,7 +9,6 @@ site_description = "A lightweight, extensible pipeline framework for logs, metri
 site_url = "https://gotram.dev/"
 repo_url = "https://codeberg.org/eljoth/tram"
 repo_name = "eljoth/tram"
-copyright = "Licensed under the Mozilla Public License 2.0"
 
 docs_dir = "content"
 site_dir = "site"
@@ -53,7 +52,7 @@ language = "en"
 # PNG, not SVG: the SVG wordmark references the custom font 'aAtmospheric',
 # which machines without the font render with a fallback face.
 logo = "assets/TRAM.png"
-favicon = "assets/TRAM.png"
+favicon = "assets/TRAM.svg"
 features = [
   "navigation.instant",
   "navigation.tracking",

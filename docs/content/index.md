@@ -25,7 +25,7 @@ TRAM is a **cloud-native, in-memory data pipeline framework** for building real-
 ```mermaid
 flowchart LR
     otlp([OTLP source]) --> filter[cel_filter] --> batch[batch] --> backend([OTLP sink])
-    otlp --> validator[cel_validator] --> nats([broker sink → NATS])
+    otlp --> validator[cel_validator] --> nats([broker sink])
     otlp --> debug([debug sink])
 ```
 

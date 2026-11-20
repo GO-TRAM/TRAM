@@ -239,10 +239,10 @@ For detailed documentation on each component and its configuration, see [COMPONE
 ```mermaid
 flowchart LR
     otlp_src(["otlp source<br>OTLP/HTTP"]) --> tram(["TRAM"])
-    broker_src(["broker source<br>NATS · Kafka · AMQP 1.0"]) --> tram
+    broker_src(["broker source]) --> tram
     generator(["generator source"]) --> tram
     tram --> otlp_sink(["otlp sink"])
-    tram --> broker_sink(["broker sink<br>NATS · Kafka · AMQP 1.0"])
+    tram --> broker_sink(["broker sink"])
     tram --> debug(["debug sink"])
 ```
 ---
