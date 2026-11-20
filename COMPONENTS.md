@@ -189,7 +189,9 @@ Stages process, transform, or filter data between sources and sinks.
 | Name | Type | Description |
 |------|------|-------------|
 | `batch` | `batch` | Merges concurrently arriving events into larger batches |
+| `decryption` | `decryption` | Decrypts log record bodies and selected attributes encrypted by the encryption stage |
 | `delay` | `delay` | Holds every event back for a fixed duration |
+| `encryption` | `encryption` | Encrypts log record bodies and selected attributes before the sinks |
 | `filter` | `filter` | Keeps only the records that match the rules of its driver, e.g. CEL |
 | `noop` | `noop` | Pass-through stage that does no processing (useful for testing) |
 | `validation` | `validation` | Accepts, drops or rejects whole events by the rules of its driver, e.g. CEL |
@@ -437,6 +439,221 @@ Holds every event back for a fixed duration; the caller waits meanwhile, concurr
 ??? note "Behavior"
 
     - Behind an OTLP source, the delay counts toward the source's `delivery_timeout` (8s by default). A stream in which the `delay` and `batch` stages on the way to a sink add up to the `delivery_timeout` or more is rejected, see [Hold Times](#hold-times). Raise the `delivery_timeout` for longer delays
+
+### Encryption Stage
+
+Encrypts the body of every log record and the record attributes listed in `attributes`, so sinks send them encrypted. Attributes it does not list — e.g. the ones a sink's destination expression routes by — stay in cleartext, as do metrics and traces. The key comes from a `driver`: `local` (a raw AES-256 key, in a Kubernetes `Stream` resource via `secretKeyRef`) or `stackit-kms` (envelope encryption against the STACKIT KMS, which wraps a per-stage data key once).
+
+**Type:** `encryption`
+
+**Configuration:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `driver` | string | Yes | - | Key source: `local` or `stackit-kms`; its options go under a key of the same name |
+| `algorithm` | string | No | `aes-256-gcm` | Payload encryption algorithm |
+| `attributes` | []string | No | - | Record attributes to encrypt besides the body (string values only) |
+| `marker_prefix` | string | No | `tram.encryption` | Prefix of the marker attributes set on every encrypted record (`<prefix>.algorithm`, `<prefix>.key_id`, `<prefix>.wrapped_key`); set a neutral prefix if the attribute names should not reveal the product |
+| `local.key` | string | With `driver: local` | - | Base64-encoded 32-byte key; exactly one of `key`, `key_env`, `key_file` |
+| `local.key_env` | string | With `driver: local` | - | Environment variable holding the base64-encoded key |
+| `local.key_file` | string | With `driver: local` | - | File holding the base64-encoded key |
+| `stackit-kms.project_id` | string | With `driver: stackit-kms` | - | STACKIT project UUID |
+| `stackit-kms.region` | string | With `driver: stackit-kms` | - | Region of the key ring, e.g. `eu01` |
+| `stackit-kms.keyring_id` | string | With `driver: stackit-kms` | - | Key ring UUID |
+| `stackit-kms.key_id` | string | With `driver: stackit-kms` | - | Key UUID |
+| `stackit-kms.key_version` | int | With `driver: stackit-kms` | - | Version of the key that wraps the data key |
+| `stackit-kms.endpoint` | string | With `driver: stackit-kms` | `https://kms.api.<region>.stackit.cloud` | KMS API base URL |
+| `stackit-kms.token` | string | With `driver: stackit-kms` | SDK default auth | Bearer token of a STACKIT service account |
+
+**Example:**
+
+```json
+{
+  "name": "encrypt",
+  "type": "encryption",
+  "from": "otlp",
+  "spec": {
+    "driver": "local",
+    "local": { "key": "<base64-encoded 32-byte key>" },
+    "attributes": ["user.email"]
+  }
+}
+```
+
+In a Kubernetes `Stream` resource, the key can come from a secret instead of the spec:
+
+```yaml
+spec:
+  stages:
+    - name: encrypt
+      type: encryption
+      from: otlp
+      spec:
+        driver: local
+        local:
+          key:
+            secretKeyRef: { name: tram-encryption-key, key: key }
+        attributes: ["user.email"]
+```
+
+With the `stackit-kms` driver, the stage generates a random data key once, wraps it via the KMS, and encrypts every record locally with AES-256-GCM:
+
+```json
+{
+  "name": "encrypt",
+  "type": "encryption",
+  "from": "otlp",
+  "spec": {
+    "driver": "stackit-kms",
+    "stackit-kms": {
+      "project_id": "<project UUID>",
+      "region": "eu01",
+      "keyring_id": "<key ring UUID>",
+      "key_id": "<key UUID>",
+      "key_version": 1,
+      "token": "<STACKIT service account token>"
+    },
+    "attributes": ["user.email"]
+  }
+}
+```
+
+In a Kubernetes `Stream` resource, the token can come from a secret instead of the spec:
+
+```yaml
+spec:
+  stages:
+    - name: encrypt
+      type: encryption
+      from: otlp
+      spec:
+        driver: stackit-kms
+        stackit-kms:
+          project_id: <project UUID>
+          region: eu01
+          keyring_id: <key ring UUID>
+          key_id: <key UUID>
+          key_version: 1
+          token:
+            secretKeyRef: { name: stackit-kms-token, key: token }
+        attributes: ["user.email"]
+```
+
+??? note "Behavior"
+
+    - Every encrypted record carries the marker attributes `<marker_prefix>.algorithm`, `<marker_prefix>.key_id` and, for KMS drivers, `<marker_prefix>.wrapped_key` (base64) — by default `tram.encryption.*`; set `marker_prefix` to rename them. They are cleartext, so consumers know how to decrypt: with `local`, the same key; with `stackit-kms`, KMS `Decrypt` on the wrapped data key, then local AES-256-GCM. The ciphertext is nonce + AES-256-GCM tag appended, base64-encoded in string fields
+    - Routing is unaffected as long as routing attributes are not listed in `attributes`: the broker and OTLP sinks evaluate their destination expressions on the encrypted event, and cleartext attributes resolve to the same subjects and URLs as without the stage. A listed attribute with a non-string value, or a body that is neither string nor bytes, rejects the event (the OTLP source answers with 422)
+    - The stage never modifies the incoming event; it forwards a copy, so sibling branches see the plaintext
+    - The stage holds no events back and does not count toward the [Hold Times](#hold-times)
+    - Metrics and traces pass through unchanged; only logs are encrypted
+
+### Decryption Stage
+
+Decrypts the body of every encrypted log record and the record attributes listed in `attributes`, and removes the encryption marker attributes the [Encryption Stage](#encryption-stage) sets. Records without a marker attribute pass through unchanged, so the stage is idempotent and can sit in a branch that also receives plaintext. Metrics and traces pass through unchanged. The `driver` and key have to match the records' `tram.encryption.key_id` marker, no matter which stream or producer encrypted them: `local` (the raw AES-256 key, in a Kubernetes `Stream` resource via `secretKeyRef`) or `stackit-kms` (the STACKIT KMS key that wrapped the per-record data key, which the stage unwraps).
+
+**Type:** `decryption`
+
+**Configuration:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `driver` | string | Yes | - | Key source: `local` or `stackit-kms`; its options go under a key of the same name |
+| `algorithm` | string | No | `aes-256-gcm` | Payload encryption algorithm of the records; must match the records' `tram.encryption.algorithm` |
+| `attributes` | []string | No | - | Record attributes to decrypt besides the body; list the same ones the encryption stage encrypted |
+| `marker_prefix` | string | No | `tram.encryption` | Prefix of the marker attributes on encrypted records; has to match the prefix the records were encrypted with |
+| `local.key` | string | With `driver: local` | - | Base64-encoded 32-byte key; exactly one of `key`, `key_env`, `key_file` |
+| `local.key_env` | string | With `driver: local` | - | Environment variable holding the base64-encoded key |
+| `local.key_file` | string | With `driver: local` | - | File holding the base64-encoded key |
+| `stackit-kms.project_id` | string | With `driver: stackit-kms` | - | STACKIT project UUID |
+| `stackit-kms.region` | string | With `driver: stackit-kms` | - | Region of the key ring, e.g. `eu01` |
+| `stackit-kms.keyring_id` | string | With `driver: stackit-kms` | - | Key ring UUID |
+| `stackit-kms.key_id` | string | With `driver: stackit-kms` | - | Key UUID |
+| `stackit-kms.key_version` | int | With `driver: stackit-kms` | - | Version of the key that unwraps the data key |
+| `stackit-kms.endpoint` | string | With `driver: stackit-kms` | `https://kms.api.<region>.stackit.cloud` | KMS API base URL |
+| `stackit-kms.token` | string | With `driver: stackit-kms` | SDK default auth | Bearer token of a STACKIT service account |
+
+**Example:**
+
+```json
+{
+  "name": "decrypt",
+  "type": "decryption",
+  "from": "encrypt",
+  "spec": {
+    "driver": "local",
+    "local": { "key": "<base64-encoded 32-byte key>" },
+    "attributes": ["user.email"]
+  }
+}
+```
+
+In a Kubernetes `Stream` resource, the key can come from a secret instead of the spec:
+
+```yaml
+spec:
+  stages:
+    - name: decrypt
+      type: decryption
+      from: encrypt
+      spec:
+        driver: local
+        local:
+          key:
+            secretKeyRef: { name: tram-encryption-key, key: key }
+        attributes: ["user.email"]
+```
+
+With the `stackit-kms` driver, the stage unwraps the wrapped data key of each record via the KMS (cached in memory) and decrypts locally. Point it at the KMS key named in the records' `tram.encryption.key_id` marker — the encrypted records may well come from a different stream:
+
+```json
+{
+  "name": "decrypt",
+  "type": "decryption",
+  "from": "encrypt",
+  "spec": {
+    "driver": "stackit-kms",
+    "stackit-kms": {
+      "project_id": "<project UUID>",
+      "region": "eu01",
+      "keyring_id": "<key ring UUID>",
+      "key_id": "<key UUID>",
+      "key_version": 1,
+      "token": "<STACKIT service account token>"
+    },
+    "attributes": ["user.email"]
+  }
+}
+```
+
+In a Kubernetes `Stream` resource, the token can come from a secret instead of the spec:
+
+```yaml
+spec:
+  stages:
+    - name: decrypt
+      type: decryption
+      from: encrypt
+      spec:
+        driver: stackit-kms
+        stackit-kms:
+          project_id: <project UUID>
+          region: eu01
+          keyring_id: <key ring UUID>
+          key_id: <key UUID>
+          key_version: 1
+          token:
+            secretKeyRef: { name: stackit-kms-token, key: token }
+        attributes: ["user.email"]
+```
+
+??? note "Behavior"
+
+    - A record is recognized as encrypted by its `<marker_prefix>.algorithm` attribute (default `tram.encryption.algorithm`). After decryption the stage removes the marker attributes `<marker_prefix>.algorithm`, `<marker_prefix>.key_id` and `<marker_prefix>.wrapped_key`, so downstream stages and sinks see plaintext again and routing on decrypted attributes works
+    - Records without the marker attribute pass through unchanged, as do metrics and traces; only logs are decrypted
+    - A record whose `tram.encryption.algorithm` differs from the stage's `algorithm`, or whose `tram.encryption.key_id` differs from the driver's key (e.g. after a key rotation), rejects the event (the OTLP source answers with 422). A listed attribute with a non-string value, or a body that is neither string nor bytes, rejects the event as well
+    - With `stackit-kms`, the wrapped data key of each record is unwrapped via KMS `Decrypt` and cached in memory, so repeated records do not call the KMS again
+    - The stage never modifies the incoming event; it forwards a copy, so sibling branches see the ciphertext
+    - The stage holds no events back and does not count toward the [Hold Times](#hold-times)
 
 ### No-op Stage
 
