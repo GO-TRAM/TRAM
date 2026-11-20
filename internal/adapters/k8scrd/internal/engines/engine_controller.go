@@ -14,6 +14,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -23,7 +24,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	appsv1ac "k8s.io/client-go/applyconfigurations/apps/v1"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -67,28 +67,45 @@ type EngineReconciler struct {
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles,verbs=bind,resourceNames=manager-role
 // +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;delete
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+// +kubebuilder:rbac:groups=io.tram.core,resources=engines,verbs=update;patch
 
 func (r *EngineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var engine tramv1alpha1.Engine
 	if err := r.Get(ctx, req.NamespacedName, &engine); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	state, err := r.load(ctx, &engine)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 	if !engine.DeletionTimestamp.IsZero() {
-		// The garbage collector deletes the owned resources.
-		return ctrl.Result{}, nil
+		return r.finalize(ctx, &engine, state)
+	}
+	if err = r.ensureFinalizer(ctx, &engine, state); err != nil {
+		return ctrl.Result{}, err
 	}
 	before := engine.DeepCopy()
 
-	var deployment appsv1.Deployment
-	key := types.NamespacedName{Namespace: engine.Namespace, Name: ResourceName(engine.Name)}
-	found := true
-	if err := r.Get(ctx, key, &deployment); apierrors.IsNotFound(err) {
-		found = false
-	} else if err != nil {
-		return ctrl.Result{}, fmt.Errorf("get deployment: %w", err)
+	if inUse := state.streamsNeedingStorage(); engine.Spec.Storage == nil && state.statefulSet != nil &&
+		len(inUse) > 0 {
+		// Without storage, the buffer Streams could not run on the Deployment,
+		// so the Engine keeps its StatefulSet until no Stream needs it.
+		meta.SetStatusCondition(&engine.Status.Conditions, metav1.Condition{
+			Type:   tramv1alpha1.ConditionReconciled,
+			Status: metav1.ConditionFalse,
+			Reason: "StorageInUse",
+			Message: fmt.Sprintf("spec.storage was removed, but Streams with a buffer still run on the Engine: %s; "+
+				"move or delete them, and the Engine migrates to a Deployment", strings.Join(inUse, ", ")),
+			ObservedGeneration: engine.Generation,
+		})
+		return ctrl.Result{}, r.patchStatus(ctx, before, &engine)
 	}
 
-	applyErr := r.applyAll(ctx, &engine, &deployment, found)
+	applyErr := r.applyAll(ctx, &engine, state)
 	reconciled := metav1.Condition{
 		Type:               tramv1alpha1.ConditionReconciled,
 		Status:             metav1.ConditionTrue,
@@ -106,22 +123,25 @@ func (r *EngineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 	meta.SetStatusCondition(&engine.Status.Conditions, reconciled)
 
-	if err := r.observe(ctx, &engine, &deployment, found); err != nil {
+	// The resources just applied, as they are now.
+	if state, err = r.load(ctx, &engine); err != nil {
 		return ctrl.Result{}, errors.Join(applyErr, err)
 	}
-	return ctrl.Result{}, errors.Join(applyErr, r.patchStatus(ctx, before, &engine))
+	migrateErr := r.migrate(ctx, &engine, state)
+	drained, drainErr := r.drain(ctx, &engine, state, false)
+
+	r.observe(&engine, state, drained)
+	return ctrl.Result{RequeueAfter: drained.requeue},
+		errors.Join(applyErr, migrateErr, drainErr, r.patchStatus(ctx, before, &engine))
 }
 
 // applyAll applies the Engine's resources and deletes the autoscaler and the
-// disruption budget once the Engine no longer asks for them.
-func (r *EngineReconciler) applyAll(
-	ctx context.Context,
-	engine *tramv1alpha1.Engine,
-	deployment *appsv1.Deployment,
-	found bool,
-) error {
-	params := buildParams{image: r.Image, clusterRole: r.ClusterRole}
-	replicas, apply, err := r.replicas(ctx, engine, deployment, found)
+// disruption budget once the Engine no longer asks for them. The workload is
+// a Deployment, or a StatefulSet if the Engine has storage; the other kind is
+// left to migrate, which deletes it once the new one is ready.
+func (r *EngineReconciler) applyAll(ctx context.Context, engine *tramv1alpha1.Engine, state *engineState) error {
+	params := buildParams{image: r.Image, clusterRole: r.ClusterRole, storageOnly: state.storageServes(engine)}
+	replicas, apply, err := r.replicas(ctx, engine, state)
 	if err != nil {
 		return err
 	}
@@ -137,8 +157,12 @@ func (r *EngineReconciler) applyAll(
 	applies := []namedApply{
 		{"service account", res.serviceAccount},
 		{"role binding", res.roleBinding},
-		{"deployment", res.deployment},
 		{"service", res.service},
+	}
+	if res.statefulSet != nil {
+		applies = append(applies, namedApply{"stateful set", res.statefulSet})
+	} else {
+		applies = append(applies, namedApply{"deployment", res.deployment})
 	}
 	if res.hpa != nil {
 		applies = append(applies, namedApply{"horizontal pod autoscaler", res.hpa})
@@ -170,9 +194,10 @@ type namedApply struct {
 	config runtime.ApplyConfiguration
 }
 
-// replicas returns the replicas to apply to the Deployment, spec.replicas,
+// replicas returns the replicas to apply to the workload, spec.replicas,
 // and whether to apply them at all: not while the autoscaler sets them. A new
-// autoscaled Deployment starts with minReplicas.
+// autoscaled workload starts with minReplicas, or with the replicas of the
+// workload it replaces if they are more, so a migration keeps the capacity.
 //
 // Dropping the replicas from an apply would reset them to 1 if the manager is
 // their only owner, so before it stops applying them, a second field manager
@@ -181,8 +206,7 @@ type namedApply struct {
 func (r *EngineReconciler) replicas(
 	ctx context.Context,
 	engine *tramv1alpha1.Engine,
-	deployment *appsv1.Deployment,
-	found bool,
+	state *engineState,
 ) (int32, bool, error) {
 	if !autoscaled(engine) {
 		if engine.Spec.Replicas != nil {
@@ -190,24 +214,28 @@ func (r *EngineReconciler) replicas(
 		}
 		return 1, true, nil
 	}
-	if !found {
-		return *engine.Spec.Autoscaling.MinReplicas, true, nil
+	target, other := state.workloads(engine)
+	if target == nil {
+		replicas := *engine.Spec.Autoscaling.MinReplicas
+		if other != nil {
+			replicas = max(replicas, other.specReplicas())
+		}
+		return replicas, true, nil
 	}
-	if deployment.Spec.Replicas == nil || !ownsReplicas(deployment, FieldOwner) {
+	if target.replicas() == nil || !ownsReplicas(target.object(), FieldOwner) {
 		return 0, false, nil
 	}
 
-	handover := appsv1ac.Deployment(deployment.Name, deployment.Namespace).
-		WithSpec(appsv1ac.DeploymentSpec().WithReplicas(*deployment.Spec.Replicas))
+	handover := target.replicasApply()
 	if err := r.Apply(ctx, handover, client.FieldOwner(handoverFieldOwner)); err != nil && !apierrors.IsConflict(err) {
 		return 0, false, fmt.Errorf("hand replicas over to the autoscaler: %w", err)
 	}
 	return 0, false, nil
 }
 
-// ownsReplicas tells whether manager applied the Deployment's replicas.
-func ownsReplicas(deployment *appsv1.Deployment, manager string) bool {
-	for _, entry := range deployment.ManagedFields {
+// ownsReplicas tells whether manager applied the workload's replicas.
+func ownsReplicas(obj client.Object, manager string) bool {
+	for _, entry := range obj.GetManagedFields() {
 		if entry.Manager != manager || entry.Operation != metav1.ManagedFieldsOperationApply || entry.FieldsV1 == nil {
 			continue
 		}
@@ -240,49 +268,63 @@ func (r *EngineReconciler) deleteOwned(ctx context.Context, engine *tramv1alpha1
 	return nil
 }
 
-// observe fills the status from the Deployment and the Engine's Streams.
-func (r *EngineReconciler) observe(
-	ctx context.Context,
-	engine *tramv1alpha1.Engine,
-	deployment *appsv1.Deployment,
-	found bool,
-) error {
-	var streams tramv1.StreamList
-	if err := r.List(ctx, &streams,
-		client.InNamespace(engine.Namespace),
-		client.HasLabels{tramv1.EngineLabel(engine.Name)}); err != nil {
-		return fmt.Errorf("list streams: %w", err)
-	}
-
+// observe fills the status from the workload, the volumes and the Engine's
+// Streams.
+func (r *EngineReconciler) observe(engine *tramv1alpha1.Engine, state *engineState, drained drainResult) {
 	status := &engine.Status
 	status.ObservedGeneration = engine.Generation
 	status.Selector = EngineLabel + "=" + engine.Name
-	status.Streams = int32(len(streams.Items)) //nolint:gosec // the number of streams fits.
+	status.Streams = int32(len(state.streams)) //nolint:gosec // the number of streams fits.
+	status.Workload = workloadKind(engine)
+	status.Volumes = int32(len(state.claims))        //nolint:gosec // the number of volumes fits.
+	status.DrainingVolumes = int32(drained.draining) //nolint:gosec // the number of volumes fits.
 	status.Replicas, status.ReadyReplicas = 0, 0
 
 	ready := metav1.Condition{
 		Type:               tramv1alpha1.ConditionReady,
 		Status:             metav1.ConditionFalse,
-		Reason:             "DeploymentMissing",
-		Message:            "The Deployment of the Engine does not exist yet",
+		Reason:             status.Workload + "Missing",
+		Message:            fmt.Sprintf("The %s of the Engine does not exist yet", status.Workload),
 		ObservedGeneration: engine.Generation,
 	}
-	if found {
-		status.Replicas = deployment.Status.Replicas
-		status.ReadyReplicas = deployment.Status.ReadyReplicas
-		ready.Reason, ready.Message = "DeploymentUnavailable", "The Deployment of the Engine reports no availability yet"
-		for _, c := range deployment.Status.Conditions {
-			if c.Type != appsv1.DeploymentAvailable {
-				continue
-			}
-			ready.Message = c.Message
-			if c.Status == corev1.ConditionTrue {
-				ready.Status, ready.Reason = metav1.ConditionTrue, "DeploymentAvailable"
-			}
+	target, other := state.workloads(engine)
+	if target != nil {
+		status.Replicas, status.ReadyReplicas = target.statusReplicas()
+		ready.Reason, ready.Message = status.Workload+"Unavailable", fmt.Sprintf(
+			"The %s of the Engine is not ready yet", status.Workload)
+		if target.ready() {
+			ready.Status, ready.Reason = metav1.ConditionTrue, status.Workload+"Available"
+			ready.Message = fmt.Sprintf("The %s of the Engine is ready", status.Workload)
 		}
 	}
 	meta.SetStatusCondition(&status.Conditions, ready)
-	return nil
+
+	migrating := metav1.Condition{
+		Type: tramv1alpha1.ConditionMigrating, Status: metav1.ConditionFalse, Reason: "Settled",
+		Message: "The instances run as " + status.Workload, ObservedGeneration: engine.Generation,
+	}
+	if other != nil {
+		migrating.Status, migrating.Reason = metav1.ConditionTrue, "To"+status.Workload
+		migrating.Message = fmt.Sprintf("The %s keeps running until the %s is ready", other.kind, status.Workload)
+	}
+	meta.SetStatusCondition(&status.Conditions, migrating)
+
+	draining := metav1.Condition{
+		Type: tramv1alpha1.ConditionDraining, Status: metav1.ConditionFalse, Reason: "NothingToDrain",
+		Message: "Every volume belongs to an instance", ObservedGeneration: engine.Generation,
+	}
+	if drained.draining > 0 {
+		draining.Status, draining.Reason = metav1.ConditionTrue, "Draining"
+		draining.Message = fmt.Sprintf("Drain Jobs deliver what %d volumes without an instance hold", drained.draining)
+		if drained.failed > 0 {
+			draining.Reason = "DrainFailed"
+			draining.Message += fmt.Sprintf(
+				"; %d drain Jobs failed: delete them to retry, or wait for the entries to expire",
+				drained.failed,
+			)
+		}
+	}
+	meta.SetStatusCondition(&status.Conditions, draining)
 }
 
 func (r *EngineReconciler) patchStatus(ctx context.Context, before, engine *tramv1alpha1.Engine) error {
@@ -300,8 +342,16 @@ func (r *EngineReconciler) patchStatus(ctx context.Context, before, engine *tram
 // hand, and when a Stream joins or leaves it.
 func (r *EngineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tramv1alpha1.Engine{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		For(&tramv1alpha1.Engine{}, builder.WithPredicates(predicate.Or[client.Object](
+			predicate.GenerationChangedPredicate{},
+			// The discard annotation and the start of a deletion.
+			predicate.AnnotationChangedPredicate{},
+			deletionStarted(),
+		))).
 		Owns(&appsv1.Deployment{}).
+		Owns(&appsv1.StatefulSet{}).
+		Owns(&batchv1.Job{}).
+		Watches(&corev1.PersistentVolumeClaim{}, handler.EnqueueRequestsFromMapFunc(claimEngine)).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ServiceAccount{}).
 		Owns(&rbacv1.RoleBinding{}).

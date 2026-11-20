@@ -1,0 +1,26 @@
+{
+  "stream": {
+    "name": "otlp_to_buffer",
+    "source": {
+      "name": "otlp_source",
+      "type": "otlp",
+      "spec": {
+        "http_port": 4318
+      }
+    },
+    "sinks": [
+      {
+        "name": "outbox",
+        "type": "buffer",
+        "from": "otlp_source",
+        "spec": {
+          "driver": "sqlite",
+          "sqlite": {},
+          "queue": "outbox",
+          "max_age": "24h",
+          "max_bytes": 10737418240
+        }
+      }
+    ]
+  }
+}

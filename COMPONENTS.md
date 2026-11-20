@@ -13,6 +13,7 @@ Sources are the entry points of a pipeline that produce or receive data events.
 | Name | Type | Description |
 |------|------|-------------|
 | `broker` | `broker` | Receives OTLP data from a message broker through a driver (NATS JetStream, Kafka, AMQP 1.0) |
+| `buffer` | `buffer` | Reads a queue on the instance's disk that a Buffer Sink writes, through a driver (SQLite), and delivers it with retries; see [Buffers](#buffers) |
 | `generator` | `generator` | Emits empty events at a fixed interval, for testing pipelines |
 | `otlp` | `otlp` | Receives protobuf-encoded OpenTelemetry Protocol (OTLP) data via HTTP |
 
@@ -179,6 +180,49 @@ Receives OTLP data from a message broker chosen by `driver` (driver options unde
     - **AMQP:** a lost connection is opened again with growing delays, up to 5 seconds; messages not settled on the lost connection are delivered again by the broker. An address the broker does not have fails the TRAM stream when it starts, unless the broker creates addresses on demand
 
 ---
+
+### Buffer Source
+
+Reads the queue a [Buffer Sink](#buffer-sink) of the same instance writes and delivers its events to the stages and sinks of its stream. A delivery that fails is retried with exponential backoff until the queue's `max_age`; see [Buffers](#buffers) for how the two streams work together.
+
+**Type:** `buffer`
+
+**Configuration:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `driver` | string | Yes | - | The storage of the queue: `sqlite` |
+| `sqlite` | object | With `driver: sqlite` | - | Options of the SQLite driver; it has none yet, so `{}` |
+| `queue` | string | Yes | - | The queue to read: letters, digits and `. _ -`, starting with a letter or digit. The same name as in the Buffer Sink |
+| `workers` | int | No | `1` | Number of events delivered at once (1-10000) |
+| `retry_initial` | string | No | `"1s"` | Delay before the first retry of a failed delivery, as a Go duration; it doubles with every failure |
+| `retry_max` | string | No | `"5m"` | Longest delay between retries |
+| `signal` | string | No | - | Only for drivers whose queues do not record the signal; SQLite does, so a source reads logs, metrics and traces alike |
+
+**Example:**
+
+```json
+{
+  "name": "outbox",
+  "type": "buffer",
+  "spec": {
+    "driver": "sqlite",
+    "sqlite": {},
+    "queue": "outbox",
+    "workers": 4,
+    "retry_initial": "1s",
+    "retry_max": "5m"
+  }
+}
+```
+
+??? note "Behavior"
+
+    - An event that a node below rejects for good, e.g. a `422` of the destination, is removed at once; an event older than the queue's `max_age` is removed after its next failed delivery, or by the cleanup every minute. Both are logged as warnings
+    - Delivery is at-least-once: an event is delivered again if the instance stops during its delivery. The order of deliveries is not guaranteed
+    - Retries keep their schedule across restarts. An event whose delivery was interrupted by a restart is delivered again right away
+    - Like the Broker Source, it waits for nothing: its stages and sinks get each event as soon as it is due, and their hold times do not count against any timeout of the source
+    - Without a data directory (`tram server --data-dir`), the stream fails to build
 
 ## 🔧 Stages
 
@@ -739,6 +783,7 @@ Sinks are the terminal points of a pipeline that consume or export data.
 | Name | Type | Description |
 |------|------|-------------|
 | `broker` | `broker` | Sends OTLP data to a message broker through a driver (NATS JetStream, Kafka, AMQP 1.0), with the destination of each record computed by CEL |
+| `buffer` | `buffer` | Stores OTLP data durably in a queue on the instance's disk through a driver (SQLite), for a Buffer Source to deliver; see [Buffers](#buffers) |
 | `debug` | `debug` | Writes events to the log (stderr) for debugging and development |
 | `otlp` | `otlp` | Sends OTLP-encoded events via HTTP to an OpenTelemetry endpoint |
 
@@ -942,6 +987,47 @@ With `partition`, the sink computes a partition per record from a key, e.g. the 
 - An expression for the key that fails or does not return a string rejects the event. A missing attribute gives the key `""`, which is a valid key like any other
 - Changing `count` moves keys to other partitions. Data already stored stays where it is, so changing it is a migration
 
+### Buffer Sink
+
+Stores every event durably in a queue on the instance's disk, from which a [Buffer Source](#buffer-source) of the same instance delivers it. The sink returns once the event is synced to disk, so an OTLP client gets `200`, and a Broker Source acknowledges its message, when the event is stored, not when it is delivered; see [Buffers](#buffers).
+
+**Type:** `buffer`
+
+**Configuration:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `driver` | string | Yes | - | The storage of the queue: `sqlite` |
+| `sqlite` | object | With `driver: sqlite` | - | Options of the SQLite driver; it has none yet, so `{}` |
+| `queue` | string | Yes | - | The queue to write: letters, digits and `. _ -`, starting with a letter or digit. SQLite keeps it in `<data dir>/<queue>.db` |
+| `max_age` | string | No | `"24h"` | How long an event waits for its delivery at most, as a Go duration. It is kept with the queue, so its readers and drains know it |
+| `max_bytes` | int | No | `1073741824` (1 GiB) | Size of the stored payloads at which the sink refuses further events with an error sources retry (`503` for OTLP clients) |
+| `max_pending` | int | No | `256` | Events handed to the queue but not yet synced; the sink waits beyond it |
+
+**Example:**
+
+```json
+{
+  "name": "outbox",
+  "type": "buffer",
+  "from": "otlp-in",
+  "spec": {
+    "driver": "sqlite",
+    "sqlite": {},
+    "queue": "outbox",
+    "max_age": "24h",
+    "max_bytes": 10737418240
+  }
+}
+```
+
+??? note "Behavior"
+
+    - An event is stored as one entry per signal. Concurrent events are stored in one commit, which is synced to disk before their callers return; there is no added delay
+    - An event larger than `max_bytes` by itself is rejected (`422` for OTLP clients), since it can never fit
+    - Without a data directory (`tram server --data-dir`), the stream fails to build
+    - Metrics of the queue are not recorded yet; a queue that holds events but has no Buffer Source in the instance is logged every 10 minutes
+
 ---
 
 
@@ -951,6 +1037,26 @@ With `partition`, the sink computes a partition per record from a key, e.g. the 
 - **Connections:** The `from` field in stages and sinks specifies which component they receive data from.
 - **Tree Structure:** Pipelines form a tree with the source as root, stages as intermediate nodes, and sinks as leaves.
 - **Delivery Guarantee:** Delivery is at-least-once, and TRAM does not deduplicate. A sink can receive the same data again, e.g. when a client retries after a `503` although some sinks had already accepted the data, when a broker message is redelivered after one branch of its stream failed, or when a publish succeeded but its acknowledgement was lost. Deduplicate at the destination where duplicates matter.
+
+### Buffers
+
+A buffer rides out outages of a destination by storing events on the instance's disk: one stream writes them with a [Buffer Sink](#buffer-sink), another reads them with a [Buffer Source](#buffer-source) and delivers them. The queue name connects the two. Pipelines stay synchronous and in memory; the queue is a broker embedded in the instance, and the Buffer Source handles deliveries like the Broker Source.
+
+```
+stream otlp-to-buffer:  OTLP Source ──▶ Buffer Sink   (queue: outbox)
+stream buffer-to-otlp:  Buffer Source (queue: outbox) ──▶ batch ──▶ OTLP Sink
+```
+
+- **The queue is local.** A Buffer Source reads only the queue of its own instance. Run both streams on the same instance, on Kubernetes on the same Engine; every instance then has a queue of its own
+- **Data directory.** Queues live in `tram server --data-dir`, which has to be on a volume that outlives the process. Without it, streams with a buffer sink or source fail to build. On Kubernetes, an [Engine with storage](internal/adapters/k8scrd/README.md#storage-for-buffers) gives every instance a volume and sets it
+- **One process per queue.** A queue file is locked by the instance that uses it; another process cannot open it
+- **Retention.** The writing sink sets `max_age`, which the queue keeps. Deleting or suspending the reading stream discards nothing: the events wait until a reader comes back or they expire, like messages of a broker without a consumer
+- **Draining a buffer.** [Suspend](#suspended-streams) the writing stream and keep the reading one running until the queue is empty. On Kubernetes, the volumes of instances that go are drained by Jobs, see [Storage for buffers](internal/adapters/k8scrd/README.md#storage-for-buffers)
+- **Throughput.** Every commit is synced to disk, so the latency of the volume limits the throughput. Size the volume above `max_bytes`, which counts the payloads only, for the write-ahead log and space not yet returned to the file system
+
+### Suspended Streams
+
+A stream with `"suspended": true` stays defined but does not run: its source is not started, and its stages and sinks are not built, so it opens no port and reads from no broker or buffer. Setting it back to `false` starts the stream again. Use it to pause a stream, e.g. during maintenance of a destination, or to drain a buffer.
 
 ### Hold Times
 

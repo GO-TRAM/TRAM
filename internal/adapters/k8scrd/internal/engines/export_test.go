@@ -6,6 +6,8 @@
 package engines
 
 import (
+	"time"
+
 	appsv1 "k8s.io/api/apps/v1"
 	appsv1ac "k8s.io/client-go/applyconfigurations/apps/v1"
 	autoscalingv2ac "k8s.io/client-go/applyconfigurations/autoscaling/v2"
@@ -13,6 +15,7 @@ import (
 	policyv1ac "k8s.io/client-go/applyconfigurations/policy/v1"
 	rbacv1ac "k8s.io/client-go/applyconfigurations/rbac/v1"
 
+	tramv1 "github.com/go-tram/tram/internal/adapters/k8scrd/api/v1"
 	tramv1alpha1 "github.com/go-tram/tram/internal/adapters/k8scrd/api/v1alpha1"
 )
 
@@ -46,3 +49,7 @@ func Autoscaled(engine *tramv1alpha1.Engine) bool { return autoscaled(engine) }
 func OwnsReplicas(deployment *appsv1.Deployment, manager string) bool {
 	return ownsReplicas(deployment, manager)
 }
+
+func ClaimOrdinal(engine, claim string) (int, bool) { return claimOrdinal(engine, claim) }
+
+func MaxBufferAge(streams []tramv1.Stream) time.Duration { return maxBufferAge(streams) }

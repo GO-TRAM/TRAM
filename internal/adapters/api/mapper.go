@@ -15,11 +15,12 @@ import (
 func pbStreamToStreamSpec(req *v1.Stream) domain.StreamSpec {
 	source := pbSourceToSourceSpec(req.GetSource())
 	return domain.StreamSpec{
-		Name:    req.GetName(),
-		Source:  source,
-		Stages:  mmap(req.GetStages(), pbStageToStageSpec),
-		Sinks:   mmap(req.GetSinks(), pbSinkToSinkSpec),
-		Metrics: pbMetricsToMetricsSpec(req.GetMetrics()),
+		Name:      req.GetName(),
+		Source:    source,
+		Stages:    mmap(req.GetStages(), pbStageToStageSpec),
+		Sinks:     mmap(req.GetSinks(), pbSinkToSinkSpec),
+		Metrics:   pbMetricsToMetricsSpec(req.GetMetrics()),
+		Suspended: req.GetSuspended(),
 	}
 }
 
@@ -70,11 +71,12 @@ func pbSinkToSinkSpec(req *v1.Sink) domain.SinkSpec {
 
 func streamSpecToPBStream(spec domain.StreamSpec) *v1.Stream {
 	return &v1.Stream{
-		Name:    spec.Name,
-		Source:  sourceSpecToPBSource(spec.Source),
-		Stages:  mmap(spec.Stages, stageSpecToPBStage),
-		Sinks:   mmap(spec.Sinks, sinkSpecToPBSink),
-		Metrics: metricsSpecToPBMetrics(spec.Metrics),
+		Name:      spec.Name,
+		Source:    sourceSpecToPBSource(spec.Source),
+		Stages:    mmap(spec.Stages, stageSpecToPBStage),
+		Sinks:     mmap(spec.Sinks, sinkSpecToPBSink),
+		Metrics:   metricsSpecToPBMetrics(spec.Metrics),
+		Suspended: &spec.Suspended,
 	}
 }
 

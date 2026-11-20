@@ -8,7 +8,9 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"os"
 	"os/signal"
 	"syscall"
 
@@ -35,6 +37,7 @@ type serverOptions struct {
 	engine            string
 	enableFileSync    bool
 	pprofEndpoint     string
+	dataDir           string
 }
 
 func newServerCmd(logger *slog.Logger) *cobra.Command {
@@ -60,6 +63,12 @@ func newServerCmd(logger *slog.Logger) *cobra.Command {
 	flags.StringVar(&opts.engine, "engine", "", "Engine whose Stream resources the operator runs")
 	flags.StringVar(&opts.pprofEndpoint, "pprof-endpoint", "",
 		"Endpoint serving the Go profiles under /debug/pprof/, e.g. localhost:6060 (default disabled)")
+	flags.StringVar(
+		&opts.dataDir,
+		"data-dir",
+		"",
+		"Directory the buffer sink and source keep their queues in, e.g. on a persistent volume (default none: streams with a buffer fail to build)",
+	)
 	return cmd
 }
 
@@ -75,9 +84,13 @@ func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (er
 		err = errors.Join(err, shutdownMetrics(context.WithoutCancel(ctx)))
 	}()
 
-	sourceFac := source.NewFactory(logger)
+	if err = checkDataDir(opts.dataDir); err != nil {
+		return err
+	}
+
+	sourceFac := source.NewFactory(logger, source.WithDataDir(opts.dataDir))
 	stageFac := stage.NewFactory(logger)
-	sinkFac := sink.NewFactory(logger)
+	sinkFac := sink.NewFactory(logger, sink.WithDataDir(opts.dataDir))
 
 	c := core.New(ctx, logger, sourceFac, stageFac, sinkFac)
 	defer func() {
@@ -128,4 +141,20 @@ func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (er
 	err = eg.Wait()
 	logger.InfoContext(ctx, "Shutting down")
 	return err
+}
+
+// checkDataDir fails early if the data directory is set but missing, instead
+// of failing every stream with a buffer.
+func checkDataDir(dir string) error {
+	if dir == "" {
+		return nil
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		return fmt.Errorf("data directory: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("data directory %s is not a directory", dir)
+	}
+	return nil
 }

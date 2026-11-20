@@ -6,7 +6,8 @@
 // Package filter is the filter stage: it keeps the records of an event the
 // rules of its driver keep and drops the rest. The driver its spec names, e.g.
 // cel, compiles the rules from the options under its name; the stage walks the
-// records, prunes what becomes empty and passes the rest on.
+// records, prunes what becomes empty and passes the rest on. The contract with
+// the drivers is in package rules; only package drivers knows them.
 package filter
 
 import (
@@ -18,6 +19,8 @@ import (
 
 	"github.com/go-tram/tram/internal/adapters/driver"
 	"github.com/go-tram/tram/internal/adapters/stage/base"
+	"github.com/go-tram/tram/internal/adapters/stage/filter/drivers"
+	"github.com/go-tram/tram/internal/adapters/stage/filter/rules"
 	"github.com/go-tram/tram/internal/core/domain"
 )
 
@@ -30,43 +33,27 @@ type Spec struct {
 	Driver string `json:"driver" validate:"required"`
 }
 
-// Driver compiles the options under its name into the rules of a filter.
-type Driver interface {
-	Compile(opts map[string]any) (Rules, error)
-}
-
-// Rules decide which records a filter keeps. They are safe for concurrent
-// use.
-type Rules interface {
-	// Predicates returns the predicates for one event. A nil predicate keeps
-	// every record of its signal. The predicates may share state, so they are
-	// used for one event and by one goroutine only.
-	Predicates() Predicates
-}
-
-// Predicates decide per record whether it is kept. An error rejects the
-// event.
-type Predicates struct {
-	Logs    domain.LogFilter
-	Metrics domain.MetricFilter
-	Traces  domain.SpanFilter
-}
-
 type Filter struct {
 	*base.Stage[Spec]
 
-	rules  Rules
+	rules  rules.Rules
 	logger *slog.Logger
 }
 
-// New creates the filter stage with the driver its spec names from drivers.
-func New(
+// New creates the filter stage with the driver its spec names.
+func New(stage domain.StageSpec, validator *validator.Validate, logger *slog.Logger) (*Filter, error) {
+	return newFilter(stage, validator, logger, drivers.NewFactory(validator))
+}
+
+// newFilter is [New] with the drivers to resolve the spec's `driver` from, so
+// tests can inject a driver.
+func newFilter(
 	stage domain.StageSpec,
 	validator *validator.Validate,
 	logger *slog.Logger,
-	drivers driver.Factory[Driver],
+	driverFactory driver.Factory[rules.Driver],
 ) (*Filter, error) {
-	generic, opts, drv, err := driver.Split(stage.Spec, drivers)
+	generic, opts, drv, err := driver.Split(stage.Spec, driverFactory)
 	if err != nil {
 		return nil, err
 	}
@@ -74,13 +61,13 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	rules, err := drv.Compile(opts)
+	compiled, err := drv.Compile(opts)
 	if err != nil {
 		return nil, err
 	}
 	return &Filter{
 		Stage:  b,
-		rules:  rules,
+		rules:  compiled,
 		logger: logger.With(slog.String("stage", stage.Name)),
 	}, nil
 }

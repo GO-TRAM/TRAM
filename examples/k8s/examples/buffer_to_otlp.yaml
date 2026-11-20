@@ -1,0 +1,27 @@
+# buffer_to_otlp.yaml - Delivers the buffer queue "outbox", which
+# otlp_to_buffer.yaml writes, to an OTLP endpoint, retrying for up to the
+# queue's max_age while it is down.
+apiVersion: io.tram.core/v1
+kind: Stream
+metadata:
+  name: buffer-to-otlp
+spec:
+  engineRefs:
+    - name: demo
+  source:
+    type: buffer
+    name: outbox
+    spec:
+      driver: sqlite
+      sqlite: {}
+      queue: outbox
+      workers: 4
+      retry_initial: "1s"
+      retry_max: "5m"
+  sinks:
+    - type: otlp
+      name: otlp_sink
+      from: outbox
+      spec:
+        url: "http://telemetry-collector:4318"
+        timeout: "30s"

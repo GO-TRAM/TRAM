@@ -46,3 +46,22 @@ func TestMapperLeavesOutDefaultMetrics(t *testing.T) {
 	assert.Equal(t, domain.MetricsSpec{}, spec.Metrics)
 	assert.Nil(t, api.StreamSpecToPBStream(spec).GetMetrics())
 }
+
+func TestMapperMapsSuspended(t *testing.T) {
+	t.Parallel()
+
+	stream := &v1.Stream{
+		Name:      "s",
+		Source:    &v1.Source{Name: "in", Type: "otlp"},
+		Suspended: new(true),
+	}
+
+	spec := api.PBStreamToStreamSpec(stream)
+	assert.True(t, spec.Suspended)
+	assert.True(t, api.StreamSpecToPBStream(spec).GetSuspended(),
+		"a response shows the stream as suspended")
+
+	spec = api.PBStreamToStreamSpec(&v1.Stream{Name: "s", Source: &v1.Source{Name: "in", Type: "otlp"}})
+	assert.False(t, spec.Suspended)
+	assert.False(t, api.StreamSpecToPBStream(spec).GetSuspended())
+}

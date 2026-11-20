@@ -21,7 +21,7 @@ import (
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/go-tram/tram/internal/adapters/stage/filter"
+	filterrules "github.com/go-tram/tram/internal/adapters/stage/filter/rules"
 	"github.com/go-tram/tram/internal/core/domain"
 )
 
@@ -38,13 +38,13 @@ type Driver struct {
 	validator *validator.Validate
 }
 
-var _ filter.Driver = (*Driver)(nil)
+var _ filterrules.Driver = (*Driver)(nil)
 
 func New(validator *validator.Validate) *Driver {
 	return &Driver{validator: validator}
 }
 
-func (d *Driver) Compile(opts map[string]any) (filter.Rules, error) {
+func (d *Driver) Compile(opts map[string]any) (filterrules.Rules, error) {
 	spec, err := domain.ParseSpec(opts, new(Spec))
 	if err != nil {
 		return nil, err
@@ -120,9 +120,9 @@ type rules struct {
 
 // Predicates shares one activation between the predicates of an event, so
 // evaluating a record allocates nothing for the variables.
-func (r *rules) Predicates() filter.Predicates {
+func (r *rules) Predicates() filterrules.Predicates {
 	vars := &activation{emptyResource: &resourcepb.Resource{}, emptyScope: &commonpb.InstrumentationScope{}}
-	var p filter.Predicates
+	var p filterrules.Predicates
 	if r.logs != nil {
 		p.Logs = func(resource *resourcepb.Resource, scope *commonpb.InstrumentationScope, record *logspb.LogRecord) (bool, error) {
 			vars.set(resource, scope)

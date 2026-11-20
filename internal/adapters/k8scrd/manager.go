@@ -13,6 +13,7 @@ import (
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -150,6 +151,10 @@ func managerCacheOptions() cache.Options {
 			&rbacv1.RoleBinding{}:                    generated,
 			&autoscalingv2.HorizontalPodAutoscaler{}: generated,
 			&policyv1.PodDisruptionBudget{}:          generated,
+			&appsv1.StatefulSet{}:                    generated,
+			&batchv1.Job{}:                           generated,
+			&corev1.PersistentVolumeClaim{}:          generated,
+			&corev1.Pod{}:                            generated,
 		},
 	}
 }

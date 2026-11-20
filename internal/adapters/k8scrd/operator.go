@@ -42,9 +42,11 @@ type Operator struct {
 }
 
 type Options struct {
-	Kubeconfig         string
-	Namespaces         []string
-	Engine             string
+	Kubeconfig string
+	Namespaces []string
+	Engine     string
+	// Drain runs only the Streams that read from a buffer, for `tram drain`.
+	Drain              bool
 	skipNameValidation bool
 }
 
@@ -103,6 +105,7 @@ func New(core ports.Core, opts Options, logger *slog.Logger) (*Operator, error) 
 		Core:       core,
 		References: mgr.GetAPIReader(),
 		Engine:     opts.Engine,
+		Drain:      opts.Drain,
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("set up controller: %w", err)
 	}

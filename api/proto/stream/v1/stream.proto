@@ -57,6 +57,10 @@ message Stream {
   repeated Stage stages = 3;
   repeated Sink sinks = 4 [(buf.validate.field).repeated.min_items = 1];
   Metrics metrics = 5;
+  // When true, the stream is defined but its source does not run: no ports
+  // are opened and no consumers are attached. Used to pause a stream, e.g.
+  // the writer of a buffer while its queue is drained.
+  optional bool suspended = 6;
 }
 
 //------------------------------------------------------------------------------

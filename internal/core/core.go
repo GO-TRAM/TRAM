@@ -52,6 +52,10 @@ type stream struct {
 }
 
 func (s *stream) running() bool {
+	// A suspended stream has no source running, so no done channel.
+	if s.done == nil {
+		return false
+	}
 	select {
 	case <-s.done:
 		return false
@@ -119,11 +123,14 @@ func (c *Core) UpsertResolvedStream(
 	old, exists := c.streams[spec.Name]
 	running := exists && old.running()
 
-	if running && old.tree.Spec.Equal(resolved) && old.spec.Equal(spec) {
+	// An unchanged stream is kept as it is, running or suspended; a crashed
+	// one (done closed) is rebuilt.
+	if exists && (running || resolved.Suspended) && old.tree.Spec.Equal(resolved) && old.spec.Equal(spec) {
 		return &old.spec, nil
 	}
 
-	if running && old.tree.Spec.Source.Equal(resolved.Source) {
+	// A change of suspended stops or starts the source, so it is no hot swap.
+	if running && old.tree.Spec.Source.Equal(resolved.Source) && old.tree.Spec.Suspended == resolved.Suspended {
 		if err = c.replaceReceivers(old, tree, spec); err != nil {
 			return nil, errors.Join(domain.ErrStreamBuildFailed, err)
 		}
@@ -148,7 +155,13 @@ func (c *Core) UpsertResolvedStream(
 		return nil, errors.Join(domain.ErrStreamBuildFailed, err)
 	}
 
-	c.runStream(tree, spec, 0)
+	if resolved.Suspended {
+		c.logger.InfoContext(ctx, "Registered suspended stream; its source does not run",
+			slog.String("stream", spec.Name))
+		c.streams[spec.Name] = &stream{tree: tree, spec: spec}
+	} else {
+		c.runStream(tree, spec, 0)
+	}
 	c.notify(domain.StreamSpecWatchEventTypeUpsert, spec)
 
 	return &c.streams[spec.Name].spec, nil

@@ -41,7 +41,7 @@ By default every TRAM instance with the operator enabled runs every `Stream` res
 
 ## Engines
 
-An `Engine` (`io.tram.core/v1alpha1`) is a group of TRAM instances that `tram manager` runs as a Deployment. A `Stream` names the engines that run it in `spec.engineRefs`, and every instance of each of them runs it:
+An `Engine` (`io.tram.core/v1alpha1`) is a group of TRAM instances that `tram manager` runs as a Deployment, or as a StatefulSet if it has [storage for buffers](#storage-for-buffers). A `Stream` names the engines that run it in `spec.engineRefs`, and every instance of each of them runs it:
 
 ```yaml
 apiVersion: io.tram.core/v1alpha1
@@ -88,6 +88,12 @@ spec:
       topologySpreadConstraints: [...]
       securityContext: {...}
       imagePullSecrets: [...]
+  storage:                          # optional, see Storage for buffers
+    size: 20Gi                      # cannot be changed
+    storageClassName: fast-ssd      # optional, cannot be changed
+    mountPath: /var/lib/tram        # default
+    drainResources:                 # default: requests 50m CPU, 128Mi; the instances' limits
+      requests: { cpu: 50m, memory: 128Mi }
 ```
 
 ```yaml
@@ -106,7 +112,7 @@ spec:
 
 ### The Manager
 
-`tram manager` runs no streams. It runs one Deployment per `Engine`, and it labels every `Stream` `engine.tram.io/<name>` (with an empty value) for each engine its `spec.engineRefs` name; the instances of an engine select the key, e.g. `kubectl get streams -l engine.tram.io/engine-1`. Run it once per cluster, or as several replicas, of which one at a time works:
+`tram manager` runs no streams. It runs one Deployment or StatefulSet per `Engine`, and it labels every `Stream` `engine.tram.io/<name>` (with an empty value) for each engine its `spec.engineRefs` name; the instances of an engine select the key, e.g. `kubectl get streams -l engine.tram.io/engine-1`. Run it once per cluster, or as several replicas, of which one at a time works:
 
 ```sh
 ./tram manager --engine-image registry.example.com/tram:1.14.0
@@ -116,10 +122,39 @@ spec:
 
 | Role | File | Bound to |
 |------|------|----------|
-| `tram-manager` | `config/rbac/manager/role.yaml` | The manager's service account, with a `ClusterRoleBinding` (a `RoleBinding` per namespace with `--watch-namespace`). Engines, Streams, the generated resources, leader election, and `bind` on `manager-role` |
+| `tram-manager` | `config/rbac/manager/role.yaml` | The manager's service account, with a `ClusterRoleBinding` (a `RoleBinding` per namespace with `--watch-namespace`). Engines, Streams, the generated resources including StatefulSets, drain Jobs and volume claims, reading pods, leader election, and `bind` on `manager-role` |
 | `manager-role` | `config/rbac/role.yaml` | Each Engine's service account, by the manager, in the Engine's namespace |
 
 Both `ClusterRole`s have to exist. With another `--engine-cluster-role`, grant the manager `bind` on that role instead.
+
+### Storage for buffers
+
+The [buffer sink and source](../../../COMPONENTS.md#buffers) keep their queues on the instance's disk. With `spec.storage`, the manager runs the Engine as a StatefulSet in which every instance has a volume of its own (`ReadWriteOnce`, claim `data-tram-engine-<engine>-<ordinal>`) mounted as its data directory. Without it, the Engine runs as a Deployment, and Streams with a buffer sink or source do not run on it. Every such Stream reports per Engine in `status.engines[].conditions` whether it can: `StorageAvailable` is `True`, or `False` with reason `EngineHasNoStorage`, or `StorageMigrating` while the instances move to a StatefulSet.
+
+**Rule: buffered events are never discarded before their `max_age` because of a change in Kubernetes.** The manager keeps every volume either with a running instance or with a drain Job, and deletes a volume only when its drain Job finished, or once everything on it has expired.
+
+| What happens | What the manager does |
+|---|---|
+| `storage` is added | Starts a StatefulSet with as many instances as the Deployment, next to it; both serve meanwhile. Once the StatefulSet is ready, the Service selects only its instances (label `tram.io/storage: "true"`), then the Deployment is deleted, so no request reaches an instance without storage. `Migrating` is `True` meanwhile |
+| `storage` is removed | Waits while Streams with a buffer sink or source still run on the Engine: `Reconciled` is `False` with reason `StorageInUse`, naming them. Once none is left, starts a Deployment, and when it is ready, deletes the StatefulSet; its volumes stay and are drained |
+| Scaling down, also by the autoscaler | The volume of an instance that goes stays and is drained |
+| Scaling up while a volume is drained | Stops the drain Job; the instance continues with its volume |
+| The Engine is deleted | Keeps it (finalizer `tram.io/drain-buffers`) until all its volumes are drained, after stopping its instances |
+
+A **drain Job** (`tram-drain-<random>`, labels `tram.io/drain=<engine>` and `tram.io/ordinal=<n>`) runs `tram drain` with the volume mounted: it loads the Engine's Streams and runs only those that read from a buffer, treating all others as suspended, so nothing writes to the volume any more. It ends once every queue is empty or holds only expired events, also queues no Stream reads any more, so it takes at most about the largest `max_age` after the instance stopped. Its pod is not selected by the Engine's Service or disruption budget and uses `storage.drainResources`. If a drain Job fails after its retries, the volume is kept and the Engine's `Draining` condition says so; delete the Job to try again. If a drain Job never finishes, e.g. because its volume cannot be attached, the volume is deleted once the Job is older than the largest `max_age` of the Engine's buffer sinks (at least 24 hours) plus one hour, since everything on it has expired by then.
+
+Deleting or suspending a Stream discards nothing: what its buffer sink wrote waits in the queue until a reading Stream delivers it or it expires, like messages of a broker without a consumer.
+
+The Engine's status shows the workload (`status.workload`), the number of volumes (`status.volumes`) and of volumes being drained (`status.drainingVolumes`), and the conditions `Migrating` and `Draining`.
+
+To give up buffered events on purpose, annotate the Engine with `tram.io/discard-buffers: "true"` before or while deleting it; its volumes are deleted at once.
+
+Limits:
+
+- **Deleting a namespace discards buffered events.** Kubernetes deletes everything in it, and nothing can be created in it any more, so no drain Job can run. Delete the Streams and Engines first and wait until they are gone
+- `size` and `storageClassName` cannot be changed; resize the volumes by hand if the storage class allows it
+- When a node fails, the StatefulSet does not start its instance elsewhere until the pod is gone; the volume is delivered once the instance runs again
+- PVCs need Kubernetes 1.32 or later for `persistentVolumeClaimRetentionPolicy`; older clusters ignore it, and the manager's drains still delete volumes only when they are done
 
 ## The Stream Resource
 

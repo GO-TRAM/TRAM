@@ -4,9 +4,10 @@
 // SPDX-License-Identifier: MPL-2.0
 
 // Package engines holds the controllers of `tram manager`: it runs every
-// Engine as a Deployment of Tram instances, and assigns Streams to Engines by
-// labels derived from their spec.engineRefs, which the instances select. It
-// runs no streams itself.
+// Engine as a Deployment of Tram instances, or as a StatefulSet with a volume
+// per instance if the Engine has storage for buffers, drains volumes without
+// an instance, and assigns Streams to Engines by labels derived from their
+// spec.engineRefs, which the instances select. It runs no streams itself.
 package engines
 
 import (
@@ -93,11 +94,16 @@ func (r *StreamReconciler) syncStatus(ctx context.Context, stream *tramv1.Stream
 			}
 		}
 
-		accepted, err := r.accepted(ctx, stream, ref.Name)
+		accepted, engine, err := r.accepted(ctx, stream, ref.Name)
 		if err != nil {
 			return err
 		}
 		meta.SetStatusCondition(&entry.Conditions, accepted)
+		if usesBuffer(stream) {
+			meta.SetStatusCondition(&entry.Conditions, storageAvailable(stream, engine))
+		} else {
+			meta.RemoveStatusCondition(&entry.Conditions, tramv1.ConditionStorageAvailable)
+		}
 		engines = append(engines, entry)
 	}
 
@@ -113,7 +119,13 @@ func (r *StreamReconciler) syncStatus(ctx context.Context, stream *tramv1.Stream
 	return nil
 }
 
-func (r *StreamReconciler) accepted(ctx context.Context, stream *tramv1.Stream, name string) (metav1.Condition, error) {
+// accepted returns the Accepted condition of a Stream on an Engine, and the
+// Engine if it exists.
+func (r *StreamReconciler) accepted(
+	ctx context.Context,
+	stream *tramv1.Stream,
+	name string,
+) (metav1.Condition, *tramv1alpha1.Engine, error) {
 	condition := metav1.Condition{Type: tramv1.ConditionAccepted, ObservedGeneration: stream.Generation}
 
 	var engine tramv1alpha1.Engine
@@ -124,7 +136,7 @@ func (r *StreamReconciler) accepted(ctx context.Context, stream *tramv1.Stream, 
 		condition.Reason = "EngineNotFound"
 		condition.Message = fmt.Sprintf("Engine %s does not exist in namespace %s", name, stream.Namespace)
 	case err != nil:
-		return metav1.Condition{}, fmt.Errorf("get engine %s: %w", name, err)
+		return metav1.Condition{}, nil, fmt.Errorf("get engine %s: %w", name, err)
 	case !engine.DeletionTimestamp.IsZero():
 		condition.Status = metav1.ConditionFalse
 		condition.Reason = "EngineDeleting"
@@ -134,7 +146,39 @@ func (r *StreamReconciler) accepted(ctx context.Context, stream *tramv1.Stream, 
 		condition.Reason = "EngineFound"
 		condition.Message = fmt.Sprintf("Engine %s runs the Stream", name)
 	}
-	return condition, nil
+	if condition.Status != metav1.ConditionTrue {
+		return condition, nil, nil
+	}
+	return condition, &engine, nil
+}
+
+// storageAvailable tells whether an Engine can run a Stream with a buffer
+// sink or source: its instances need a data directory, which only an Engine
+// with storage gives them, once they run as a StatefulSet. Elsewhere such a
+// Stream does not run.
+func storageAvailable(stream *tramv1.Stream, engine *tramv1alpha1.Engine) metav1.Condition {
+	condition := metav1.Condition{
+		Type: tramv1.ConditionStorageAvailable, Status: metav1.ConditionFalse, ObservedGeneration: stream.Generation,
+	}
+	switch {
+	case engine == nil:
+		condition.Reason, condition.Message = "EngineNotRunning", "The Engine does not run the Stream"
+	case engine.Spec.Storage == nil:
+		condition.Reason = "EngineHasNoStorage"
+		condition.Message = fmt.Sprintf(
+			"Engine %s has no storage, so the Stream's buffer cannot run; set spec.storage on the Engine", engine.Name)
+	case engine.Status.Workload != tramv1alpha1.WorkloadStatefulSet ||
+		meta.IsStatusConditionTrue(engine.Status.Conditions, tramv1alpha1.ConditionMigrating):
+		condition.Reason = "StorageMigrating"
+		condition.Message = fmt.Sprintf(
+			"Engine %s moves to instances with storage; the Stream runs once they are ready",
+			engine.Name,
+		)
+	default:
+		condition.Status, condition.Reason = metav1.ConditionTrue, "StorageAvailable"
+		condition.Message = fmt.Sprintf("The instances of Engine %s have storage for the Stream's buffer", engine.Name)
+	}
+	return condition
 }
 
 // SetupWithManager reconciles a Stream when its spec changes, e.g. its
@@ -169,12 +213,36 @@ func (r *StreamReconciler) streamsOf(ctx context.Context, engine client.Object) 
 }
 
 // engineLifecycle passes the events that change whether an Engine accepts
-// Streams: its creation, deletion and the start of its deletion.
+// Streams: its creation, deletion and the start of its deletion, and those
+// that change whether it stores what buffers hold.
 func engineLifecycle() predicate.Funcs {
 	return predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return e.ObjectOld.GetDeletionTimestamp().IsZero() != e.ObjectNew.GetDeletionTimestamp().IsZero()
+			if e.ObjectOld.GetDeletionTimestamp().IsZero() != e.ObjectNew.GetDeletionTimestamp().IsZero() {
+				return true
+			}
+			oldEngine, okOld := e.ObjectOld.(*tramv1alpha1.Engine)
+			newEngine, okNew := e.ObjectNew.(*tramv1alpha1.Engine)
+			return okOld && okNew && persistence(oldEngine) != persistence(newEngine)
 		},
+		GenericFunc: func(event.GenericEvent) bool { return false },
+	}
+}
+
+// persistence sums up what storageAvailable depends on.
+func persistence(engine *tramv1alpha1.Engine) string {
+	return fmt.Sprintf("%t/%s/%t", engine.Spec.Storage != nil, engine.Status.Workload,
+		meta.IsStatusConditionTrue(engine.Status.Conditions, tramv1alpha1.ConditionMigrating))
+}
+
+// deletionStarted passes the update that marks an object for deletion.
+func deletionStarted() predicate.Funcs {
+	return predicate.Funcs{
+		CreateFunc: func(event.CreateEvent) bool { return false },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return e.ObjectOld.GetDeletionTimestamp().IsZero() && !e.ObjectNew.GetDeletionTimestamp().IsZero()
+		},
+		DeleteFunc:  func(event.DeleteEvent) bool { return false },
 		GenericFunc: func(event.GenericEvent) bool { return false },
 	}
 }

@@ -1,0 +1,26 @@
+# otlp_to_buffer.yaml - Stores every OTLP request in the buffer queue "outbox"
+# before answering the client. buffer_to_otlp.yaml delivers the queue. Both
+# streams must run on the same Engine, and it needs storage (see engine.yaml);
+# without it, the Stream does not run and reports StorageAvailable=False
+# on the Engine.
+apiVersion: io.tram.core/v1
+kind: Stream
+metadata:
+  name: otlp-to-buffer
+spec:
+  engineRefs:
+    - name: demo
+  source:
+    type: otlp
+    name: otlp_source
+    spec:
+      http_port: 4328
+  sinks:
+    - type: buffer
+      name: outbox
+      from: otlp_source
+      spec:
+        driver: sqlite
+        sqlite: {}
+        queue: outbox
+        max_age: "24h"

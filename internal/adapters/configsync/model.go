@@ -34,6 +34,8 @@ type StreamSpec struct {
 	Stages  []StageSpec  `json:"stages"`
 	Sinks   []SinkSpec   `json:"sinks"`
 	Metrics *MetricsSpec `json:"metrics,omitempty"`
+	// Suspended keeps the stream defined but does not run its source.
+	Suspended *bool `json:"suspended,omitempty"`
 }
 
 // MetricsSpec and NodeMetricsSpec mirror domain.MetricsSpec; unset fields keep
@@ -123,9 +125,10 @@ func (s *Stream) AsDomain() *domain.StreamSpec {
 			Type: s.Stream.Source.Type,
 			Spec: s.Stream.Source.Spec,
 		},
-		Stages:  stages,
-		Sinks:   sinks,
-		Metrics: s.Stream.Metrics.asDomain(),
+		Stages:    stages,
+		Sinks:     sinks,
+		Metrics:   s.Stream.Metrics.asDomain(),
+		Suspended: valueOf(s.Stream.Suspended),
 	}
 }
 
@@ -158,9 +161,24 @@ func StreamFromDomain(spec domain.StreamSpec) *Stream {
 				Type: spec.Source.Type,
 				Spec: spec.Source.Spec,
 			},
-			Stages:  stages,
-			Sinks:   sinks,
-			Metrics: metricsFromDomain(spec.Metrics),
+			Stages:    stages,
+			Sinks:     sinks,
+			Metrics:   metricsFromDomain(spec.Metrics),
+			Suspended: boolPtr(spec.Suspended),
 		},
 	}
+}
+
+func valueOf(value *bool) bool {
+	if value == nil {
+		return false
+	}
+	return *value
+}
+
+func boolPtr(value bool) *bool {
+	if !value {
+		return nil
+	}
+	return &value
 }

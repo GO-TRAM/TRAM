@@ -21,7 +21,6 @@ import (
 
 	"log/slog"
 
-	"github.com/go-tram/tram/internal/adapters/driver"
 	"github.com/go-tram/tram/internal/adapters/stage/filter"
 	"github.com/go-tram/tram/internal/adapters/stage/filter/cel"
 	"github.com/go-tram/tram/internal/core/domain"
@@ -40,12 +39,10 @@ func (c *capture) Notify(_ context.Context, e *domain.Event) error {
 
 // newStage creates a filter stage with the CEL driver and opts as its options.
 func newStage(name, from string, opts map[string]any) (*filter.Filter, error) {
-	v := validator.New()
 	return filter.New(
 		domain.StageSpec{Name: name, From: from, Spec: map[string]any{"driver": cel.Name, cel.Name: opts}},
-		v,
+		validator.New(),
 		slog.Default(),
-		driver.Set[filter.Driver]{cel.Name: cel.New(v)},
 	)
 }
 

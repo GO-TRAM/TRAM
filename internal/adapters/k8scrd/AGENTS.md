@@ -14,7 +14,7 @@ api/v1/engine_labels.go                    engine.tram.io/<name> labels derived 
 api/v1alpha1/                              API group io.tram.core/v1alpha1: Engine schema (+kubebuilder markers)
 internal/controller/stream_controller.go   Reconciliation logic and RBAC markers
 internal/controller/secrets.go             Resolves secret references in component specs
-internal/engines/                          Controllers of `tram manager`: Engines as Deployments, engine labels and status.engines of Streams
+internal/engines/                          Controllers of `tram manager`: Engines as Deployments or, with storage, StatefulSets; drain Jobs for volumes without an instance; finalizers that keep buffered events until they are drained or expired; engine labels and status.engines of Streams
 config/crd/bases/                          Generated CRD (DO NOT EDIT)
 config/rbac/role.yaml                      Generated RBAC (DO NOT EDIT)
 config/rbac/manager/role.yaml              Generated RBAC of `tram manager` (DO NOT EDIT)
@@ -55,6 +55,7 @@ Do not use `make manifests`, `make generate` or the `kubebuilder` CLI; they are 
 - **Engine labels:** only `tram manager` writes labels with the prefix `engine.tram.io/`, derived from `spec.engineRefs` with `tramv1.WithEngineLabels`. Tram instances only select them (`--engine`) and never write labels. The labels are just an index for the cache: the instances' reconciler checks `spec.engineRefs` (`Stream.RefersToEngine`) before running a Stream, so never rely on the label alone
 - **Status ownership:** Tram instances write `Stream.status.active`; `tram manager` writes `Stream.status.engines` and the whole `Engine.status`
 - **Engine resources:** apply them server-side with `client.Apply` and field owner `engines.FieldOwner`, built as apply configurations in `internal/engines/resources.go`. Every generated resource carries `engines.ManagedByLabel`, since the manager's cache only holds resources with it
+- **Buffered events:** never delete a volume claim of an Engine unless its drain Job completed, the drain deadline (largest buffer `max_age` + 1h) passed, or the discard annotation is set. Every claim either belongs to a running instance or has a drain Job (`EngineReconciler.drain`); keep that rule level-based
 - **Replicas and autoscaling:** never drop `spec.replicas` from the Deployment's apply while the manager owns it alone; `EngineReconciler.replicas` hands it over to a second field manager first, or the API server resets it to 1
 
 ## API Design

@@ -158,6 +158,12 @@ spec:
                   - type
                   type: object
                 type: array
+              suspended:
+                description: |-
+                  Suspended keeps the stream defined but does not run its source: no
+                  ports are opened and no consumers are attached. Used to pause a
+                  stream, e.g. the writer of a buffer while its queue is drained.
+                type: boolean
             required:
             - sinks
             - source

@@ -32,5 +32,12 @@ spec:
       port: 4326
     - name: otlp-debug
       port: 4327
+    - name: otlp-buffer
+      port: 4328
   runtime:
     logLevel: info
+  # Uncomment to give every instance a volume for buffer queues, so
+  # otlp-to-buffer and buffer-to-otlp run. The manager then runs the
+  # instances as a StatefulSet.
+  # storage:
+  #   size: 1Gi

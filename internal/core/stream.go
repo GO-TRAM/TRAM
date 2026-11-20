@@ -295,6 +295,10 @@ func (c *Core) restoreStream(resolved, spec domain.StreamSpec) {
 			slog.String("stream", spec.Name), slog.Any("error", err))
 		return
 	}
+	if resolved.Suspended {
+		c.streams[spec.Name] = &stream{tree: tree, spec: spec}
+		return
+	}
 	c.runStream(tree, spec, 0)
 }
 
@@ -313,7 +317,9 @@ func (c *Core) stopStream(s *stream) error {
 	if err = source.Stop(); err != nil {
 		errs = append(errs, fmt.Errorf("%s: %w", source.Name(), err))
 	}
-	<-s.done
+	if s.done != nil {
+		<-s.done
+	}
 
 	if err = stopNodes(s.tree, false); err != nil {
 		errs = append(errs, err)

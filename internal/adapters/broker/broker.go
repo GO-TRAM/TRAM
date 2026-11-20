@@ -29,6 +29,23 @@ type Message struct {
 	Key string
 	// Body is one serialized OTLP LogsData, MetricsData or TracesData.
 	Body []byte
+	// Signal names what Body holds: logs, metrics or traces. Drivers of
+	// external brokers do not transmit it, since messages carry no headers;
+	// embedded drivers, like those of the buffer, store it, and their
+	// deliveries implement Signaled.
+	Signal string
+}
+
+// Signaled is implemented by deliveries that know the signal of their body,
+// so their source needs no signal of its own.
+type Signaled interface {
+	Signal() string
+}
+
+// Counted is implemented by deliveries that know how often their message
+// failed before, so the source can back off further with every failure.
+type Counted interface {
+	Attempts() int
 }
 
 // Publisher sends messages to its broker.

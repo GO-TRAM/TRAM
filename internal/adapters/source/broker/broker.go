@@ -13,12 +13,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/go-playground/validator/v10"
 
 	contract "github.com/go-tram/tram/internal/adapters/broker"
+	"github.com/go-tram/tram/internal/adapters/broker/consume"
 	"github.com/go-tram/tram/internal/adapters/broker/drivers"
 	"github.com/go-tram/tram/internal/adapters/broker/partition"
 	"github.com/go-tram/tram/internal/adapters/driver"
@@ -37,17 +37,7 @@ var ErrInvalidPartition = errors.New("invalid partition")
 type Source struct {
 	*base.Source[Spec]
 
-	signal     domain.Signal
-	subscriber contract.Subscriber
-	logger     *slog.Logger
-	wg         sync.WaitGroup
-
-	stop   context.Context
-	cancel context.CancelFunc
-
-	mu      sync.Mutex
-	running bool
-	stopped bool
+	consumer *consume.Consumer
 }
 
 func New(source domain.SourceSpec, validator *validator.Validate, logger *slog.Logger) (*Source, error) {
@@ -81,15 +71,16 @@ func newSource(
 	if err != nil {
 		return nil, err
 	}
-	stop, cancel := context.WithCancel(context.Background())
-	return &Source{
-		Source:     b,
-		signal:     domain.Signal(b.Spec().Signal),
-		subscriber: subscriber,
-		logger:     logger,
-		stop:       stop,
-		cancel:     cancel,
-	}, nil
+	s := &Source{Source: b}
+	s.consumer = consume.New(consume.Config{
+		Subscriber: subscriber,
+		Workers:    workersOf(b.Spec()),
+		Signal:     domain.Signal(b.Spec().Signal),
+		Notify:     s.NotifySubscribers,
+		RetryDelay: func(contract.Delivery) time.Duration { return redeliveryDelay },
+		Logger:     logger,
+	})
+	return s, nil
 }
 
 // expandPartition replaces {partition} in the driver's options with the
@@ -122,109 +113,6 @@ func workersOf(spec *Spec) int {
 
 // Run consumes until Stop. Deliveries use ctx, not the stop context, so
 // messages being handled when the source stops are still acknowledged.
-func (s *Source) Run(ctx context.Context) error {
-	s.mu.Lock()
-	if s.stopped {
-		s.mu.Unlock()
-		return nil
-	}
-	s.running = true
-	s.mu.Unlock()
-	// The connection is closed once the workers are done, so messages still
-	// being handled can be acknowledged.
-	defer s.subscriber.Close()
+func (s *Source) Run(ctx context.Context) error { return s.consumer.Run(ctx) }
 
-	if err := s.subscriber.Open(ctx); err != nil {
-		return err
-	}
-	s.consume(ctx)
-	return nil
-}
-
-// consume takes a message only once a worker is free, so the driver buffers
-// at most as many as there are workers.
-func (s *Source) consume(ctx context.Context) {
-	defer s.wg.Wait()
-	slots := make(chan struct{}, workersOf(s.Spec()))
-	for s.acquire(slots) {
-		d, err := s.subscriber.Next(s.stop)
-		if err != nil {
-			// Next returns errors only once the source stops.
-			<-slots
-			return
-		}
-		s.wg.Go(func() {
-			defer func() { <-slots }()
-			s.handle(ctx, d)
-		})
-	}
-}
-
-func (s *Source) acquire(slots chan struct{}) bool {
-	// With a slot free, select would pick at random between it and a stop
-	// that already happened, and receive again.
-	if s.stop.Err() != nil {
-		return false
-	}
-	select {
-	case slots <- struct{}{}:
-		return true
-	case <-s.stop.Done():
-		return false
-	}
-}
-
-func (s *Source) handle(ctx context.Context, d contract.Delivery) {
-	event, err := domain.UnmarshalOTLPData(s.signal, d.Body())
-	if err != nil {
-		s.logger.WarnContext(
-			ctx,
-			"Rejected message that is not valid OTLP data",
-			slog.String(
-				"signal",
-				string(s.signal),
-			),
-			slog.String("destination", d.Destination()),
-			slog.Any("error", err),
-		)
-		s.reject(ctx, d)
-		return
-	}
-
-	err = s.NotifySubscribers(ctx, event)
-	if errors.Is(err, domain.ErrEventRejected) {
-		s.logger.WarnContext(ctx, "Rejected message", slog.Any("error", err))
-		s.reject(ctx, d)
-		return
-	}
-	if err != nil {
-		s.logger.WarnContext(ctx, "Could not deliver message, requesting redelivery", slog.Any("error", err))
-		if err = d.Retry(redeliveryDelay); err != nil {
-			s.logger.ErrorContext(ctx, "Could not request redelivery of message", slog.Any("error", err))
-		}
-		return
-	}
-
-	if err = d.Ack(); err != nil {
-		s.logger.ErrorContext(ctx, "Could not acknowledge message", slog.Any("error", err))
-	}
-}
-
-func (s *Source) reject(ctx context.Context, d contract.Delivery) {
-	if err := d.Reject(); err != nil {
-		s.logger.ErrorContext(ctx, "Could not reject message", slog.Any("error", err))
-	}
-}
-
-func (s *Source) Stop() error {
-	s.mu.Lock()
-	s.stopped = true
-	running := s.running
-	s.mu.Unlock()
-
-	s.cancel()
-	if !running {
-		return s.subscriber.Close()
-	}
-	return nil
-}
+func (s *Source) Stop() error { return s.consumer.Stop() }

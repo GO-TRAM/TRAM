@@ -12,27 +12,46 @@ import (
 	"github.com/go-playground/validator/v10"
 
 	"github.com/go-tram/tram/internal/adapters/source/broker"
+	"github.com/go-tram/tram/internal/adapters/source/buffer"
 	"github.com/go-tram/tram/internal/adapters/source/generator"
 	"github.com/go-tram/tram/internal/adapters/source/otlp"
 	"github.com/go-tram/tram/internal/core/domain"
 )
 
+// Factory creates the sources by their type. Sources with drivers resolve
+// them themselves, each through its own drivers package.
 type Factory struct {
 	validator *validator.Validate
 	logger    *slog.Logger
+	dataDir   string
 }
 
-func NewFactory(logger *slog.Logger) *Factory {
-	return &Factory{
+// Option configures the factory.
+type Option func(*Factory)
+
+// WithDataDir is the data directory of the instance, where buffer sources
+// read their queues from. Without it, buffer sources fail to build.
+func WithDataDir(dir string) Option {
+	return func(f *Factory) { f.dataDir = dir }
+}
+
+func NewFactory(logger *slog.Logger, opts ...Option) *Factory {
+	f := &Factory{
 		validator: validator.New(validator.WithRequiredStructEnabled()),
 		logger:    logger,
 	}
+	for _, opt := range opts {
+		opt(f)
+	}
+	return f
 }
 
 func (f *Factory) New(spec domain.SourceSpec) (domain.Source, error) {
 	switch spec.Type {
 	case broker.Type:
 		return broker.New(spec, f.validator, f.logger)
+	case buffer.Type:
+		return buffer.New(spec, f.validator, f.logger, f.dataDir)
 	case generator.Type:
 		return generator.New(spec, f.validator)
 	case otlp.Type:

@@ -64,6 +64,10 @@ type StreamSpec struct {
 	Stages  []StageSpec
 	Sinks   []SinkSpec
 	Metrics MetricsSpec
+	// Suspended keeps the stream defined but does not run its source: no
+	// ports are opened and no consumers are attached. Stages and sinks are
+	// built and wired, so unsuspending starts the source alone.
+	Suspended bool `json:"suspended,omitempty"`
 	// Tests are test cases of the stream. They are never run by loading the
 	// stream; only an explicit test run executes them.
 	Tests []StreamTest `json:"tests,omitempty"`
@@ -86,7 +90,8 @@ func (s StreamSpec) Equal(o StreamSpec) bool {
 		s.Source.Equal(o.Source) &&
 		equalByName(s.Stages, o.Stages, func(stage StageSpec) string { return stage.Name }, StageSpec.Equal) &&
 		equalByName(s.Sinks, o.Sinks, func(sink SinkSpec) string { return sink.Name }, SinkSpec.Equal) &&
-		s.Metrics.Equal(o.Metrics)
+		s.Metrics.Equal(o.Metrics) &&
+		s.Suspended == o.Suspended
 }
 
 func equalByName[T any](a, b []T, name func(T) string, equal func(T, T) bool) bool {

@@ -21,14 +21,18 @@ import (
 	"sigs.k8s.io/yaml"
 
 	natsdriver "github.com/go-tram/tram/internal/adapters/broker/nats"
+	sqlitebuffer "github.com/go-tram/tram/internal/adapters/buffer/sqlite"
 	sinkbroker "github.com/go-tram/tram/internal/adapters/sink/broker"
+	buffersink "github.com/go-tram/tram/internal/adapters/sink/buffer"
 	sinkdebug "github.com/go-tram/tram/internal/adapters/sink/debug"
 	sinkotlp "github.com/go-tram/tram/internal/adapters/sink/otlp"
 	sourcebroker "github.com/go-tram/tram/internal/adapters/source/broker"
+	buffersource "github.com/go-tram/tram/internal/adapters/source/buffer"
 	"github.com/go-tram/tram/internal/adapters/source/generator"
 	sourceotlp "github.com/go-tram/tram/internal/adapters/source/otlp"
 	"github.com/go-tram/tram/internal/adapters/stage"
 	"github.com/go-tram/tram/internal/adapters/stage/batch"
+
 	"github.com/go-tram/tram/internal/adapters/stage/delay"
 	"github.com/go-tram/tram/internal/adapters/stage/filter"
 	celfilter "github.com/go-tram/tram/internal/adapters/stage/filter/cel"
@@ -160,6 +164,8 @@ func parseSource(typ string, raw map[string]any) error {
 		return parse[sourceotlp.Spec](raw)
 	case sourcebroker.Type:
 		return parseDriver[sourcebroker.Spec, natsdriver.SubscriberSpec](raw, natsdriver.Name)
+	case buffersource.Type:
+		return parseDriver[buffersource.Spec, sqlitebuffer.Spec](raw, sqlitebuffer.Name)
 	case generator.Type:
 		return parse[generator.Spec](raw)
 	default:
@@ -192,6 +198,8 @@ func parseSink(typ string, raw map[string]any) error {
 		return parseDriver[sinkbroker.Spec, natsdriver.PublisherSpec](raw, natsdriver.Name)
 	case sinkotlp.Type:
 		return parse[sinkotlp.Spec](raw)
+	case buffersink.Type:
+		return parseDriver[buffersink.Spec, sqlitebuffer.Spec](raw, sqlitebuffer.Name)
 	default:
 		return unknownType(typ)
 	}
