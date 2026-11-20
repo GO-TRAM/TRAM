@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	tramv1 "codeberg.org/tram/tram/internal/adapters/k8scrd/api/v1"
+	tramv1 "github.com/go-tram/tram/internal/adapters/k8scrd/api/v1"
 )
 
 const mapperLabel = "engine.tram.io/mapper"

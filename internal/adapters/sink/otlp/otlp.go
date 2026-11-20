@@ -26,9 +26,9 @@ import (
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"golang.org/x/sync/errgroup"
 
-	"codeberg.org/tram/tram/internal/adapters/sink/base"
-	"codeberg.org/tram/tram/internal/adapters/sink/celentry"
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/adapters/sink/base"
+	"github.com/go-tram/tram/internal/adapters/sink/celentry"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 const (

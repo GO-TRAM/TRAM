@@ -14,7 +14,7 @@ hide:
 
 [Get Started](guide/getting-started.md){ .md-button .md-button--primary }
 [Components](components/index.md){ .md-button }
-[Source Code](https://codeberg.org/TRAM/TRAM){ .md-button }
+[Source Code](https://github.com/GO-TRAM/TRAM){ .md-button }
 
 </div>
 
@@ -74,7 +74,7 @@ flowchart LR
 ## Quick Start
 
 ```bash
-git clone https://codeberg.org/TRAM/TRAM.git tram
+git clone https://github.com/GO-TRAM/TRAM.git tram
 cd tram
 go build -o tram ./cmd/tram
 ./tram server

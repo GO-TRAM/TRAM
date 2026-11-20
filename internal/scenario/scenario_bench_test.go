@@ -24,13 +24,13 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 	"google.golang.org/protobuf/proto"
 
-	"codeberg.org/tram/tram/internal/adapters/sink"
-	"codeberg.org/tram/tram/internal/adapters/source"
-	"codeberg.org/tram/tram/internal/adapters/stage"
-	"codeberg.org/tram/tram/internal/core"
-	"codeberg.org/tram/tram/internal/core/domain"
-	"codeberg.org/tram/tram/internal/testutil/natstest"
-	"codeberg.org/tram/tram/internal/testutil/otlpgen"
+	"github.com/go-tram/tram/internal/adapters/sink"
+	"github.com/go-tram/tram/internal/adapters/source"
+	"github.com/go-tram/tram/internal/adapters/stage"
+	"github.com/go-tram/tram/internal/core"
+	"github.com/go-tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/testutil/natstest"
+	"github.com/go-tram/tram/internal/testutil/otlpgen"
 )
 
 type scenario struct {

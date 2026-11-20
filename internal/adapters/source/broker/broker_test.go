@@ -20,13 +20,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	contract "codeberg.org/tram/tram/internal/adapters/broker"
-	"codeberg.org/tram/tram/internal/adapters/broker/brokertest"
-	"codeberg.org/tram/tram/internal/adapters/broker/partition"
-	"codeberg.org/tram/tram/internal/adapters/driver"
-	"codeberg.org/tram/tram/internal/adapters/source/broker"
-	"codeberg.org/tram/tram/internal/core/domain"
-	"codeberg.org/tram/tram/internal/testutil/otlpgen"
+	contract "github.com/go-tram/tram/internal/adapters/broker"
+	"github.com/go-tram/tram/internal/adapters/broker/brokertest"
+	"github.com/go-tram/tram/internal/adapters/broker/partition"
+	"github.com/go-tram/tram/internal/adapters/driver"
+	"github.com/go-tram/tram/internal/adapters/source/broker"
+	"github.com/go-tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/testutil/otlpgen"
 )
 
 const (

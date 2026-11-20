@@ -7,8 +7,8 @@
 site_name = "TRAM"
 site_description = "A lightweight, extensible pipeline framework for logs, metrics and traces"
 site_url = "https://gotram.dev/"
-repo_url = "https://codeberg.org/TRAM/TRAM"
-repo_name = "TRAM/TRAM"
+repo_url = "https://github.com/GO-TRAM/TRAM"
+repo_name = "GO-TRAM/TRAM"
 
 docs_dir = "content"
 site_dir = "site"
@@ -75,12 +75,12 @@ scheme = "slate"
 toggle = { icon = "lucide/sun", name = "Switch to light mode" }
 
 [project.theme.icon]
-repo = "simple/codeberg"
+repo = "simple/github"
 
 [[project.extra.social]]
-icon = "fontawesome/brands/codeberg"
-link = "https://codeberg.org/TRAM/TRAM"
-name = "TRAM on Codeberg"
+icon = "fontawesome/brands/github"
+link = "https://github.com/GO-TRAM/TRAM"
+name = "TRAM on GitHub"
 
 [project.markdown_extensions]
 admonition = {}

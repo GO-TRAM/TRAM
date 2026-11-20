@@ -21,11 +21,11 @@ import (
 
 	"log/slog"
 
-	"codeberg.org/tram/tram/internal/adapters/driver"
-	"codeberg.org/tram/tram/internal/adapters/stage/filter"
-	"codeberg.org/tram/tram/internal/adapters/stage/filter/cel"
-	"codeberg.org/tram/tram/internal/core/domain"
-	"codeberg.org/tram/tram/internal/testutil/otlpgen"
+	"github.com/go-tram/tram/internal/adapters/driver"
+	"github.com/go-tram/tram/internal/adapters/stage/filter"
+	"github.com/go-tram/tram/internal/adapters/stage/filter/cel"
+	"github.com/go-tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/testutil/otlpgen"
 )
 
 type capture struct{ events []*domain.Event }

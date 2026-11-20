@@ -15,7 +15,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/stretchr/testify/require"
 
-	"codeberg.org/tram/tram/internal/testutil/natstest"
+	"github.com/go-tram/tram/internal/testutil/natstest"
 )
 
 // natsServer is a NATS server with JetStream for the broker sink and source.

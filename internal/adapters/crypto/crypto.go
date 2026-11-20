@@ -12,7 +12,7 @@ package crypto
 import (
 	"github.com/go-playground/validator/v10"
 
-	"codeberg.org/tram/tram/internal/ports"
+	"github.com/go-tram/tram/internal/ports"
 )
 
 // Driver creates a [ports.Crypter] and a [ports.Decrypter] from the driver's

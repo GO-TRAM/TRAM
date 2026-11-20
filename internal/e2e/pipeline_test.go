@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 const (

@@ -21,8 +21,8 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	"codeberg.org/tram/tram/internal/core/domain"
-	"codeberg.org/tram/tram/internal/ports"
+	"github.com/go-tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/ports"
 )
 
 // Name is the driver's name in a component spec's `driver` field.

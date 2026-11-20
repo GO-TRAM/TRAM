@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"codeberg.org/tram/tram/internal/testutil/otlpgen"
+	"github.com/go-tram/tram/internal/testutil/otlpgen"
 )
 
 func TestShapeCounts(t *testing.T) {

@@ -18,15 +18,15 @@ import (
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/proto"
 
-	"codeberg.org/tram/tram/internal/adapters/stage"
-	"codeberg.org/tram/tram/internal/adapters/stage/batch"
-	"codeberg.org/tram/tram/internal/adapters/stage/delay"
-	"codeberg.org/tram/tram/internal/adapters/stage/filter"
-	"codeberg.org/tram/tram/internal/adapters/stage/noop"
-	"codeberg.org/tram/tram/internal/adapters/stage/validation"
-	"codeberg.org/tram/tram/internal/adapters/stage/valuemap"
-	"codeberg.org/tram/tram/internal/core/domain"
-	"codeberg.org/tram/tram/internal/testutil/otlpgen"
+	"github.com/go-tram/tram/internal/adapters/stage"
+	"github.com/go-tram/tram/internal/adapters/stage/batch"
+	"github.com/go-tram/tram/internal/adapters/stage/delay"
+	"github.com/go-tram/tram/internal/adapters/stage/filter"
+	"github.com/go-tram/tram/internal/adapters/stage/noop"
+	"github.com/go-tram/tram/internal/adapters/stage/validation"
+	"github.com/go-tram/tram/internal/adapters/stage/valuemap"
+	"github.com/go-tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/testutil/otlpgen"
 )
 
 type collector struct {

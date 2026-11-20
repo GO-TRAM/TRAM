@@ -6,8 +6,8 @@
 package api
 
 import (
-	"codeberg.org/tram/tram/internal/core/domain"
-	v1 "codeberg.org/tram/tram/pkg/gen/go/api/proto/stream/v1"
+	"github.com/go-tram/tram/internal/core/domain"
+	v1 "github.com/go-tram/tram/pkg/gen/go/api/proto/stream/v1"
 )
 
 func ToStatus(err error) error {

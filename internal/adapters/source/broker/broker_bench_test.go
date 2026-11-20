@@ -18,10 +18,10 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"codeberg.org/tram/tram/internal/adapters/source/broker"
-	"codeberg.org/tram/tram/internal/core/domain"
-	"codeberg.org/tram/tram/internal/testutil/natstest"
-	"codeberg.org/tram/tram/internal/testutil/otlpgen"
+	"github.com/go-tram/tram/internal/adapters/source/broker"
+	"github.com/go-tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/testutil/natstest"
+	"github.com/go-tram/tram/internal/testutil/otlpgen"
 )
 
 type countingSubscriber struct {

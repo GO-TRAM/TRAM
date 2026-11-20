@@ -13,7 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"codeberg.org/tram/tram/internal/adapters/k8scrd"
+	"github.com/go-tram/tram/internal/adapters/k8scrd"
 )
 
 type managerOptions struct {

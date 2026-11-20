@@ -18,11 +18,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"codeberg.org/tram/tram/internal/adapters/broker"
-	amqpdriver "codeberg.org/tram/tram/internal/adapters/broker/amqp"
-	"codeberg.org/tram/tram/internal/adapters/broker/brokertest"
-	"codeberg.org/tram/tram/internal/testutil/amqptest"
-	"codeberg.org/tram/tram/internal/testutil/tcpproxy"
+	"github.com/go-tram/tram/internal/adapters/broker"
+	amqpdriver "github.com/go-tram/tram/internal/adapters/broker/amqp"
+	"github.com/go-tram/tram/internal/adapters/broker/brokertest"
+	"github.com/go-tram/tram/internal/testutil/amqptest"
+	"github.com/go-tram/tram/internal/testutil/tcpproxy"
 )
 
 const unreachableURL = "amqp://127.0.0.1:1"

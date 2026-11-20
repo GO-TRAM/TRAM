@@ -8,8 +8,8 @@ package cel_test
 import (
 	"testing"
 
-	"codeberg.org/tram/tram/internal/core/domain"
-	"codeberg.org/tram/tram/internal/testutil/otlpgen"
+	"github.com/go-tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/testutil/otlpgen"
 )
 
 func BenchmarkCELFilter(b *testing.B) {

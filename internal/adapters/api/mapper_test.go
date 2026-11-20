@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
 
-	"codeberg.org/tram/tram/internal/adapters/api"
-	"codeberg.org/tram/tram/internal/core/domain"
-	v1 "codeberg.org/tram/tram/pkg/gen/go/api/proto/stream/v1"
+	"github.com/go-tram/tram/internal/adapters/api"
+	"github.com/go-tram/tram/internal/core/domain"
+	v1 "github.com/go-tram/tram/pkg/gen/go/api/proto/stream/v1"
 )
 
 func TestMapperMapsMetrics(t *testing.T) {

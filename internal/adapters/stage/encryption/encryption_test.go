@@ -23,8 +23,8 @@ import (
 
 	"log/slog"
 
-	"codeberg.org/tram/tram/internal/adapters/stage/encryption"
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/adapters/stage/encryption"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 // key is the base64-encoded 32-byte test key "0123456789abcdef0123456789abcdef".

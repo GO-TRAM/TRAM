@@ -1,4 +1,4 @@
-module codeberg.org/tram/tram
+module github.com/go-tram/tram
 
 go 1.27.2
 

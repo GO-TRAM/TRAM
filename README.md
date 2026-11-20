@@ -22,7 +22,7 @@ TRAM is a **cloud-native, in-memory data pipeline framework** for building real-
 ### Installation
 
 ```bash
-git clone https://codeberg.org/TRAM/TRAM.git tram
+git clone https://github.com/GO-TRAM/TRAM.git tram
 cd tram
 go build -o tram ./cmd/tram
 ```

@@ -16,9 +16,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"codeberg.org/tram/tram/internal/core/domain"
-	"codeberg.org/tram/tram/internal/ports"
-	v1 "codeberg.org/tram/tram/pkg/gen/go/api/proto/stream/v1"
+	"github.com/go-tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/ports"
+	v1 "github.com/go-tram/tram/pkg/gen/go/api/proto/stream/v1"
 )
 
 type streamServer struct {

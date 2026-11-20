@@ -15,7 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"codeberg.org/tram/tram/internal/adapters/k8scrd"
+	"github.com/go-tram/tram/internal/adapters/k8scrd"
 )
 
 const mapperLabel = "engine.tram.io/mapper"

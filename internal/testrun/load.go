@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"os"
 
-	"codeberg.org/tram/tram/internal/adapters/configsync"
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/adapters/configsync"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 // streamFile is a stream as file sync reads it, plus its test cases, which

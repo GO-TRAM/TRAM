@@ -17,7 +17,7 @@ import (
 
 	"github.com/Azure/go-amqp"
 
-	"codeberg.org/tram/tram/internal/adapters/broker"
+	"github.com/go-tram/tram/internal/adapters/broker"
 )
 
 const (

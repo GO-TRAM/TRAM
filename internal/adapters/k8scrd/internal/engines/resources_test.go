@@ -20,8 +20,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
-	tramv1alpha1 "codeberg.org/tram/tram/internal/adapters/k8scrd/api/v1alpha1"
-	"codeberg.org/tram/tram/internal/adapters/k8scrd/internal/engines"
+	tramv1alpha1 "github.com/go-tram/tram/internal/adapters/k8scrd/api/v1alpha1"
+	"github.com/go-tram/tram/internal/adapters/k8scrd/internal/engines"
 )
 
 const (

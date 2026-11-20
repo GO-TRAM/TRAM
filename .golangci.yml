@@ -36,7 +36,7 @@ formatters:
       # with the given prefixes are grouped after 3rd-party packages.
       # Default: []
       local-prefixes:
-        - codeberg.org/tram/tram
+        - github.com/go-tram/tram
 
     golines:
       # Target maximum line length.
@@ -227,7 +227,7 @@ linters:
             - "internal/core/..."
           allow:
             - $std
-            - codeberg.org/tram/tram/internal/core
+            - github.com/go-tram/tram/internal/core
 
         # Prevent domain from importing from adapters
         "no domain to adapter":
@@ -235,7 +235,7 @@ linters:
             - "internal/core/domain/..."
           allow:
             - $std
-            - codeberg.org/tram/tram/internal/core/domain
+            - github.com/go-tram/tram/internal/core/domain
 
         # Prevent adapters from importing from other adapters
         "no source adapter cross-imports":
@@ -244,24 +244,24 @@ linters:
           allow:
             - $std
             - github.com/go-playground/validator/v10
-            - codeberg.org/tram/tram/internal/core/domain
-            - codeberg.org/tram/tram/internal/adapters/source/...
+            - github.com/go-tram/tram/internal/core/domain
+            - github.com/go-tram/tram/internal/adapters/source/...
         "no stage adapter cross-imports":
           files:
             - "internal/adapters/stage/..."
           allow:
             - $std
             - github.com/go-playground/validator/v10
-            - codeberg.org/tram/tram/internal/core/domain
-            - codeberg.org/tram/tram/internal/adapters/stage/...
+            - github.com/go-tram/tram/internal/core/domain
+            - github.com/go-tram/tram/internal/adapters/stage/...
         "no sink adapter cross-imports":
           files:
             - "internal/adapters/sink/..."
           allow:
             - $std
             - github.com/go-playground/validator/v10
-            - codeberg.org/tram/tram/internal/core/domain
-            - codeberg.org/tram/tram/internal/adapters/sink/...
+            - github.com/go-tram/tram/internal/core/domain
+            - github.com/go-tram/tram/internal/adapters/sink/...
 
     embeddedstructfieldcheck:
       # Checks that sync.Mutex and sync.RWMutex are not used as embedded fields.
