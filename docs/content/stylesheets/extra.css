@@ -13,8 +13,9 @@
 }
 
 [data-md-color-scheme="default"] {
+  /* Darkened brand amber: readable link color on white (about 4.9:1). */
   --md-accent-fg-color: #c58f00;
-  --md-typeset-a-color: #3a5a99;
+  --md-typeset-a-color: #8f6b00;
 }
 
 [data-md-color-scheme="slate"] {
@@ -27,7 +28,7 @@
   --md-default-bg-color--lightest: hsla(var(--md-hue), 15%, 16%, 0.12);
   /* Code blocks a bit lighter than the page background, so snippets stay
      distinguishable in dark mode. Zensical reads --md-code-bg-color. */
-  --md-code-bg-color: hsla(var(--md-hue), 25%, 18%, 1);
+  --md-code-bg-color: hsla(var(--md-hue), 15%, 18%, 1);
   --md-accent-fg-color: var(--tram-yellow);
   --md-typeset-a-color: var(--tram-amber);
 }
@@ -82,7 +83,7 @@
   border-radius: 1rem;
   background: radial-gradient(
     closest-side,
-    hsla(52, 100%, 50%, 0.14),
+    color-mix(in srgb, var(--tram-yellow) 14%, transparent),
     transparent
   );
 }
