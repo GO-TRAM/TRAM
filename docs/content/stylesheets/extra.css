@@ -65,35 +65,44 @@
   box-shadow: var(--md-shadow-z1);
 }
 
-/* Start page: wordmark above the tagline */
+/* Start page: wordmark above the tagline, centered */
 .tram-hero {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 1.5rem;
-  margin: 1rem 0 2.5rem;
+  align-items: center;
+  text-align: center;
+  gap: 1.75rem;
+  margin: 2.5rem 0 3rem;
 }
 
 .tram-hero__logo {
-  width: 16rem;
+  width: 12rem;
   margin: 0;
+  padding: 1.5rem 2rem;
+  border-radius: 1rem;
+  background: radial-gradient(
+    closest-side,
+    hsla(52, 100%, 50%, 0.14),
+    transparent
+  );
 }
 
 .tram-hero__logo img {
+  display: block;
   width: 100%;
 }
 
 .tram-hero__tagline {
-  font-size: 1.1rem;
-  color: var(--md-default-fg-color--light);
+  max-width: 34rem;
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--md-default-fg-color);
 }
 
-@media screen and (max-width: 44.9375em) {
-  .tram-hero {
-    flex-direction: column;
-    text-align: center;
-    gap: 1rem;
-  }
+.tram-hero .md-typeset p:last-child {
+  margin-bottom: 0;
 }
 
 .md-typeset .grid.cards > ul > li:hover {
