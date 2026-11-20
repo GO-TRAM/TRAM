@@ -50,8 +50,8 @@ extra_css = ["stylesheets/extra.css"]
 
 [project.theme]
 language = "en"
-logo = "assets/colored-logo.svg"
-favicon = "assets/colored-logo.svg"
+logo = "assets/TRAM.svg"
+favicon = "assets/TRAM.svg"
 features = [
   "navigation.instant",
   "navigation.tracking",

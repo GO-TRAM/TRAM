@@ -6,7 +6,7 @@ hide:
 
 <div class="tram-hero" markdown>
 
-![](assets/colored-logo.svg){ .tram-hero__logo }
+![](assets/TRAM.svg){ .tram-hero__logo }
 
 <div markdown>
 
