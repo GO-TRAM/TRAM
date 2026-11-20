@@ -12,11 +12,13 @@ spec:
     spec:
       http_port: 4320
   stages:
-    - type: cel_filter
+    - type: filter
       name: split_logs
       from: otlp
       spec:
-        logs: "record.attributes.exists(attr, attr.key == 'level' && (attr.value.string_value == 'ERROR' || attr.value.string_value == 'WARN'))"
+        driver: cel
+        cel:
+          logs: "record.attributes.exists(attr, attr.key == 'level' && (attr.value.string_value == 'ERROR' || attr.value.string_value == 'WARN'))"
   sinks:
     - type: otlp
       name: error_logs_sink

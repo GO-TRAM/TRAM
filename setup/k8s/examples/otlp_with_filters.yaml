@@ -12,11 +12,13 @@ spec:
     spec:
       http_port: 4322
   stages:
-    - type: cel_filter
+    - type: filter
       name: customer_filter
       from: otlp
       spec:
-        logs: "record.attributes.exists(attr, attr.key == 'customer' && attr.value.string_value == 'A')"
+        driver: cel
+        cel:
+          logs: "record.attributes.exists(attr, attr.key == 'customer' && attr.value.string_value == 'A')"
   sinks:
     - type: otlp
       name: customer_a_sink

@@ -3,15 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 // SPDX-License-Identifier: MPL-2.0
 
-package celvalidator_test
+package cel_test
 
 import (
-	"log/slog"
 	"testing"
 
-	"github.com/go-playground/validator/v10"
-
-	"codeberg.org/eljoth/tram/internal/adapters/stage/celvalidator"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
 )
@@ -37,11 +33,7 @@ func BenchmarkCELValidator(b *testing.B) {
 	}
 
 	for _, expr := range expressions {
-		logger := slog.Default()
-		cel, err := celvalidator.New(domain.StageSpec{
-			Name: "cel",
-			Spec: map[string]any{"logs": expr.logs, "on_mismatch": "drop"},
-		}, validator.New(), logger)
+		stage, err := newStage("cel", map[string]any{"logs": expr.logs, "on_mismatch": "drop"})
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -51,7 +43,7 @@ func BenchmarkCELValidator(b *testing.B) {
 			b.Run(expr.name+"/"+shape.String(), func(b *testing.B) {
 				b.ReportAllocs()
 				for b.Loop() {
-					if notifyErr := cel.Notify(b.Context(), event); notifyErr != nil {
+					if notifyErr := stage.Notify(b.Context(), event); notifyErr != nil {
 						b.Fatal(notifyErr)
 					}
 				}

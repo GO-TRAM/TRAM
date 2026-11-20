@@ -328,8 +328,8 @@ func scenarioOrder() []struct{ name, title string } {
 	return []struct{ name, title string }{
 		{"otlp-nats", "OTLP → NATS"},
 		{"otlp-batch-nats", "OTLP → batch → NATS"},
-		{"otlp-split-nats", "OTLP → 2 × cel_filter → 2 × NATS"},
-		{scenarioNATSFilterNATS, "NATS → cel_filter → NATS"},
+		{"otlp-split-nats", "OTLP → 2 × filter → 2 × NATS"},
+		{scenarioNATSFilterNATS, "NATS → filter → NATS"},
 	}
 }
 
@@ -408,11 +408,11 @@ func sizingRows() []struct{ label, name string } {
 			"Scenario/otlp-batch-nats/concurrency=8/records=1000/resources=10/teams=1",
 		},
 		{
-			"Split: OTLP → 2 × cel_filter → 2 × NATS, 1,000 records per request, 8 callers",
+			"Split: OTLP → 2 × filter → 2 × NATS, 1,000 records per request, 8 callers",
 			"Scenario/otlp-split-nats/concurrency=8/records=1000/resources=10/teams=2",
 		},
 		{
-			"Forwarding: NATS → cel_filter → NATS, 1,000 records per message, 8 workers",
+			"Forwarding: NATS → filter → NATS, 1,000 records per message, 8 workers",
 			"Scenario/nats-filter-nats/concurrency=8/records=1000/resources=10/teams=1",
 		},
 		{
@@ -452,8 +452,8 @@ const minStreamsForIdleCPU = 1000
 
 func streamsShapes() []struct{ name, workers, title string } {
 	return []struct{ name, workers, title string }{
-		{scenarioNATSFilterNATS, "1", "NATS (1 worker) → cel_filter → NATS"},
-		{scenarioNATSFilterNATS, "4", "NATS (4 workers) → cel_filter → NATS"},
+		{scenarioNATSFilterNATS, "1", "NATS (1 worker) → filter → NATS"},
+		{scenarioNATSFilterNATS, "4", "NATS (4 workers) → filter → NATS"},
 		{"otlp-batch-nats", "0", "OTLP → batch → NATS"},
 	}
 }
@@ -548,8 +548,8 @@ const (
 	pkgOTLPSource   = "internal/adapters/source/otlp"
 	pkgSourceBase   = "internal/adapters/source/base"
 	pkgBatch        = "internal/adapters/stage/batch"
-	pkgCELFilter    = "internal/adapters/stage/celfilter"
-	pkgCELValidator = "internal/adapters/stage/celvalidator"
+	pkgCELFilter    = "internal/adapters/stage/filter/cel"
+	pkgCELValidator = "internal/adapters/stage/validation/cel"
 )
 
 func perRecordComponents() []component {
@@ -577,22 +577,22 @@ func perRecordComponents() []component {
 			"HandleLogs/records=1000/resources=10/teams=1",
 		},
 		{
-			"cel_filter, keeping half of the records",
+			"filter (CEL), keeping half of the records",
 			pkgCELFilter,
 			"CELFilter/keep-half/records=1000/resources=10/teams=2",
 		},
 		{
-			"cel_filter, keeping all records",
+			"filter (CEL), keeping all records",
 			pkgCELFilter,
 			"CELFilter/keep-all/records=1000/resources=10/teams=2",
 		},
 		{
-			"cel_validator, record-level expression",
+			"validation (CEL), record-level expression",
 			pkgCELValidator,
 			"CELValidator/record-attribute/records=1000/resources=10/teams=1",
 		},
 		{
-			"cel_validator, resource-level expression",
+			"validation (CEL), resource-level expression",
 			pkgCELValidator,
 			"CELValidator/resource-attribute/records=1000/resources=10/teams=1",
 		},

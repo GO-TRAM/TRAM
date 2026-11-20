@@ -18,7 +18,7 @@ Sources are the entry points of a pipeline that produce or receive data events.
 
 ### Generator Source
 
-Emits an empty event at a fixed interval, for testing how a stream is wired. Stages that count or inspect records, like `batch` or `cel_filter`, ignore the events.
+Emits an empty event at a fixed interval, for testing how a stream is wired. Stages that count or inspect records, like `batch` or `filter`, ignore the events.
 
 **Type:** `generator`
 
@@ -71,7 +71,7 @@ Receives OpenTelemetry Protocol data over HTTP (OTLP/HTTP). OTLP over gRPC is no
 | Status | When |
 |--------|------|
 | `200` | Empty response message in the request's encoding, once all sinks have accepted the data |
-| `422` | Body cannot be read or parsed, contains a duplicate key, or holds data rejected by a stage or sink (e.g. `cel_validator` with `on_mismatch: reject`) |
+| `422` | Body cannot be read or parsed, contains a duplicate key, or holds data rejected by a stage or sink (e.g. `validation` with `on_mismatch: reject`) |
 | `413` | Body larger than 20 MiB, also after decompression |
 | `415` | Other content types or encodings |
 | `503` | Passing the data on failed or took longer than `delivery_timeout`; sent with a `Retry-After` header. The only status OTLP clients retry — the only answer the request itself did not cause |
@@ -189,19 +189,26 @@ Stages process, transform, or filter data between sources and sinks.
 | Name | Type | Description |
 |------|------|-------------|
 | `batch` | `batch` | Merges concurrently arriving events into larger batches |
-| `cel_filter` | `cel_filter` | Keeps only the records that match a Common Expression Language (CEL) expression |
-| `cel_validator` | `cel_validator` | Accepts, drops or rejects whole events using Common Expression Language (CEL) |
 | `delay` | `delay` | Holds every event back for a fixed duration |
+| `filter` | `filter` | Keeps only the records that match the rules of its driver, e.g. CEL |
 | `noop` | `noop` | Pass-through stage that does no processing (useful for testing) |
+| `validation` | `validation` | Accepts, drops or rejects whole events by the rules of its driver, e.g. CEL |
 | `value_map` | `value_map` | Copies an attribute value to another attribute by looking it up in a table |
 
-### CEL Filter Stage
+### Filter Stage
 
-Keeps only the records for which a CEL expression returns true, decided per log record, metric data point and span. To accept or reject whole events instead, use the [CEL Validator Stage](#cel-validator-stage).
+Keeps only the records that match the rules of the driver chosen by `driver`, decided per log record, metric data point and span. The driver's options are under the driver's name, e.g. `cel:`. To accept or reject whole events instead, use the [Validation Stage](#validation-stage).
 
-**Type:** `cel_filter`
+**Type:** `filter`
 
 **Configuration:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `driver` | string | Yes | - | The technology of the rules: `cel` (Common Expression Language) |
+| `cel` | object | With `driver: cel` | - | Options of the CEL driver, see below |
+
+**CEL driver options:**
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
@@ -227,24 +234,30 @@ Signal types without an expression are passed on unfiltered. Use `"false"` to re
 "stages": [
   {
     "name": "customer-a",
-    "type": "cel_filter",
+    "type": "filter",
     "from": "otlp-in",
     "spec": {
-      "logs": "record.attributes.exists(a, a.key == 'customer' && a.value.string_value == 'A')"
+      "driver": "cel",
+      "cel": {
+        "logs": "record.attributes.exists(a, a.key == 'customer' && a.value.string_value == 'A')"
+      }
     }
   },
   {
     "name": "other-customers",
-    "type": "cel_filter",
+    "type": "filter",
     "from": "otlp-in",
     "spec": {
-      "logs": "!record.attributes.exists(a, a.key == 'customer' && a.value.string_value == 'A')"
+      "driver": "cel",
+      "cel": {
+        "logs": "!record.attributes.exists(a, a.key == 'customer' && a.value.string_value == 'A')"
+      }
     }
   }
 ]
 ```
 
-**Additional Examples:**
+**Additional Examples** (the `cel` options):
 
 Keep only ERROR logs:
 ```json
@@ -265,23 +278,30 @@ Keep only spans of one service:
 
     - Kept records are passed on in their original resource and scope; nothing is copied, and containers without remaining records are removed. If no record is kept, nothing is passed on
     - When splitting into branches, write the last branch as the negation of the others, so every record ends up in exactly one branch
-    - An expression that fails for a record, e.g. by accessing a missing list index, rejects the whole event. The OTLP source answers with HTTP 422, the Broker Source rejects the message instead of redelivering it
+    - A rule that fails for a record, e.g. a CEL expression accessing a missing list index, rejects the whole event. The OTLP source answers with HTTP 422, the Broker Source rejects the message instead of redelivering it
     - Place a batch stage before the filters to merge many small requests first; each branch then receives one filtered batch
 
-### CEL Validator Stage
+### Validation Stage
 
-Checks each incoming event as a whole — one OTLP request, one broker message, or one batch — with CEL expressions and passes it on, drops it, or rejects it. To keep only matching records, use the [CEL Filter Stage](#cel-filter-stage).
+Checks each incoming event as a whole — one OTLP request, one broker message, or one batch — against the rules of the driver chosen by `driver`, and passes it on, drops it, or rejects it. The driver's options are under the driver's name, e.g. `cel:`. To keep only matching records, use the [Filter Stage](#filter-stage).
 
-**Type:** `cel_validator`
+**Type:** `validation`
 
 **Configuration:**
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `logs` | string | No | `"true"` | CEL expression evaluated once for all logs of an event. Must return a boolean. Empty string accepts all logs |
-| `metrics` | string | No | `"true"` | CEL expression evaluated once for all metrics of an event. Must return a boolean. Empty string accepts all metrics |
-| `traces` | string | No | `"true"` | CEL expression evaluated once for all traces of an event. Must return a boolean. Empty string accepts all traces |
-| `on_mismatch` | string | Yes | - | Action when an expression returns false: `"drop"` or `"reject"` |
+| `driver` | string | Yes | - | The technology of the rules: `cel` (Common Expression Language) |
+| `on_mismatch` | string | Yes | - | Action when a signal does not match its rule: `"drop"` or `"reject"` |
+| `cel` | object | With `driver: cel` | - | Options of the CEL driver, see below |
+
+**CEL driver options:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `logs` | string | No | - | CEL expression evaluated once for all logs of an event. Must return a boolean. Without it, all logs match |
+| `metrics` | string | No | - | CEL expression evaluated once for all metrics of an event. Must return a boolean. Without it, all metrics match |
+| `traces` | string | No | - | CEL expression evaluated once for all traces of an event. Must return a boolean. Without it, all traces match |
 
 **CEL Expression Context:**
 - Each expression receives the complete payload of its signal type: `logs` (LogsData), `metrics` (MetricsData), or `traces` (TracesData)
@@ -289,7 +309,7 @@ Checks each incoming event as a whole — one OTLP request, one broker message, 
 - Use the full protobuf structure, e.g. `logs.resource_logs.all(...)`, and write the expression as a condition that every accepted delivery has to fulfil
 
 **On Mismatch Behavior:**
-- `drop` - Removes all data of the signal type whose expression returned false. Other signal types of the event are still passed on; if nothing is left, nothing is passed on
+- `drop` - Removes all data of the signal type that did not match. Other signal types of the event are still passed on; if nothing is left, nothing is passed on
 - `reject` - Rejects the whole event with an error. The OTLP source answers with HTTP 422, the Broker Source rejects the message instead of redelivering it
 
 **Example:** reject log deliveries in which a resource has no `service.name`:
@@ -297,11 +317,14 @@ Checks each incoming event as a whole — one OTLP request, one broker message, 
 ```json
 {
   "name": "require-service-name",
-  "type": "cel_validator",
+  "type": "validation",
   "from": "source",
   "spec": {
-    "logs": "logs.resource_logs.all(r, r.resource.attributes.exists(a, a.key == 'service.name'))",
-    "on_mismatch": "reject"
+    "driver": "cel",
+    "on_mismatch": "reject",
+    "cel": {
+      "logs": "logs.resource_logs.all(r, r.resource.attributes.exists(a, a.key == 'service.name'))"
+    }
   }
 }
 ```
@@ -311,32 +334,41 @@ Checks each incoming event as a whole — one OTLP request, one broker message, 
 Drop metric deliveries that contain a metric without a name:
 ```json
 {
-  "metrics": "metrics.resource_metrics.all(r, r.scope_metrics.all(s, s.metrics.all(m, m.name != '')))",
-  "on_mismatch": "drop"
+  "driver": "cel",
+  "on_mismatch": "drop",
+  "cel": {
+    "metrics": "metrics.resource_metrics.all(r, r.scope_metrics.all(s, s.metrics.all(m, m.name != '')))"
+  }
 }
 ```
 
 Reject trace deliveries that contain a span without a valid trace ID:
 ```json
 {
-  "traces": "traces.resource_spans.all(r, r.scope_spans.all(s, s.spans.all(span, size(span.trace_id) == 16)))",
-  "on_mismatch": "reject"
+  "driver": "cel",
+  "on_mismatch": "reject",
+  "cel": {
+    "traces": "traces.resource_spans.all(r, r.scope_spans.all(s, s.spans.all(span, size(span.trace_id) == 16)))"
+  }
 }
 ```
 
 Reject log deliveries that contain a record whose `tenant.id` is not a lowercase UUID. `matches` takes an RE2 regular expression and finds it anywhere in the value, so anchor it with `^` and `$`. Checking a value that a [Broker Sink](#broker-sink) puts into its NATS subjects keeps out dots, whitespace and wildcards, which would make the subject invalid or change its meaning:
 ```json
 {
-  "logs": "logs.resource_logs.all(r, r.scope_logs.all(s, s.log_records.all(record, record.attributes.exists(a, a.key == 'tenant.id' && a.value.string_value.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')))))",
-  "on_mismatch": "reject"
+  "driver": "cel",
+  "on_mismatch": "reject",
+  "cel": {
+    "logs": "logs.resource_logs.all(r, r.scope_logs.all(s, s.log_records.all(record, record.attributes.exists(a, a.key == 'tenant.id' && a.value.string_value.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')))))"
+  }
 }
 ```
 
 ??? note "Behavior"
 
     - The decision applies to the whole event. An expression like `log_records.exists(record, record.severity_text == 'ERROR')` passes on a delivery with one ERROR and many INFO records in full, including the INFO records
-    - An expression that fails for an event, e.g. by accessing a missing list index, rejects the whole event regardless of `on_mismatch`. The OTLP source answers with HTTP 422, the Broker Source rejects the message instead of redelivering it
-    - Place validators with `on_mismatch: reject` before a batch stage, so one invalid delivery does not reject the deliveries batched with it
+    - A rule that fails for an event, e.g. a CEL expression accessing a missing list index, rejects the whole event regardless of `on_mismatch`. The OTLP source answers with HTTP 422, the Broker Source rejects the message instead of redelivering it
+    - Place validation stages with `on_mismatch: reject` before a batch stage, so one invalid delivery does not reject the deliveries batched with it
 
 ### Batch Stage
 
@@ -372,7 +404,7 @@ Merges events that arrive concurrently into one event, so downstream components 
     - Batching only helps when events arrive concurrently, e.g. parallel OTLP requests or a Broker Source with several `workers`. A source that sends one event at a time only adds `timeout` to its latency
     - Behind an OTLP source, `timeout` has to stay below the source's `delivery_timeout` (8s by default), together with the other `batch` and `delay` stages on the way to a sink; otherwise the stream is rejected, see [Hold Times](#hold-times)
     - If a caller's context is cancelled (e.g. the OTLP client disconnects or the OTLP source's `delivery_timeout` expires) before the batch flushes, its event is withdrawn and not delivered. Once the flush has started, the event is delivered and the caller waits for the result
-    - A delivery error, including a rejection by a later stage, applies to every event in the batch. Place `cel_validator` stages with `on_mismatch: reject` before the batch, so one invalid event does not reject the others
+    - A delivery error, including a rejection by a later stage, applies to every event in the batch. Place `validation` stages with `on_mismatch: reject` before the batch, so one invalid event does not reject the others
     - `max_bytes` keeps batches below a limit downstream, e.g. the NATS server's `max_payload` (1 MB by default) or the request size a destination accepts. It counts the protobuf encoding of the data, which is what the NATS and OTLP sinks send uncompressed. An event that is larger by itself is sent alone, since events are never split, so the limit downstream can still be exceeded by single large requests. Measuring costs a pass over every event, so it is only done with `max_bytes` set
     - Events are merged by concatenating their resource entries. Resources and scopes that appear in several events are kept as separate entries, which OTLP allows
     - On shutdown, the open batch is delivered before downstream stages and sinks stop
@@ -596,7 +628,7 @@ With `url_expression`, the sink sends each log record, metric data point and spa
 - A URL is the base URL like `url`; the sink appends `/v1/logs`, `/v1/metrics` or `/v1/traces`. It must be `http` or `https` and have a host. An expression that fails, does not return a string, or returns another URL rejects the event. `get_attr` returns `""` for a missing attribute, which is not a valid URL
 - Signals without an expression are sent to `url`. Without `url`, they are not sent
 - `headers`, `timeout` and `insecure` apply to every destination
-- The data decides where it is sent. Make sure only trusted values can reach the expression, e.g. by deriving the URL from a tenant ID that a `cel_validator` checks, rather than taking a URL from an attribute
+- The data decides where it is sent. Make sure only trusted values can reach the expression, e.g. by deriving the URL from a tenant ID that a `validation` stage checks, rather than taking a URL from an attribute
 
 **Example with an endpoint per tenant:**
 
@@ -698,7 +730,7 @@ With `partition`, the sink computes a partition per record from a key, e.g. the 
 
 ## 📝 Notes
 
-- **Component Type vs Name:** The `type` field in configuration refers to the component implementation type (e.g., `generator`, `cel_validator`), while the `name` field is a user-defined identifier for the component instance within a stream.
+- **Component Type vs Name:** The `type` field in configuration refers to the component implementation type (e.g., `generator`, `validation`), while the `name` field is a user-defined identifier for the component instance within a stream.
 - **Connections:** The `from` field in stages and sinks specifies which component they receive data from.
 - **Tree Structure:** Pipelines form a tree with the source as root, stages as intermediate nodes, and sinks as leaves.
 - **Delivery Guarantee:** Delivery is at-least-once, and TRAM does not deduplicate. A sink can receive the same data again, e.g. when a client retries after a `503` although some sinks had already accepted the data, when a broker message is redelivered after one branch of its stream failed, or when a publish succeeded but its acknowledgement was lost. Deduplicate at the destination where duplicates matter.

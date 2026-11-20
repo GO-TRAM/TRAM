@@ -133,9 +133,10 @@ tram/
 │   │   ├── api/                      # gRPC API and HTTP gateway
 │   │   ├── broker/                   # Broker driver contract, drivers (nats/, kafka/, amqp/), conformance tests
 │   │   ├── configsync/               # File sync (--enable-file-sync)
+│   │   ├── driver/                   # Resolves the `driver` of a component spec and splits off its options
 │   │   ├── k8scrd/                   # Kubernetes operator (--enable-k8s-operator)
 │   │   ├── source/                   # Sources, base/ and factory.go
-│   │   ├── stage/                    # Stages, base/ and factory.go
+│   │   ├── stage/                    # Stages, base/ and factory.go; filter/ and validation/ with their drivers (cel/)
 │   │   └── sink/                     # Sinks, base/ and factory.go
 │   ├── core/                         # Builds, runs and stops streams
 │   │   └── domain/                   # Events, specs, the stream tree, record filtering
@@ -631,7 +632,18 @@ When adding a stage or changing how events flow, add a case there that checks wh
 
 ### Broker Drivers
 
-A broker driver implements the contract in `internal/adapters/broker` and has to pass the conformance suite in `broker/brokertest` (`brokertest.Run`): publish and receive, acknowledge, retry after a delay, reject, a durable position across subscribers, cancellation, invalid destinations and the maximum message size. Run it against the broker in a container, as `broker/nats` does. Register the driver in `broker/drivers`, the only package that knows the concrete drivers; its options sit under its name in the component spec. The broker sink only sees a driver's `PublisherDriver` side and the broker source its `SubscriberDriver` side, so neither can do the other's job. Unit tests of the broker source and sink inject the in-memory driver of `brokertest` through `NewWithDrivers` (see their `export_test.go`) and need no container.
+A broker driver implements the contract in `internal/adapters/broker` and has to pass the conformance suite in `broker/brokertest` (`brokertest.Run`): publish and receive, acknowledge, retry after a delay, reject, a durable position across subscribers, cancellation, invalid destinations and the maximum message size. Run it against the broker in a container, as `broker/nats` does. Register the driver in `broker/drivers`, the only package that knows the concrete drivers; its options sit under its name in the component spec, which `driver.Split` takes apart. The broker sink only sees a driver's `PublisherDriver` side and the broker source its `SubscriberDriver` side, so neither can do the other's job. Unit tests of the broker source and sink inject the in-memory driver of `brokertest` through `NewWithDrivers` (see their `export_test.go`) and need no container.
+
+### Stage Drivers
+
+The `filter` and `validation` stages are concepts whose rules come from a driver, as the broker components' messaging does: the spec names it in `driver` and holds its options under its name, e.g. `driver: cel` and `cel: {...}`. `driver.Split` takes the spec apart, so the stage parses only its own fields (`on_mismatch` for validation) and the driver only its options.
+
+The stage owns what every driver shares: walking the records and pruning what becomes empty (filter), dropping or rejecting (validation), and turning a failing rule into a rejection. A driver only compiles its options into rules:
+
+- **filter:** `filter.Driver` returns `filter.Rules`, whose `Predicates` give a predicate per signal for one event. A nil predicate keeps all records of its signal
+- **validation:** `validation.Driver` returns `validation.Rules`, which decide per signal whether the whole signal matches. A signal without a rule matches
+
+To add a driver, e.g. OTTL, create `stage/filter/ottl` next to `stage/filter/cel` with a `Name` and a `Driver`, and register it in the driver set of `NewFactory` in `stage/factory.go`, the only place that knows the concrete stage drivers. Test it through the stage as `filter/cel` does, so the rules are checked with the stage's pruning and rejection.
 
 ### Kubernetes Operator Tests
 
@@ -650,8 +662,8 @@ Benchmarks cover the per-event hot path:
 |-----------|---------|----------|
 | `BenchmarkNotifySubscribers` | `source/base`, `stage/base` | Fan-out cost per event and child |
 | `BenchmarkPipeline` | `core` | A full stream with real stages, in records/s |
-| `BenchmarkCELValidator` | `stage/celvalidator` | Expression evaluation per payload size |
-| `BenchmarkCELFilter` | `stage/celfilter` | Per-record filtering for different keep ratios |
+| `BenchmarkCELValidator` | `stage/validation/cel` | Expression evaluation per payload size |
+| `BenchmarkCELFilter` | `stage/filter/cel` | Per-record filtering for different keep ratios |
 | `BenchmarkFilter` | `core/domain` | The record filtering helpers without CEL |
 | `BenchmarkNotify` | `sink/broker` | Grouping and publishing to NATS through the NATS driver (container) |
 | `BenchmarkConsume` | `source/broker` | Receiving, decoding and acknowledging from NATS through the NATS driver (container) |

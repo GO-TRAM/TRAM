@@ -10,12 +10,15 @@
     "stages": [
       {
         "name": "logs",
-        "type": "cel_filter",
+        "type": "filter",
         "from": "otlp",
         "spec": {
-          "logs": "record.severity_number >= 9",
-          "metrics": "false",
-          "traces": "false"
+          "driver": "cel",
+          "cel": {
+            "logs": "record.severity_number >= 9",
+            "metrics": "false",
+            "traces": "false"
+          }
         }
       },
       {
@@ -29,12 +32,15 @@
       },
       {
         "name": "metrics",
-        "type": "cel_filter",
+        "type": "filter",
         "from": "otlp",
         "spec": {
-          "logs": "false",
-          "metrics": "!metric.name.startsWith('debug.')",
-          "traces": "false"
+          "driver": "cel",
+          "cel": {
+            "logs": "false",
+            "metrics": "!metric.name.startsWith('debug.')",
+            "traces": "false"
+          }
         }
       },
       {
@@ -48,12 +54,15 @@
       },
       {
         "name": "traces",
-        "type": "cel_filter",
+        "type": "filter",
         "from": "otlp",
         "spec": {
-          "logs": "false",
-          "metrics": "false",
-          "traces": "!resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'debug-noise')"
+          "driver": "cel",
+          "cel": {
+            "logs": "false",
+            "metrics": "false",
+            "traces": "!resource.attributes.exists(attr, attr.key == 'service.name' && attr.value.string_value == 'debug-noise')"
+          }
         }
       },
       {

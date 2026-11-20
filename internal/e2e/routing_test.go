@@ -53,15 +53,18 @@ func hasCustomer(attrs, customer string) string {
 // customerValidator rejects an event unless every log record, span and data
 // point (of gauges and sums) has the customer, see hasCustomer.
 func customerValidator(name, from, customer string) domain.StageSpec {
-	return domain.StageSpec{Name: name, Type: "cel_validator", From: from, Spec: map[string]any{
-		"logs": "logs.resource_logs.all(r, r.scope_logs.all(s, s.log_records.all(record, " +
-			hasCustomer("record.attributes", customer) + ")))",
-		"traces": "traces.resource_spans.all(r, r.scope_spans.all(s, s.spans.all(span, " +
-			hasCustomer("span.attributes", customer) + ")))",
-		"metrics": "metrics.resource_metrics.all(r, r.scope_metrics.all(s, s.metrics.all(m, " +
-			"m.gauge.data_points.all(dp, " + hasCustomer("dp.attributes", customer) + ") && " +
-			"m.sum.data_points.all(dp, " + hasCustomer("dp.attributes", customer) + "))))",
+	return domain.StageSpec{Name: name, Type: "validation", From: from, Spec: map[string]any{
+		"driver":      "cel",
 		"on_mismatch": "reject",
+		"cel": map[string]any{
+			"logs": "logs.resource_logs.all(r, r.scope_logs.all(s, s.log_records.all(record, " +
+				hasCustomer("record.attributes", customer) + ")))",
+			"traces": "traces.resource_spans.all(r, r.scope_spans.all(s, s.spans.all(span, " +
+				hasCustomer("span.attributes", customer) + ")))",
+			"metrics": "metrics.resource_metrics.all(r, r.scope_metrics.all(s, s.metrics.all(m, " +
+				"m.gauge.data_points.all(dp, " + hasCustomer("dp.attributes", customer) + ") && " +
+				"m.sum.data_points.all(dp, " + hasCustomer("dp.attributes", customer) + "))))",
+		},
 	}}
 }
 

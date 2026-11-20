@@ -19,10 +19,13 @@
     "stages": [
       {
         "name": "filter_stage",
-        "type": "cel_filter",
+        "type": "filter",
         "from": "nats_source",
         "spec": {
-          "logs": "record.attributes.exists(attr, attr.key == 'service.name')"
+          "driver": "cel",
+          "cel": {
+            "logs": "record.attributes.exists(attr, attr.key == 'service.name')"
+          }
         }
       }
     ],

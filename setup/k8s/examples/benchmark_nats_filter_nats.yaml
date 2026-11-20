@@ -1,5 +1,5 @@
 # benchmark_nats_filter_nats.yaml - NATS to filter to NATS benchmark configuration
-# Matches the nats-filter-nats scenario from BENCHMARK.md: NATS → cel_filter → NATS
+# Matches the nats-filter-nats scenario from BENCHMARK.md: NATS → filter → NATS
 # Note: uses durable consumer with workers as specified in benchmarks
 apiVersion: io.tram.core/v1
 kind: Stream
@@ -21,11 +21,13 @@ spec:
         stream: input-stream
         durable: tram-benchmark-consumer
   stages:
-    - type: cel_filter
+    - type: filter
       name: filter_stage
       from: nats_source
       spec:
-        logs: "record.attributes.exists(attr, attr.key == 'service.name')"
+        driver: cel
+        cel:
+          logs: "record.attributes.exists(attr, attr.key == 'service.name')"
   sinks:
     - type: broker
       name: nats_sink

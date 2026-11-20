@@ -20,6 +20,7 @@ import (
 	contract "codeberg.org/eljoth/tram/internal/adapters/broker"
 	"codeberg.org/eljoth/tram/internal/adapters/broker/brokertest"
 	"codeberg.org/eljoth/tram/internal/adapters/broker/partition"
+	"codeberg.org/eljoth/tram/internal/adapters/driver"
 	"codeberg.org/eljoth/tram/internal/adapters/sink/broker"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 	"codeberg.org/eljoth/tram/internal/testutil/otlpgen"
@@ -31,7 +32,7 @@ func newSink(t *testing.T, m *brokertest.Memory, spec map[string]any) (*broker.S
 	t.Helper()
 	s, err := broker.NewWithDrivers(domain.SinkSpec{Name: "out", From: "in", Spec: spec},
 		validator.New(validator.WithRequiredStructEnabled()), slog.New(slog.DiscardHandler),
-		contract.Drivers[contract.PublisherDriver]{brokertest.MemoryName: m})
+		driver.Set[contract.PublisherDriver]{brokertest.MemoryName: m})
 	if err == nil {
 		t.Cleanup(func() { _ = s.Stop() })
 	}

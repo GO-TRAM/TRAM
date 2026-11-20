@@ -3,18 +3,16 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 // SPDX-License-Identifier: MPL-2.0
 
-package celvalidator_test
+package cel_test
 
 import (
 	"testing"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"log/slog"
-
-	"codeberg.org/eljoth/tram/internal/adapters/stage/celvalidator"
+	"codeberg.org/eljoth/tram/internal/adapters/stage/validation"
+	"codeberg.org/eljoth/tram/internal/adapters/stage/validation/cel"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
@@ -33,7 +31,6 @@ const (
 func TestCELValidator(t *testing.T) {
 	t.Parallel()
 
-	validator := validator.New()
 	cases := []struct {
 		name        string
 		spec        domain.StageSpec
@@ -49,8 +46,7 @@ func TestCELValidator(t *testing.T) {
 					"on_mismatch": "drop",
 				},
 			},
-			initErr:     celvalidator.ErrCELInvalidLogsExpression,
-			validateErr: celvalidator.ErrCELEnvironmenInitialization,
+			initErr: cel.ErrInvalidLogsExpression,
 		},
 		{
 			name: "valid logs without cel",
@@ -182,7 +178,7 @@ func TestCELValidator(t *testing.T) {
 					},
 				},
 			},
-			validateErr: celvalidator.ErrCELRejectingLogs,
+			validateErr: validation.ErrLogsRejected,
 		},
 		{
 			name: "invalid metrics cel",
@@ -192,8 +188,7 @@ func TestCELValidator(t *testing.T) {
 					"on_mismatch": "drop",
 				},
 			},
-			initErr:     celvalidator.ErrCELInvalidMetricsExpression,
-			validateErr: celvalidator.ErrCELEnvironmenInitialization,
+			initErr: cel.ErrInvalidMetricsExpression,
 		},
 		{
 			name: "valid metrics without cel",
@@ -293,7 +288,7 @@ func TestCELValidator(t *testing.T) {
 					},
 				},
 			},
-			validateErr: celvalidator.ErrCELRejectingMetrics,
+			validateErr: validation.ErrMetricsRejected,
 		},
 		{
 			name: "invalid traces cel",
@@ -303,8 +298,7 @@ func TestCELValidator(t *testing.T) {
 					"on_mismatch": "drop",
 				},
 			},
-			initErr:     celvalidator.ErrCELInvalidTracesExpression,
-			validateErr: celvalidator.ErrCELEnvironmenInitialization,
+			initErr: cel.ErrInvalidTracesExpression,
 		},
 		{
 			name: "valid traces without cel",
@@ -404,7 +398,7 @@ func TestCELValidator(t *testing.T) {
 					},
 				},
 			},
-			validateErr: celvalidator.ErrCELRejectingTraces,
+			validateErr: validation.ErrTracesRejected,
 		},
 	}
 
@@ -412,18 +406,18 @@ func TestCELValidator(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			logger := slog.Default()
-			cel, err := celvalidator.New(c.spec, validator, logger)
+			stage, err := newStage(c.spec.Name, c.spec.Spec)
 			require.ErrorIs(t, err, c.initErr)
-			assert.ErrorIs(t, cel.Notify(t.Context(), &c.event), c.validateErr)
+			if c.initErr != nil {
+				return
+			}
+			assert.ErrorIs(t, stage.Notify(t.Context(), &c.event), c.validateErr)
 		})
 	}
 }
 
 func TestCELValidatorEvaluationErrorRejects(t *testing.T) {
 	t.Parallel()
-
-	logger := slog.Default()
 
 	cases := []struct {
 		name       string
@@ -437,17 +431,15 @@ func TestCELValidatorEvaluationErrorRejects(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			cel, err := celvalidator.New(domain.StageSpec{
-				Spec: map[string]any{
-					"logs":        c.expression,
-					"on_mismatch": "drop",
-				},
-			}, validator.New(), logger)
+			stage, err := newStage("", map[string]any{
+				"logs":        c.expression,
+				"on_mismatch": "drop",
+			})
 			require.NoError(t, err)
 
-			err = cel.Notify(t.Context(), &domain.Event{Logs: &logspb.LogsData{}})
+			err = stage.Notify(t.Context(), &domain.Event{Logs: &logspb.LogsData{}})
 			require.ErrorIs(t, err, domain.ErrEventRejected)
-			assert.ErrorIs(t, err, celvalidator.ErrCELEvaluation)
+			assert.ErrorIs(t, err, cel.ErrEvaluation)
 		})
 	}
 }
@@ -455,33 +447,27 @@ func TestCELValidatorEvaluationErrorRejects(t *testing.T) {
 func TestCELValidatorRejectsUnknownVariable(t *testing.T) {
 	t.Parallel()
 
-	logger := slog.Default()
-	_, err := celvalidator.New(domain.StageSpec{
-		Spec: map[string]any{
-			"logs":        "event.Logs != null",
-			"on_mismatch": "reject",
-		},
-	}, validator.New(), logger)
-	assert.ErrorIs(t, err, celvalidator.ErrCELInvalidLogsExpression)
+	_, err := newStage("", map[string]any{
+		"logs":        "event.Logs != null",
+		"on_mismatch": "reject",
+	})
+	assert.ErrorIs(t, err, cel.ErrInvalidLogsExpression)
 }
 
 func TestCELValidatorDropDoesNotMutateEvent(t *testing.T) {
 	t.Parallel()
 
-	logger := slog.Default()
-	cel, err := celvalidator.New(domain.StageSpec{
-		Spec: map[string]any{
-			"logs":        "false",
-			"on_mismatch": "drop",
-		},
-	}, validator.New(), logger)
+	stage, err := newStage("", map[string]any{
+		"logs":        "false",
+		"on_mismatch": "drop",
+	})
 	assert.NoError(t, err)
 
 	logs := &logspb.LogsData{}
 	metrics := &metricspb.MetricsData{}
 	event := &domain.Event{Logs: logs, Metrics: metrics}
 
-	assert.NoError(t, cel.Notify(t.Context(), event))
+	assert.NoError(t, stage.Notify(t.Context(), event))
 	assert.Same(t, logs, event.Logs)
 	assert.Same(t, metrics, event.Metrics)
 }

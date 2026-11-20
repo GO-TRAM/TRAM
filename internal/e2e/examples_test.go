@@ -27,10 +27,12 @@ import (
 	"codeberg.org/eljoth/tram/internal/adapters/source/generator"
 	sourceotlp "codeberg.org/eljoth/tram/internal/adapters/source/otlp"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/batch"
-	"codeberg.org/eljoth/tram/internal/adapters/stage/celfilter"
-	"codeberg.org/eljoth/tram/internal/adapters/stage/celvalidator"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/delay"
+	"codeberg.org/eljoth/tram/internal/adapters/stage/filter"
+	celfilter "codeberg.org/eljoth/tram/internal/adapters/stage/filter/cel"
 	"codeberg.org/eljoth/tram/internal/adapters/stage/noop"
+	stagevalidation "codeberg.org/eljoth/tram/internal/adapters/stage/validation"
+	celvalidation "codeberg.org/eljoth/tram/internal/adapters/stage/validation/cel"
 	"codeberg.org/eljoth/tram/internal/core/domain"
 )
 
@@ -124,7 +126,7 @@ func parseSource(typ string, raw map[string]any) error {
 	case sourceotlp.Type:
 		return parse[sourceotlp.Spec](raw)
 	case sourcebroker.Type:
-		return parseBroker[sourcebroker.Spec, natsdriver.SubscriberSpec](raw)
+		return parseDriver[sourcebroker.Spec, natsdriver.SubscriberSpec](raw, natsdriver.Name)
 	case generator.Type:
 		return parse[generator.Spec](raw)
 	default:
@@ -136,10 +138,10 @@ func parseStage(typ string, raw map[string]any) error {
 	switch typ {
 	case batch.Type:
 		return parse[batch.Spec](raw)
-	case celfilter.Type:
-		return parse[celfilter.Spec](raw)
-	case celvalidator.Type:
-		return parse[celvalidator.Spec](raw)
+	case filter.Type:
+		return parseDriver[filter.Spec, celfilter.Spec](raw, celfilter.Name)
+	case stagevalidation.Type:
+		return parseDriver[stagevalidation.Spec, celvalidation.Spec](raw, celvalidation.Name)
 	case delay.Type:
 		return parse[delay.Spec](raw)
 	case noop.Type:
@@ -154,7 +156,7 @@ func parseSink(typ string, raw map[string]any) error {
 	case sinkdebug.Type:
 		return parse[sinkdebug.Spec](raw)
 	case sinkbroker.Type:
-		return parseBroker[sinkbroker.Spec, natsdriver.PublisherSpec](raw)
+		return parseDriver[sinkbroker.Spec, natsdriver.PublisherSpec](raw, natsdriver.Name)
 	case sinkotlp.Type:
 		return parse[sinkotlp.Spec](raw)
 	default:
@@ -162,18 +164,19 @@ func parseSink(typ string, raw map[string]any) error {
 	}
 }
 
-// parseBroker checks a broker spec: the generic fields as T, the options of
-// the NATS driver, the only driver, as D.
-func parseBroker[T, D any](raw map[string]any) error {
-	if raw["driver"] != natsdriver.Name {
-		return fmt.Errorf("unknown broker driver %v", raw["driver"])
+// parseDriver checks the spec of a component with drivers: the generic
+// fields as T, the options of the driver called name, the only driver the
+// examples use, as D.
+func parseDriver[T, D any](raw map[string]any, name string) error {
+	if raw["driver"] != name {
+		return fmt.Errorf("unknown driver %v", raw["driver"])
 	}
-	opts, ok := raw[natsdriver.Name].(map[string]any)
+	opts, ok := raw[name].(map[string]any)
 	if !ok {
-		return fmt.Errorf("missing options of driver %s", natsdriver.Name)
+		return fmt.Errorf("missing options of driver %s", name)
 	}
 	generic := maps.Clone(raw)
-	delete(generic, natsdriver.Name)
+	delete(generic, name)
 	if err := parse[T](generic); err != nil {
 		return err
 	}

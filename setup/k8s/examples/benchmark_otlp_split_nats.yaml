@@ -1,5 +1,5 @@
 # benchmark_otlp_split_nats.yaml - OTLP to split to NATS benchmark configuration
-# Matches the otlp-split-nats scenario from BENCHMARK.md: OTLP → 2 × cel_filter → 2 × NATS
+# Matches the otlp-split-nats scenario from BENCHMARK.md: OTLP → 2 × filter → 2 × NATS
 # Note: splits into team-0 and other teams as specified in benchmarks
 apiVersion: io.tram.core/v1
 kind: Stream
@@ -14,16 +14,20 @@ spec:
     spec:
       http_port: 4326
   stages:
-    - type: cel_filter
+    - type: filter
       name: team_0_filter
       from: otlp_source
       spec:
-        logs: "record.attributes.exists(attr, attr.key == 'team' && attr.value.string_value == 'team-0')"
-    - type: cel_filter
+        driver: cel
+        cel:
+          logs: "record.attributes.exists(attr, attr.key == 'team' && attr.value.string_value == 'team-0')"
+    - type: filter
       name: other_teams_filter
       from: otlp_source
       spec:
-        logs: "!record.attributes.exists(attr, attr.key == 'team' && attr.value.string_value == 'team-0')"
+        driver: cel
+        cel:
+          logs: "!record.attributes.exists(attr, attr.key == 'team' && attr.value.string_value == 'team-0')"
   sinks:
     - type: broker
       name: team_0_sink

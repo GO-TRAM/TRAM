@@ -182,10 +182,13 @@ func TestDeliveryResultReachesClient(t *testing.T) {
 			arrives:  true,
 		},
 		{
-			name: "rejected by cel_validator",
-			stages: []domain.StageSpec{{Name: "validate", Type: "cel_validator", From: "in", Spec: map[string]any{
-				"logs":        "logs.resource_logs.all(r, r.resource.attributes.exists(a, a.key == 'service.name' && a.value.string_value == 'known'))",
+			name: "rejected by validation",
+			stages: []domain.StageSpec{{Name: "validate", Type: "validation", From: "in", Spec: map[string]any{
+				"driver":      "cel",
 				"on_mismatch": "reject",
+				"cel": map[string]any{
+					"logs": "logs.resource_logs.all(r, r.resource.attributes.exists(a, a.key == 'service.name' && a.value.string_value == 'known'))",
+				},
 			}}},
 			sink:     captureSinkSpec("out", "validate"),
 			payload:  request("unknown", rec{"r1", "A"}),

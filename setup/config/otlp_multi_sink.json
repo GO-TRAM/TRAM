@@ -11,10 +11,13 @@
     "stages": [
       {
         "name": "split_logs",
-        "type": "cel_filter",
+        "type": "filter",
         "from": "otlp_source",
         "spec": {
-          "logs": "record.attributes.exists(attr, attr.key == 'level' && (attr.value.string_value == 'ERROR' || attr.value.string_value == 'WARN'))"
+          "driver": "cel",
+          "cel": {
+            "logs": "record.attributes.exists(attr, attr.key == 'level' && (attr.value.string_value == 'ERROR' || attr.value.string_value == 'WARN'))"
+          }
         }
       }
     ],

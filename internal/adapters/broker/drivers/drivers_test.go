@@ -17,6 +17,7 @@ import (
 	"codeberg.org/eljoth/tram/internal/adapters/broker/drivers"
 	"codeberg.org/eljoth/tram/internal/adapters/broker/kafka"
 	"codeberg.org/eljoth/tram/internal/adapters/broker/nats"
+	"codeberg.org/eljoth/tram/internal/adapters/driver"
 )
 
 func TestFactories(t *testing.T) {
@@ -43,11 +44,11 @@ func TestFactoriesUnknownDriver(t *testing.T) {
 	t.Parallel()
 
 	p, err := drivers.NewPublisherFactory(validator.New()).Driver("memory")
-	require.ErrorIs(t, err, broker.ErrUnknownDriver)
+	require.ErrorIs(t, err, driver.ErrUnknown)
 	require.ErrorContains(t, err, "available: amqp, kafka, nats")
 	assert.Nil(t, p)
 
 	s, err := drivers.NewSubscriberFactory(validator.New()).Driver("memory")
-	require.ErrorIs(t, err, broker.ErrUnknownDriver)
+	require.ErrorIs(t, err, driver.ErrUnknown)
 	assert.Nil(t, s)
 }

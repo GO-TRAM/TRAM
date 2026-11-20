@@ -51,9 +51,9 @@ otlp (:4318) ────┼─ metrics ─ batch-metrics ─ openobserve-metric
                  └─ traces ── batch-traces ── openobserve-traces   → stream tram_traces
 ```
 
-- **`logs`** is a `cel_filter` that keeps log records with `severity_number >= 9` (INFO and above), so the DEBUG logs of `debug-noise` are dropped. Its `metrics` and `traces` expressions are `"false"`, so only logs go down this branch.
-- **`metrics`** is a `cel_filter` that keeps metrics whose name does not start with `debug.`, so `debug.cache.size` is dropped. Its `logs` and `traces` expressions are `"false"`, so only metrics go down this branch.
-- **`traces`** is a `cel_filter` that drops spans whose resource has the `service.name` `debug-noise`. Its `logs` and `metrics` expressions are `"false"`, so only traces go down this branch.
+- **`logs`** is a `filter` stage with the CEL driver that keeps log records with `severity_number >= 9` (INFO and above), so the DEBUG logs of `debug-noise` are dropped. Its `metrics` and `traces` CEL expressions are `"false"`, so only logs go down this branch.
+- **`metrics`** is a `filter` stage with the CEL driver that keeps metrics whose name does not start with `debug.`, so `debug.cache.size` is dropped. Its `logs` and `traces` CEL expressions are `"false"`, so only metrics go down this branch.
+- **`traces`** is a `filter` stage with the CEL driver that drops spans whose resource has the `service.name` `debug-noise`. Its `logs` and `metrics` CEL expressions are `"false"`, so only traces go down this branch.
 - **`batch-logs`**, **`batch-metrics`** and **`batch-traces`** merge concurrent requests, flushing at 100, 10 and 5 records or after 5s. A batch stage answers a request only after its batch has been delivered, so the clients wait for OpenObserve to accept their data and slow down when it cannot keep up. A client that sends one request at a time gets one request through per flush, so `max_records` has to fit the number of requests that arrive at the same time: with 200 `checkout` workers, the batches of `batch-logs` fill up long before the timeout. The 5s stay below the OTLP source's `delivery_timeout` of 8s, which Tram requires, see [Hold Times](../../COMPONENTS.md#hold-times).
 - **`openobserve-logs`**, **`openobserve-metrics`** and **`openobserve-traces`** are `otlp` sinks that send to OpenObserve's OTLP endpoint `http://openobserve:5080/api/default` with Basic auth. The `stream-name` header puts logs into the OpenObserve stream `tram_logs` and traces into `tram_traces`.
 
