@@ -37,3 +37,6 @@ tools/loadgen/
 /docs/content/benchmarks.md
 /docs/content/contributing.md
 __pycache__/
+examples/tenant-routing-k8s/
+examples/tenant-routing-demo/
+examples/tenant-routing-loadtest/
