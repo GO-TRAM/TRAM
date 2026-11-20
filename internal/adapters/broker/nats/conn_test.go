@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	natsdriver "codeberg.org/tram/tram/internal/adapters/broker/nats"
-	"codeberg.org/tram/tram/internal/testutil/natstest"
-	"codeberg.org/tram/tram/internal/testutil/tcpproxy"
+	natsdriver "github.com/go-tram/tram/internal/adapters/broker/nats"
+	"github.com/go-tram/tram/internal/testutil/natstest"
+	"github.com/go-tram/tram/internal/testutil/tcpproxy"
 )
 
 func TestConnectionOutlastsDefaultReconnectAttempts(t *testing.T) {

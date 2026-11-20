@@ -20,12 +20,12 @@ import (
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 
-	"codeberg.org/tram/tram/internal/adapters/crypto"
-	"codeberg.org/tram/tram/internal/adapters/crypto/drivers"
-	"codeberg.org/tram/tram/internal/adapters/driver"
-	"codeberg.org/tram/tram/internal/adapters/stage/base"
-	"codeberg.org/tram/tram/internal/core/domain"
-	"codeberg.org/tram/tram/internal/ports"
+	"github.com/go-tram/tram/internal/adapters/crypto"
+	"github.com/go-tram/tram/internal/adapters/crypto/drivers"
+	"github.com/go-tram/tram/internal/adapters/driver"
+	"github.com/go-tram/tram/internal/adapters/stage/base"
+	"github.com/go-tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/ports"
 )
 
 // Type is the stage's type in a stream spec.

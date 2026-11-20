@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
-	"codeberg.org/tram/tram/internal/adapters/source/base"
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/adapters/source/base"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 const (

@@ -10,9 +10,9 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	contract "codeberg.org/tram/tram/internal/adapters/broker"
-	"codeberg.org/tram/tram/internal/adapters/driver"
-	"codeberg.org/tram/tram/internal/core/domain"
+	contract "github.com/go-tram/tram/internal/adapters/broker"
+	"github.com/go-tram/tram/internal/adapters/driver"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 // NewWithDrivers exposes newSource to the tests, which inject the in-memory driver.

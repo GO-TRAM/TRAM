@@ -14,7 +14,7 @@ import (
 
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"codeberg.org/tram/tram/internal/adapters/broker"
+	"github.com/go-tram/tram/internal/adapters/broker"
 )
 
 const (

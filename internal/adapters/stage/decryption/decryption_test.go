@@ -23,10 +23,10 @@ import (
 
 	"log/slog"
 
-	"codeberg.org/tram/tram/internal/adapters/crypto"
-	"codeberg.org/tram/tram/internal/adapters/stage/decryption"
-	"codeberg.org/tram/tram/internal/adapters/stage/encryption"
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/adapters/crypto"
+	"github.com/go-tram/tram/internal/adapters/stage/decryption"
+	"github.com/go-tram/tram/internal/adapters/stage/encryption"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 // key and otherKey are base64-encoded 32-byte test keys:

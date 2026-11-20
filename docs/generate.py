@@ -1,7 +1,7 @@
 """Generates the site pages from the Markdown files of the repository.
 
 README.md, COMPONENTS.md and the other documents stay the single source of
-truth and keep working when browsed on Codeberg. Run this script before
+truth and keep working when browsed on GitHub. Run this script before
 `zensical build` or `zensical serve` (Zensical has no hooks, so the pages
 cannot be generated during the build):
 
@@ -12,7 +12,7 @@ It splits the documents into pages of the site along their headings, drops
 the emojis in front of the headings and the horizontal rules between
 sections, and rewrites their links: links to a section point to the page it
 ended up on, links to docs/assets/ to the site's assets, and links to any
-other file of the repository to the file on Codeberg. The generated pages
+other file of the repository to the file on GitHub. The generated pages
 and the copied assets are written to content/ and gitignored.
 """
 
@@ -27,7 +27,7 @@ REPO = Path(__file__).resolve().parent.parent
 DOCS = REPO / "docs"
 CONTENT = DOCS / "content"
 ASSETS = DOCS / "assets"
-SOURCE_URL = "https://codeberg.org/TRAM/TRAM/src/branch/main/"
+SOURCE_URL = "https://github.com/GO-TRAM/TRAM/blob/main/"
 
 GETTING_STARTED = "guide/getting-started.md"
 STREAMS = "guide/streams.md"
@@ -193,7 +193,7 @@ def target(source, page, link, anchors):
         return link
 
     path, _, anchor = link.partition("#")
-    # Codeberg keeps the dash an emoji at the start of a heading leaves in
+    # GitHub keeps the dash an emoji at the start of a heading leaves in
     # its anchor (#-security); the site drops it (#security).
     anchor = anchor.lstrip("-")
     path = posixpath.normpath(posixpath.join(posixpath.dirname(source), path)) if path else source

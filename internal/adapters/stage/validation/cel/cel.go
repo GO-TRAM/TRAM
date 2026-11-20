@@ -20,8 +20,8 @@ import (
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 
-	"codeberg.org/tram/tram/internal/adapters/stage/validation"
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/adapters/stage/validation"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 const Name = "cel"

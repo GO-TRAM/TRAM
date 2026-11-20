@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 func checkHoldTimes(tree *domain.Tree) error {

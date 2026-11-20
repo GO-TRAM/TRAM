@@ -11,7 +11,7 @@ import (
 	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 // maxPairwiseKeys bounds the lists whose keys are compared pair by pair,

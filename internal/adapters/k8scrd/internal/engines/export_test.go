@@ -13,7 +13,7 @@ import (
 	policyv1ac "k8s.io/client-go/applyconfigurations/policy/v1"
 	rbacv1ac "k8s.io/client-go/applyconfigurations/rbac/v1"
 
-	tramv1alpha1 "codeberg.org/tram/tram/internal/adapters/k8scrd/api/v1alpha1"
+	tramv1alpha1 "github.com/go-tram/tram/internal/adapters/k8scrd/api/v1alpha1"
 )
 
 // Resources exposes the apply configurations of an Engine's resources.

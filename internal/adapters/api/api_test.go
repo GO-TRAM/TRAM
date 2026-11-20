@@ -19,12 +19,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"codeberg.org/tram/tram/internal/adapters/api"
-	"codeberg.org/tram/tram/internal/adapters/sink"
-	"codeberg.org/tram/tram/internal/adapters/source"
-	"codeberg.org/tram/tram/internal/adapters/stage"
-	"codeberg.org/tram/tram/internal/core"
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/adapters/api"
+	"github.com/go-tram/tram/internal/adapters/sink"
+	"github.com/go-tram/tram/internal/adapters/source"
+	"github.com/go-tram/tram/internal/adapters/stage"
+	"github.com/go-tram/tram/internal/core"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 const anyLocalAddr = "127.0.0.1:0"

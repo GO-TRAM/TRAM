@@ -18,8 +18,8 @@ import (
 	"github.com/twmb/franz-go/pkg/sasl/plain"
 	"github.com/twmb/franz-go/pkg/sasl/scram"
 
-	"codeberg.org/tram/tram/internal/adapters/broker"
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/adapters/broker"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 // Name is the driver's name, the `driver` field of a broker spec and the key

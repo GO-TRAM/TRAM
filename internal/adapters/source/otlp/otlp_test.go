@@ -15,7 +15,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"codeberg.org/tram/tram/internal/adapters/source/otlp"
+	"github.com/go-tram/tram/internal/adapters/source/otlp"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
@@ -23,8 +23,8 @@ import (
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	"google.golang.org/protobuf/proto"
 
-	"codeberg.org/tram/tram/internal/adapters/source/base"
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/adapters/source/base"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 const (

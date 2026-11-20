@@ -16,8 +16,8 @@ import (
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 
-	"codeberg.org/tram/tram/internal/core/domain"
-	"codeberg.org/tram/tram/internal/testutil/otlpgen"
+	"github.com/go-tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/testutil/otlpgen"
 )
 
 const metricsHaveNames = "metrics.resource_metrics.all(r, r.scope_metrics.all(s, s.metrics.all(m, m.name != '')))"

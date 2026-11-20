@@ -19,7 +19,7 @@ import (
 	"github.com/google/cel-go/interpreter"
 	"google.golang.org/protobuf/proto"
 
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/core/domain"
 
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"

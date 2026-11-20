@@ -8,7 +8,7 @@ package batch
 import (
 	"time"
 
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 const (

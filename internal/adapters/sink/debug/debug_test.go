@@ -8,7 +8,7 @@ package debug_test
 import (
 	"log/slog"
 
-	"codeberg.org/tram/tram/internal/adapters/sink/debug"
+	"github.com/go-tram/tram/internal/adapters/sink/debug"
 
 	"testing"
 
@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 func TestNotifyWithoutPath(t *testing.T) {

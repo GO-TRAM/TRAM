@@ -8,7 +8,7 @@ package base
 import (
 	"github.com/go-playground/validator/v10"
 
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 type Sink[T any] struct {

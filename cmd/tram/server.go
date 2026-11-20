@@ -15,14 +15,14 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 
-	"codeberg.org/tram/tram/internal/adapters/api"
-	"codeberg.org/tram/tram/internal/adapters/configsync"
-	"codeberg.org/tram/tram/internal/adapters/k8scrd"
-	"codeberg.org/tram/tram/internal/adapters/sink"
-	"codeberg.org/tram/tram/internal/adapters/source"
-	"codeberg.org/tram/tram/internal/adapters/stage"
+	"github.com/go-tram/tram/internal/adapters/api"
+	"github.com/go-tram/tram/internal/adapters/configsync"
+	"github.com/go-tram/tram/internal/adapters/k8scrd"
+	"github.com/go-tram/tram/internal/adapters/sink"
+	"github.com/go-tram/tram/internal/adapters/source"
+	"github.com/go-tram/tram/internal/adapters/stage"
 
-	"codeberg.org/tram/tram/internal/core"
+	"github.com/go-tram/tram/internal/core"
 )
 
 type serverOptions struct {

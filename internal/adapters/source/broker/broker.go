@@ -18,12 +18,12 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	contract "codeberg.org/tram/tram/internal/adapters/broker"
-	"codeberg.org/tram/tram/internal/adapters/broker/drivers"
-	"codeberg.org/tram/tram/internal/adapters/broker/partition"
-	"codeberg.org/tram/tram/internal/adapters/driver"
-	"codeberg.org/tram/tram/internal/adapters/source/base"
-	"codeberg.org/tram/tram/internal/core/domain"
+	contract "github.com/go-tram/tram/internal/adapters/broker"
+	"github.com/go-tram/tram/internal/adapters/broker/drivers"
+	"github.com/go-tram/tram/internal/adapters/broker/partition"
+	"github.com/go-tram/tram/internal/adapters/driver"
+	"github.com/go-tram/tram/internal/adapters/source/base"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 const (

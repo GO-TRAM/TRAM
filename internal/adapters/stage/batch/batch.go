@@ -18,8 +18,8 @@ import (
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/proto"
 
-	"codeberg.org/tram/tram/internal/adapters/stage/base"
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/adapters/stage/base"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 const (

@@ -17,10 +17,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"codeberg.org/tram/tram/internal/adapters/broker"
-	"codeberg.org/tram/tram/internal/adapters/broker/brokertest"
-	natsdriver "codeberg.org/tram/tram/internal/adapters/broker/nats"
-	"codeberg.org/tram/tram/internal/testutil/natstest"
+	"github.com/go-tram/tram/internal/adapters/broker"
+	"github.com/go-tram/tram/internal/adapters/broker/brokertest"
+	natsdriver "github.com/go-tram/tram/internal/adapters/broker/nats"
+	"github.com/go-tram/tram/internal/testutil/natstest"
 )
 
 func newDriver() *natsdriver.Driver {

@@ -26,9 +26,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	tramv1 "codeberg.org/tram/tram/internal/adapters/k8scrd/api/v1"
-	tramv1alpha1 "codeberg.org/tram/tram/internal/adapters/k8scrd/api/v1alpha1"
-	"codeberg.org/tram/tram/internal/adapters/k8scrd/internal/engines"
+	tramv1 "github.com/go-tram/tram/internal/adapters/k8scrd/api/v1"
+	tramv1alpha1 "github.com/go-tram/tram/internal/adapters/k8scrd/api/v1alpha1"
+	"github.com/go-tram/tram/internal/adapters/k8scrd/internal/engines"
 )
 
 const (

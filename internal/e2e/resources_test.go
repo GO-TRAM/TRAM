@@ -19,11 +19,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"codeberg.org/tram/tram/internal/adapters/sink"
-	"codeberg.org/tram/tram/internal/adapters/source"
-	"codeberg.org/tram/tram/internal/adapters/stage"
-	"codeberg.org/tram/tram/internal/core"
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/adapters/sink"
+	"github.com/go-tram/tram/internal/adapters/source"
+	"github.com/go-tram/tram/internal/adapters/stage"
+	"github.com/go-tram/tram/internal/core"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 func TestDeletedStreamReleasesItsPort(t *testing.T) {

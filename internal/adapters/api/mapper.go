@@ -8,8 +8,8 @@ package api
 import (
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"codeberg.org/tram/tram/internal/core/domain"
-	v1 "codeberg.org/tram/tram/pkg/gen/go/api/proto/stream/v1"
+	"github.com/go-tram/tram/internal/core/domain"
+	v1 "github.com/go-tram/tram/pkg/gen/go/api/proto/stream/v1"
 )
 
 func pbStreamToStreamSpec(req *v1.Stream) domain.StreamSpec {

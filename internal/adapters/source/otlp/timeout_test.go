@@ -22,9 +22,9 @@ import (
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	"google.golang.org/protobuf/proto"
 
-	"codeberg.org/tram/tram/internal/adapters/source/base"
-	"codeberg.org/tram/tram/internal/adapters/source/otlp"
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/adapters/source/base"
+	"github.com/go-tram/tram/internal/adapters/source/otlp"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 type slowSubscriber struct {

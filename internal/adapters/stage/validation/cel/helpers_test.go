@@ -10,10 +10,10 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	"codeberg.org/tram/tram/internal/adapters/driver"
-	"codeberg.org/tram/tram/internal/adapters/stage/validation"
-	"codeberg.org/tram/tram/internal/adapters/stage/validation/cel"
-	"codeberg.org/tram/tram/internal/core/domain"
+	"github.com/go-tram/tram/internal/adapters/driver"
+	"github.com/go-tram/tram/internal/adapters/stage/validation"
+	"github.com/go-tram/tram/internal/adapters/stage/validation/cel"
+	"github.com/go-tram/tram/internal/core/domain"
 )
 
 // newStage creates a validation stage with the CEL driver from a flat spec:
