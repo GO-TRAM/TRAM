@@ -746,11 +746,13 @@ When adding new components:
 
 ### Checks on Pull Requests
 
-The CI workflow (`.forgejo/workflows/ci.yml`) runs on Codeberg's hosted Forgejo Actions runners (`codeberg-medium`) for every pull request and every push to main, as two parallel jobs: `task ci:lint` runs golangci-lint in the version pinned in `Taskfile.yml`, `task ci:test` the unit and end-to-end tests. Each job has to finish within the runner's time limit, 10 minutes for `codeberg-medium`. The runners have no container runtime, so the container tests skip themselves there; run `task test:containers` locally when you change a broker component. Pull requests from forks get no secrets, which the checks do not need.
+The CI workflow (`.github/workflows/ci.yml`) runs on GitHub-hosted runners (`ubuntu-latest`) for every pull request and every push to main, as two parallel jobs: `task ci:lint` runs golangci-lint in the version pinned in `Taskfile.yml`, `task ci:test` the unit and end-to-end tests.
+
+The actions the workflows use are pinned to the commit of a release, with the version in a comment; update both together.
 
 ### Releases
 
-A release is a version tag on main. The release workflow (`.forgejo/workflows/release.yml`) refuses tags that are not on main, runs the same lint and test jobs, and then builds the image with Buildah for `linux/amd64` and `linux/arm64` and pushes it to `codeberg.org/tram/tram` as the version without the leading `v` (e.g. `0.1.0`) and as `latest`.
+A release is a version tag on main. The release workflow (`.github/workflows/release.yml`) refuses tags that are not on main, runs the same lint and test jobs, and then builds the image with Docker Buildx for `linux/amd64` and `linux/arm64` and pushes it to `ghcr.io/go-tram/tram` as the version without the leading `v` (e.g. `0.1.0`) and as `latest`.
 
 Tag releases with the release tasks rather than by hand. They use [svu](https://github.com/caarlos0/svu) to compute the version from the existing tags, check that you are on main, that it matches `origin/main` and has no uncommitted changes, run `task check`, and then create and push the annotated tag:
 
@@ -760,9 +762,6 @@ task release:patch   # v0.0.14 → v0.0.15
 task release:minor   # v0.0.14 → v0.1.0
 task release:major   # v0.0.14 → v1.0.0
 ```
-
-The workflow pushes with the repository secrets `REGISTRY_USER`, the Codeberg user to push as, and `REGISTRY_TOKEN`, an access token of that user with package write access.
-
 ---
 
 ## 🤔 Getting Help
