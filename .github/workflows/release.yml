@@ -1,10 +1,4 @@
-# Builds and publishes the container image for a version tag on main, e.g.
-# v0.1.0 from `task release:minor`. The image is pushed to GitHub's registry
-# for amd64 and arm64, tagged with the version without the leading v (0.1.0)
-# and as latest.
-#
-# Needs two repository secrets: REGISTRY_USER, the GitHub user to push as,
-# and REGISTRY_TOKEN, an access token of that user with package write access.
+# Builds and publishes the container image
 name: Release
 
 on:
@@ -12,84 +6,88 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
 concurrency:
   group: release
   cancel-in-progress: false
 
 env:
-  # Canonical repository path
-  REPO: GO-TRAM/TRAM
   # Image names must be lowercase.
   IMAGE: ghcr.io/go-tram/tram
 
 jobs:
   check:
     runs-on: ubuntu-latest
-    # Lint and tests run as parallel jobs, each within the runner's time limit.
     strategy:
       matrix:
         target: [lint, test]
-    container:
-      image: docker.io/library/golang:1.27
     env:
       TASK_VERSION: v3.54.0
     steps:
       - name: Check out the tag and main
-        run: |
-          git clone --quiet --branch main \
-            "https://${GITHUB_TOKEN}@github.com/${REPO}.git" src
-          cd src
-          git fetch --quiet origin "+${GITHUB_REF}:${GITHUB_REF}"
-          git checkout --quiet --detach "${GITHUB_SHA}"
-          git log --oneline -1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Require the tag to be on main
-        working-directory: src
         run: |
           if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
             echo "${GITHUB_REF_NAME} is not on main; only tags on main are released" >&2
             exit 1
           fi
 
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+
       - name: Install Task
         run: go install github.com/go-task/task/v3/cmd/task@${TASK_VERSION}
 
       - name: Check
-        working-directory: src
         run: task ci:${{ matrix.target }}
 
   image:
     needs: check
-    # vfs writes a full copy of every layer, and GitHub counts written files
-    # against the runner's memory.
     runs-on: ubuntu-latest
-    # Buildah builds without a Docker daemon. Unprivileged, it needs chroot
-    # isolation and the vfs storage driver.
-    container:
-      image: quay.io/buildah/stable:latest
-    env:
-      BUILDAH_ISOLATION: chroot
-      STORAGE_DRIVER: vfs
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Check out the tag
-        run: |
-          dnf install --quiet --assumeyes git-core
-          git clone --quiet --depth 1 --branch "${GITHUB_REF_NAME}" \
-            "https://${GITHUB_TOKEN}@github.com/${REPO}.git" src
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Build
-        working-directory: src
-        run: |
-          buildah build --quiet --platform linux/amd64,linux/arm64 --manifest tram .
+      - name: Version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "${GITHUB_OUTPUT}"
 
-      - name: Push
-        env:
-          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
-          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          echo "${REGISTRY_TOKEN}" | buildah login --username "${REGISTRY_USER}" --password-stdin ghcr.io
-          for tag in "${version}" latest; do
-            buildah manifest push --all tram "docker://${IMAGE}:${tag}"
-          done
-          echo "Pushed ${IMAGE}:${version} and ${IMAGE}:latest"
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to the GitHub Container Registry
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
+            ${{ env.IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
