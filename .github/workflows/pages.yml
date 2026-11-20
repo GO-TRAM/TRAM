@@ -32,7 +32,7 @@ jobs:
       # takes precedence, in case the automatic token may not push.
       TOKEN: ${{ secrets.PAGES_TOKEN || github.token }}
       # Canonical repository path
-      REPO: eljoth/tram
+      REPO: GO-TRAM/TRAM
     steps:
       - name: Check out main
         run: |

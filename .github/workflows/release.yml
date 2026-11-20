@@ -18,9 +18,9 @@ concurrency:
 
 env:
   # Canonical repository path
-  REPO: eljoth/tram
+  REPO: GO-TRAM/TRAM
   # Image names must be lowercase.
-  IMAGE: ghcr.io/eljoth/tram
+  IMAGE: ghcr.io/go-tram/tram
 
 jobs:
   check:
