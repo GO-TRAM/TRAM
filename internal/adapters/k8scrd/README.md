@@ -88,7 +88,9 @@ spec:
       topologySpreadConstraints: [...]
       securityContext: {...}
       imagePullSecrets: [...]
----
+```
+
+```yaml
 apiVersion: io.tram.core/v1
 kind: Stream
 metadata:
