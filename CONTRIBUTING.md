@@ -14,6 +14,7 @@ Thank you for your interest in contributing to TRAM! This document provides guid
 - [Code Style Guidelines](#code-style-guidelines)
 - [Testing](#testing)
 - [Documentation](#documentation)
+- [Continuous Integration and Releases](#continuous-integration-and-releases)
 
 ---
 
@@ -60,6 +61,7 @@ task nats:up
 |------|--------------|
 | `task build` / `task run` | Build the binary, or run the server (`task run -- --enable-file-sync`) |
 | `task check` | Lint, unit and end-to-end tests: what a change should pass |
+| `task ci` | What the CI workflows run: installs the pinned golangci-lint, then `task check` |
 | `task test:all` | `task check` plus the container and operator (envtest) tests; fails instead of skipping if Podman/Docker or setup-envtest is missing |
 | `task test` | All tests; tests that need containers are skipped without Docker or Podman |
 | `task test:unit` / `task test:e2e` | Unit tests only, or the end-to-end tests that need no containers |
@@ -75,6 +77,7 @@ task nats:up
 | `task nats:up` / `task nats:down` | Start or stop a local NATS server with JetStream |
 | `task k8s:crd` | Install the Stream CRD into the current Kubernetes context |
 | `task tools` | Install the code generators, golangci-lint, benchstat and setup-envtest |
+| `task release:next` / `release:patch` / `release:minor` / `release:major` | Tag the next version on main and push it, which publishes the image (see [Releases](#releases)) |
 
 Container tasks use Podman if it is installed and Docker otherwise; set `CONTAINER_TOOL=docker` to choose. With Podman, the test and benchmark tasks also set up Testcontainers for the Podman machine (see [Benchmarks](#benchmarks)).
 
@@ -736,6 +739,29 @@ When adding new components:
    - Usage examples
    - Behavior description
    - Error cases
+
+---
+
+## 🚢 Continuous Integration and Releases
+
+### Checks on Pull Requests
+
+The CI workflow (`.forgejo/workflows/ci.yml`) runs `task ci` on Codeberg's hosted Forgejo Actions runners for every pull request and every push to main: golangci-lint in the version pinned in `Taskfile.yml`, unit and end-to-end tests. The runners have no container runtime, so the container tests skip themselves there; run `task test:containers` locally when you change a broker component. Pull requests from forks get no secrets, which the checks do not need.
+
+### Releases
+
+A release is a version tag on main. The release workflow (`.forgejo/workflows/release.yml`) refuses tags that are not on main, runs `task ci`, and then builds the image with Buildah for `linux/amd64` and `linux/arm64` and pushes it to `codeberg.org/tram/tram` as the version without the leading `v` (e.g. `0.1.0`) and as `latest`.
+
+Tag releases with the release tasks rather than by hand. They use [svu](https://github.com/caarlos0/svu) to compute the version from the existing tags, check that you are on main, that it matches `origin/main` and has no uncommitted changes, run `task check`, and then create and push the annotated tag:
+
+```bash
+task release:next    # from the Conventional Commits since the last tag: feat → minor, fix → patch, at least a patch
+task release:patch   # v0.0.14 → v0.0.15
+task release:minor   # v0.0.14 → v0.1.0
+task release:major   # v0.0.14 → v1.0.0
+```
+
+The workflow pushes with the repository secrets `REGISTRY_USER`, the Codeberg user to push as, and `REGISTRY_TOKEN`, an access token of that user with package write access.
 
 ---
 

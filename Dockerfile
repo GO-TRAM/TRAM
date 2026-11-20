@@ -6,7 +6,12 @@
 
 ARG GO_VERSION=1.27
 
-FROM docker.io/library/golang:${GO_VERSION} AS build
+# The build stage runs on the build machine's platform and cross-compiles for
+# the target, so building an image for another architecture needs no
+# emulation.
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:${GO_VERSION} AS build
+ARG TARGETOS
+ARG TARGETARCH
 WORKDIR /src
 
 COPY go.mod go.sum ./
@@ -15,7 +20,7 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/tram ./cmd/tram
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/tram ./cmd/tram
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/tram /tram

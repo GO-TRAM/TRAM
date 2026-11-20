@@ -1,0 +1,45 @@
+# Validates pull requests and pushes to main with `task ci`: golangci-lint,
+# unit and end-to-end tests. The container tests (NATS, Kafka, AMQP) skip
+# themselves without a container runtime; run them locally with
+# `task test:containers`.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ forgejo.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: codeberg-small
+    container:
+      image: docker.io/library/golang:1.27
+    env:
+      # Canonical repository path, with the casing of the clone URL allowlist.
+      REPO: TRAM/TRAM
+      TASK_VERSION: v3.54.0
+    steps:
+      - name: Check out
+        run: |
+          git init --quiet src
+          cd src
+          git remote add origin "https://token:${FORGEJO_TOKEN}@${FORGEJO_SERVER_URL#https://}/${REPO}.git"
+          # Fetching the commit directly is enough for a branch push; pull
+          # request heads, e.g. from forks, are only reachable through their
+          # refs/pull/ ref.
+          git fetch --quiet --depth 1 origin "${FORGEJO_SHA}" \
+            || git fetch --quiet origin "+refs/pull/*/head:refs/remotes/pull/*" "+refs/heads/*:refs/remotes/origin/*"
+          git checkout --quiet --detach "${FORGEJO_SHA}"
+          git log --oneline -1
+
+      - name: Install Task
+        run: go install github.com/go-task/task/v3/cmd/task@${TASK_VERSION}
+
+      - name: Check
+        working-directory: src
+        run: task ci
