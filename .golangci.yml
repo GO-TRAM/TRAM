@@ -228,7 +228,7 @@ linters:
           allow:
             - $std
             - codeberg.org/eljoth/tram/internal/core
-        
+
         # Prevent domain from importing from adapters
         "no domain to adapter":
           files:
@@ -236,7 +236,7 @@ linters:
           allow:
             - $std
             - codeberg.org/eljoth/tram/internal/core/domain
-        
+
         # Prevent adapters from importing from other adapters
         "no source adapter cross-imports":
           files:
@@ -279,7 +279,7 @@ linters:
       # Default: [ switch ]
       check:
         - switch
-        - map
+        - mapliteral
 
     exhaustruct_v5:
       # List of regular expressions to match type names that should be skipped from checking.
