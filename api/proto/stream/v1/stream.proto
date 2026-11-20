@@ -63,12 +63,43 @@ message Stream {
 // Payload definitions
 //------------------------------------------------------------------------------
 
+// What an upsert of a stream would do, without applying it.
+enum StreamPlanAction {
+  STREAM_PLAN_ACTION_UNSPECIFIED = 0;
+  // The stream is unchanged, nothing would happen.
+  STREAM_PLAN_ACTION_NOOP = 1;
+  // The source is unchanged and keeps running; its stages and sinks are
+  // replaced below it ("hot swap").
+  STREAM_PLAN_ACTION_HOT_SWAP = 2;
+  // The stream is new, stopped, or its source changed: it is stopped and
+  // rebuilt completely.
+  STREAM_PLAN_ACTION_REBUILD = 3;
+}
+
+// The plan of an upsert, computed by a dry run. Node names are unique within
+// a stream.
+message StreamPlan {
+  StreamPlanAction action = 1;
+  // True when the source would be replaced, i.e. the action is REBUILD and
+  // the stream already existed with another source.
+  bool source_replaced = 2;
+  // Stages and sinks that would be created, by name.
+  repeated string created_nodes = 3;
+  // Stages and sinks that would be stopped, by name.
+  repeated string stopped_nodes = 4;
+}
+
 message PutStreamRequest {
   Stream stream = 1;
+  // When true, the stream is validated and planned but not applied; the
+  // response holds the plan instead of changing the running stream.
+  bool dry_run = 2;
 }
 
 message PutStreamResponse {
   Stream stream = 1;
+  // Set when the request's dry_run is true.
+  StreamPlan plan = 2;
 }
 
 message GetStreamRequest {

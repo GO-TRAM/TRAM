@@ -162,6 +162,10 @@ func (c *syncCore) resolvedSinkSpec(name string) map[string]any {
 	return s.Sinks[0].Spec
 }
 
+func (c *syncCore) PlanStream(_ context.Context, s, _ domain.StreamSpec) (*domain.StreamPlan, error) {
+	return &domain.StreamPlan{Stream: s.Name, Action: domain.StreamPlanActionRebuild}, nil
+}
+
 func (c *syncCore) DeleteStream(_ context.Context, name string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

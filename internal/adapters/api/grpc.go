@@ -34,6 +34,17 @@ func (s streamServer) PutStream(ctx context.Context, req *v1.PutStreamRequest) (
 	}
 	streamSpec := pbStreamToStreamSpec(req.GetStream())
 
+	if req.GetDryRun() {
+		plan, err := s.core.PlanStream(ctx, streamSpec, streamSpec)
+		if err != nil {
+			return nil, s.statusOf(ctx, err)
+		}
+		return &v1.PutStreamResponse{
+			Stream: streamSpecToPBStream(streamSpec),
+			Plan:   streamPlanToPB(plan),
+		}, nil
+	}
+
 	stream, err := s.core.UpsertStream(ctx, streamSpec)
 	if err != nil {
 		return nil, s.statusOf(ctx, err)

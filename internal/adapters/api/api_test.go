@@ -6,6 +6,7 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -165,4 +166,114 @@ func freeAddr(t *testing.T) string {
 	addr := l.Addr().String()
 	require.NoError(t, l.Close())
 	return addr
+}
+
+func putStream(t *testing.T, httpAddr, name string, body map[string]any) (int, map[string]any) {
+	t.Helper()
+	data, err := json.Marshal(body)
+	require.NoError(t, err)
+	req, err := http.NewRequestWithContext(
+		t.Context(),
+		http.MethodPut,
+		"http://"+httpAddr+"/v1/streams/"+name,
+		bytes.NewReader(data),
+	)
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	var out map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+	return resp.StatusCode, out
+}
+
+func TestPutStreamDryRun(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	c := core.New(t.Context(), logger, source.NewFactory(logger), stage.NewFactory(logger), sink.NewFactory(logger))
+	t.Cleanup(func() { assert.NoError(t, c.Close()) })
+
+	stream := map[string]any{
+		"name":   "s",
+		"source": map[string]any{"name": "in", "type": "generator", "spec": map[string]any{"interval": "1h"}},
+		"sinks":  []any{map[string]any{"name": "out", "type": "debug", "from": "in"}},
+	}
+	httpAddr := startAPI(t, c, logger)
+	created, _ := putStream(t, httpAddr, "s", map[string]any{"stream": stream})
+	require.Equal(t, http.StatusOK, created)
+
+	t.Run("plans a hot swap without applying it", func(t *testing.T) {
+		t.Parallel()
+
+		updated := map[string]any{
+			"name":   "s",
+			"source": map[string]any{"name": "in", "type": "generator", "spec": map[string]any{"interval": "1h"}},
+			"sinks":  []any{map[string]any{"name": "out2", "type": "debug", "from": "in"}},
+		}
+		status, resp := putStream(t, httpAddr, "s", map[string]any{"stream": updated, "dry_run": true})
+		require.Equal(t, http.StatusOK, status)
+		plan, ok := resp["plan"].(map[string]any)
+		require.True(t, ok, "dry run must return a plan: %v", resp)
+		assert.Equal(t, "STREAM_PLAN_ACTION_HOT_SWAP", plan["action"])
+		assert.Equal(t, []any{"out2"}, plan["createdNodes"])
+		assert.Equal(t, []any{"out"}, plan["stoppedNodes"])
+
+		got, err := c.GetStream(t.Context(), "s")
+		require.NoError(t, err)
+		require.Len(t, got.Sinks, 1)
+		assert.Equal(t, "out", got.Sinks[0].Name, "the dry run did not change the running stream")
+	})
+
+	t.Run("plans a rebuild for a new stream", func(t *testing.T) {
+		t.Parallel()
+
+		status, resp := putStream(t, httpAddr, "new", map[string]any{"stream": stream, "dry_run": true})
+		require.Equal(t, http.StatusOK, status)
+		plan := resp["plan"].(map[string]any)
+		assert.Equal(t, "STREAM_PLAN_ACTION_REBUILD", plan["action"])
+		assert.Equal(t, false, plan["sourceReplaced"])
+
+		_, err := c.GetStream(t.Context(), "new")
+		require.ErrorIs(t, err, domain.ErrStreamNotFound)
+	})
+
+	t.Run("rejects an invalid spec", func(t *testing.T) {
+		t.Parallel()
+
+		broken := map[string]any{
+			"name":   "s",
+			"source": map[string]any{"name": "in", "type": "generator", "spec": map[string]any{"interval": "1h"}},
+			"sinks":  []any{map[string]any{"name": "bad", "type": "does-not-exist", "from": "in"}},
+		}
+		status, _ := putStream(t, httpAddr, "s", map[string]any{"stream": broken, "dry_run": true})
+		assert.Equal(t, http.StatusBadRequest, status)
+	})
+}
+
+func startAPI(t *testing.T, c *core.Core, logger *slog.Logger) string {
+	t.Helper()
+	httpAddr, grpcAddr := freeAddr(t), freeAddr(t)
+	a, err := api.New(c, grpcAddr, httpAddr, nil, logger)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := run(ctx, a)
+	t.Cleanup(func() {
+		cancel()
+		require.NoError(t, <-done)
+	})
+	require.Eventually(t, func() bool {
+		req, reqErr := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+httpAddr+"/v1/streams", nil)
+		if reqErr != nil {
+			return false
+		}
+		resp, getErr := http.DefaultClient.Do(req)
+		if getErr != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, 5*time.Second, 20*time.Millisecond)
+	return httpAddr
 }

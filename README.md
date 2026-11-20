@@ -336,7 +336,7 @@ Two streams read a NATS topic and forward the data, one to an OTLP endpoint and 
 ```mermaid
 flowchart LR
     nats(["NATS"]) --> src1["broker source<br>topic 1"]
-    nats --> src2["broker source<br>topic 1"]
+    nats --> src2["broker source<br>topic 2"]
     otlp_in(["otlp source"])
 
     src1 --> val1["validation"]
@@ -374,6 +374,24 @@ A `PUT` to an existing stream changes as little as possible:
 | Source | The stream is stopped and created again. An OTLP source closes its port in between, so clients briefly cannot connect |
 
 If an update fails, e.g. because of an invalid component spec, the request returns an error and the previous version of the stream keeps running. Delete and create a stream to restart it completely.
+
+### Dry Run
+
+`PUT /v1/streams/{name}` with `"dry_run": true` in the request body validates the stream and reports what applying it would do, without changing the running stream. The flag is a field of the request body, not a query parameter, because the PUT body maps to the whole request message. The response holds a `plan`:
+
+```json
+{
+  "stream": { "...": "the requested stream" },
+  "plan": {
+    "action": "STREAM_PLAN_ACTION_HOT_SWAP",
+    "sourceReplaced": false,
+    "createdNodes": ["enrich"],
+    "stoppedNodes": ["old-sink"]
+  }
+}
+```
+
+`action` is `STREAM_PLAN_ACTION_NOOP` (nothing would change), `STREAM_PLAN_ACTION_HOT_SWAP` (the source keeps running and its stages and sinks are replaced below it) or `STREAM_PLAN_ACTION_REBUILD` (the stream is new, stopped, or its source changed: it would be stopped and created again). An invalid spec is rejected with `400` as usual; nothing is applied either way.
 
 If the source of a stream stops on its own, e.g. because the NATS stream of a broker source does not exist yet, TRAM restarts the stream after a delay that grows from 1 second to 1 minute while it keeps failing. A `PUT` of the unchanged stream restarts it right away.
 
