@@ -194,8 +194,10 @@ func TestPartitionSelectsTheKeysDestination(t *testing.T) {
 	c := &collector{}
 	run(t, src, c)
 
-	require.Eventually(t, func() bool { return c.count() == 1 }, waitFor, tick)
-	assert.Equal(t, brokertest.Outcome{Acked: 1}, m.Outcome(dest, "d"))
+	// The source acknowledges after the event is delivered, so wait for the
+	// outcome rather than the delivery.
+	require.Eventually(t, func() bool { return m.Outcome(dest, "d") == brokertest.Outcome{Acked: 1} }, waitFor, tick)
+	assert.Equal(t, 1, c.count())
 }
 
 func TestStopBeforeRun(t *testing.T) {
