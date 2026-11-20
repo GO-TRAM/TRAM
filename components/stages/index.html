@@ -1,0 +1,2162 @@
+
+
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A lightweight, extensible pipeline framework for logs, metrics and traces">
+      
+      
+      
+        <link rel="canonical" href="https://gotram.dev/components/stages/">
+      
+      
+      
+      
+        <link rel="prev" href="../sources/">
+      
+      
+        <link rel="next" href="../sinks/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/TRAM.svg">
+      <meta name="generator" content="zensical-0.1.3">
+    
+    
+      
+        <title>Stages - TRAM</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.e2cf241e.min.css">
+      
+        
+          
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.b60ce83d.min.css">
+      
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-hidden="true"></label>
+    <div data-md-component="skip">
+      <a href="#__skip" class="md-skip">
+        Skip to content
+      </a>
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="TRAM" class="md-header__button md-logo" aria-label="TRAM" data-md-component="logo">
+      
+  <img src="../../assets/TRAM.png" alt="TRAM">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+      <span class="md-visually-hidden">Navigation</span>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            TRAM
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Stages
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-moon" viewBox="0 0 24 24"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+          <span class="md-visually-hidden">Search</span>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/GO-TRAM/TRAM" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>GitHub</title><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GO-TRAM/TRAM
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guide/getting-started/" class="md-tabs__link">
+          
+  
+  Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+      
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  Components
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../kubernetes/" class="md-tabs__link">
+        
+  
+  Kubernetes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../benchmarks/" class="md-tabs__link">
+        
+  
+  Benchmarks
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../contributing/" class="md-tabs__link">
+        
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="TRAM" class="md-nav__button md-logo" aria-label="TRAM" data-md-component="logo">
+      
+  <img src="../../assets/TRAM.png" alt="TRAM">
+
+    </a>
+    TRAM
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/GO-TRAM/TRAM" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>GitHub</title><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GO-TRAM/TRAM
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Home
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Guide
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+            <label class="md-nav__title" for="__nav_2">
+              <span class="md-nav__icon md-icon"></span>
+              
+  
+  Guide
+
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Getting Started
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/streams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Streams
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  HTTP API
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Configuration Sources
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Metrics
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Security
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+            </ul>
+          </nav>
+        
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Components
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+            <label class="md-nav__title" for="__nav_3">
+              <span class="md-nav__icon md-icon"></span>
+              
+  
+  Components
+
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
+              
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Sources
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Stages
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Stages
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#filter-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Filter Stage
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Validation Stage
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#batch-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Batch Stage
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#delay-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Delay Stage
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#encryption-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Encryption Stage
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decryption-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Decryption Stage
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#no-op-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        No-op Stage
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#value-map-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Value Map Stage
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sinks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Sinks
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+            </ul>
+          </nav>
+        
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../kubernetes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Kubernetes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Benchmarks
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Contributing
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                    
+                    
+                    
+                      
+                    
+                    
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#filter-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Filter Stage
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Validation Stage
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#batch-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Batch Stage
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#delay-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Delay Stage
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#encryption-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Encryption Stage
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decryption-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Decryption Stage
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#no-op-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        No-op Stage
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#value-map-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Value Map Stage
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                <a id="__skip" tabindex="-1"></a>
+                
+                  
+
+  
+  
+
+
+<h1 id="stages">Stages<a class="headerlink" href="#stages" title="Permanent link">&para;</a></h1>
+<p>Stages process, transform, or filter data between sources and sinks.</p>
+<h2 id="filter-stage">Filter Stage<a class="headerlink" href="#filter-stage" title="Permanent link">&para;</a></h2>
+<p>Keeps only the records that match the rules of the driver chosen by <code>driver</code>, decided per log record, metric data point and span. The driver's options are under the driver's name, e.g. <code>cel:</code>. To accept or reject whole events instead, use the <a href="#validation-stage">Validation Stage</a>.</p>
+<p><strong>Type:</strong> <code>filter</code></p>
+<p><strong>Configuration:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>driver</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>-</td>
+<td>The technology of the rules: <code>cel</code> (Common Expression Language)</td>
+</tr>
+<tr>
+<td><code>cel</code></td>
+<td>object</td>
+<td>With <code>driver: cel</code></td>
+<td>-</td>
+<td>Options of the CEL driver, see below</td>
+</tr>
+</tbody>
+</table>
+<p><strong>CEL driver options:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>logs</code></td>
+<td>string</td>
+<td>One of <code>logs</code>, <code>metrics</code>, <code>traces</code></td>
+<td>-</td>
+<td>CEL expression evaluated per log record. Must return a boolean</td>
+</tr>
+<tr>
+<td><code>metrics</code></td>
+<td>string</td>
+<td>One of <code>logs</code>, <code>metrics</code>, <code>traces</code></td>
+<td>-</td>
+<td>CEL expression evaluated per metric data point. Must return a boolean</td>
+</tr>
+<tr>
+<td><code>traces</code></td>
+<td>string</td>
+<td>One of <code>logs</code>, <code>metrics</code>, <code>traces</code></td>
+<td>-</td>
+<td>CEL expression evaluated per span. Must return a boolean</td>
+</tr>
+</tbody>
+</table>
+<p>Signal types without an expression are passed on unfiltered. Use <code>"false"</code> to remove a signal type completely.</p>
+<p><strong>CEL Expression Context:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Expression</th>
+<th>Variables</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>logs</code></td>
+<td><code>resource</code> (Resource), <code>scope</code> (InstrumentationScope), <code>record</code> (LogRecord)</td>
+</tr>
+<tr>
+<td><code>metrics</code></td>
+<td><code>resource</code>, <code>scope</code>, <code>metric</code> (Metric), <code>datapoint</code> (the data point; its type depends on the metric type)</td>
+</tr>
+<tr>
+<td><code>traces</code></td>
+<td><code>resource</code>, <code>scope</code>, <code>span</code> (Span)</td>
+</tr>
+</tbody>
+</table>
+<p><code>resource</code> and <code>scope</code> are empty messages when the payload has none, so their fields can be accessed without checks. Field names follow the OTLP protobuf definitions, e.g. <code>record.severity_text</code>, <code>span.name</code>, <code>datapoint.attributes</code>.</p>
+<p><strong>Example:</strong> split logs by customer into two branches:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">"stages"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="p">{</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"customer-a"</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"filter"</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nt">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"otlp-in"</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="nt">"spec"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">      </span><span class="nt">"driver"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cel"</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">      </span><span class="nt">"cel"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">        </span><span class="nt">"logs"</span><span class="p">:</span><span class="w"> </span><span class="s2">"record.attributes.exists(a, a.key == 'customer' &amp;&amp; a.value.string_value == 'A')"</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">      </span><span class="p">}</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">  </span><span class="p">},</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">  </span><span class="p">{</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"other-customers"</span><span class="p">,</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">    </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"filter"</span><span class="p">,</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">    </span><span class="nt">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"otlp-in"</span><span class="p">,</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">    </span><span class="nt">"spec"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">      </span><span class="nt">"driver"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cel"</span><span class="p">,</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">      </span><span class="nt">"cel"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">        </span><span class="nt">"logs"</span><span class="p">:</span><span class="w"> </span><span class="s2">"!record.attributes.exists(a, a.key == 'customer' &amp;&amp; a.value.string_value == 'A')"</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">      </span><span class="p">}</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="p">]</span>
+</code></pre></div>
+<p><strong>Additional Examples</strong> (the <code>cel</code> options):</p>
+<p>Keep only ERROR logs:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span><span class="w"> </span><span class="nt">"logs"</span><span class="p">:</span><span class="w"> </span><span class="s2">"record.severity_text == 'ERROR'"</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div></p>
+<p>Keep only the data points of one metric:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span><span class="w"> </span><span class="nt">"metrics"</span><span class="p">:</span><span class="w"> </span><span class="s2">"metric.name == 'http.server.request.duration'"</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div></p>
+<p>Keep only spans of one service:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span><span class="w"> </span><span class="nt">"traces"</span><span class="p">:</span><span class="w"> </span><span class="s2">"resource.attributes.exists(a, a.key == 'service.name' &amp;&amp; a.value.string_value == 'checkout')"</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div></p>
+<details class="note">
+<summary>Behavior</summary>
+<ul>
+<li>Kept records are passed on in their original resource and scope; nothing is copied, and containers without remaining records are removed. If no record is kept, nothing is passed on</li>
+<li>When splitting into branches, write the last branch as the negation of the others, so every record ends up in exactly one branch</li>
+<li>A rule that fails for a record, e.g. a CEL expression accessing a missing list index, rejects the whole event. The OTLP source answers with HTTP 422, the Broker Source rejects the message instead of redelivering it</li>
+<li>Place a batch stage before the filters to merge many small requests first; each branch then receives one filtered batch</li>
+</ul>
+</details>
+<h2 id="validation-stage">Validation Stage<a class="headerlink" href="#validation-stage" title="Permanent link">&para;</a></h2>
+<p>Checks each incoming event as a whole — one OTLP request, one broker message, or one batch — against the rules of the driver chosen by <code>driver</code>, and passes it on, drops it, or rejects it. The driver's options are under the driver's name, e.g. <code>cel:</code>. To keep only matching records, use the <a href="#filter-stage">Filter Stage</a>.</p>
+<p><strong>Type:</strong> <code>validation</code></p>
+<p><strong>Configuration:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>driver</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>-</td>
+<td>The technology of the rules: <code>cel</code> (Common Expression Language)</td>
+</tr>
+<tr>
+<td><code>on_mismatch</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>-</td>
+<td>Action when a signal does not match its rule: <code>"drop"</code> or <code>"reject"</code></td>
+</tr>
+<tr>
+<td><code>cel</code></td>
+<td>object</td>
+<td>With <code>driver: cel</code></td>
+<td>-</td>
+<td>Options of the CEL driver, see below</td>
+</tr>
+</tbody>
+</table>
+<p><strong>CEL driver options:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>logs</code></td>
+<td>string</td>
+<td>No</td>
+<td>-</td>
+<td>CEL expression evaluated once for all logs of an event. Must return a boolean. Without it, all logs match</td>
+</tr>
+<tr>
+<td><code>metrics</code></td>
+<td>string</td>
+<td>No</td>
+<td>-</td>
+<td>CEL expression evaluated once for all metrics of an event. Must return a boolean. Without it, all metrics match</td>
+</tr>
+<tr>
+<td><code>traces</code></td>
+<td>string</td>
+<td>No</td>
+<td>-</td>
+<td>CEL expression evaluated once for all traces of an event. Must return a boolean. Without it, all traces match</td>
+</tr>
+</tbody>
+</table>
+<p><strong>CEL Expression Context:</strong>
+- Each expression receives the complete payload of its signal type: <code>logs</code> (LogsData), <code>metrics</code> (MetricsData), or <code>traces</code> (TracesData)
+- An event can contain several signal types, e.g. after a batch stage. Each type present is checked with its own expression
+- Use the full protobuf structure, e.g. <code>logs.resource_logs.all(...)</code>, and write the expression as a condition that every accepted delivery has to fulfil</p>
+<p><strong>On Mismatch Behavior:</strong>
+- <code>drop</code> - Removes all data of the signal type that did not match. Other signal types of the event are still passed on; if nothing is left, nothing is passed on
+- <code>reject</code> - Rejects the whole event with an error. The OTLP source answers with HTTP 422, the Broker Source rejects the message instead of redelivering it</p>
+<p><strong>Example:</strong> reject log deliveries in which a resource has no <code>service.name</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">{</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"require-service-name"</span><span class="p">,</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"validation"</span><span class="p">,</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"source"</span><span class="p">,</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span><span class="nt">"spec"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="nt">"driver"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cel"</span><span class="p">,</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span><span class="nt">"on_mismatch"</span><span class="p">:</span><span class="w"> </span><span class="s2">"reject"</span><span class="p">,</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">    </span><span class="nt">"cel"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">      </span><span class="nt">"logs"</span><span class="p">:</span><span class="w"> </span><span class="s2">"logs.resource_logs.all(r, r.resource.attributes.exists(a, a.key == 'service.name'))"</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>Additional Examples:</strong></p>
+<p>Drop metric deliveries that contain a metric without a name:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p">{</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">"driver"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cel"</span><span class="p">,</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="nt">"on_mismatch"</span><span class="p">:</span><span class="w"> </span><span class="s2">"drop"</span><span class="p">,</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="nt">"cel"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="nt">"metrics"</span><span class="p">:</span><span class="w"> </span><span class="s2">"metrics.resource_metrics.all(r, r.scope_metrics.all(s, s.metrics.all(m, m.name != '')))"</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="p">}</span>
+</code></pre></div></p>
+<p>Reject trace deliveries that contain a span without a valid trace ID:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p">{</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">"driver"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cel"</span><span class="p">,</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nt">"on_mismatch"</span><span class="p">:</span><span class="w"> </span><span class="s2">"reject"</span><span class="p">,</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="nt">"cel"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="nt">"traces"</span><span class="p">:</span><span class="w"> </span><span class="s2">"traces.resource_spans.all(r, r.scope_spans.all(s, s.spans.all(span, size(span.trace_id) == 16)))"</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="p">}</span>
+</code></pre></div></p>
+<p>Reject log deliveries that contain a record whose <code>tenant.id</code> is not a lowercase UUID. <code>matches</code> takes an RE2 regular expression and finds it anywhere in the value, so anchor it with <code>^</code> and <code>$</code>. Checking a value that a <a href="../sinks/#broker-sink">Broker Sink</a> puts into its NATS subjects keeps out dots, whitespace and wildcards, which would make the subject invalid or change its meaning:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="p">{</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">"driver"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cel"</span><span class="p">,</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span><span class="nt">"on_mismatch"</span><span class="p">:</span><span class="w"> </span><span class="s2">"reject"</span><span class="p">,</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span><span class="nt">"cel"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span><span class="nt">"logs"</span><span class="p">:</span><span class="w"> </span><span class="s2">"logs.resource_logs.all(r, r.scope_logs.all(s, s.log_records.all(record, record.attributes.exists(a, a.key == 'tenant.id' &amp;&amp; a.value.string_value.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')))))"</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="p">}</span>
+</code></pre></div></p>
+<details class="note">
+<summary>Behavior</summary>
+<ul>
+<li>The decision applies to the whole event. An expression like <code>log_records.exists(record, record.severity_text == 'ERROR')</code> passes on a delivery with one ERROR and many INFO records in full, including the INFO records</li>
+<li>A rule that fails for an event, e.g. a CEL expression accessing a missing list index, rejects the whole event regardless of <code>on_mismatch</code>. The OTLP source answers with HTTP 422, the Broker Source rejects the message instead of redelivering it</li>
+<li>Place validation stages with <code>on_mismatch: reject</code> before a batch stage, so one invalid delivery does not reject the deliveries batched with it</li>
+</ul>
+</details>
+<h2 id="batch-stage">Batch Stage<a class="headerlink" href="#batch-stage" title="Permanent link">&para;</a></h2>
+<p>Merges events that arrive concurrently into one event, so downstream components handle fewer, larger batches. It batches whatever it receives; use a filter stage before it to batch only some of the data.</p>
+<p><strong>Type:</strong> <code>batch</code></p>
+<p><strong>Configuration:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>max_records</code></td>
+<td>int</td>
+<td>No</td>
+<td><code>8192</code></td>
+<td>Flushes once the batch holds at least this many records (log records, metric data points and spans). Events are never split, so a batch can exceed it by the size of the last event</td>
+</tr>
+<tr>
+<td><code>max_bytes</code></td>
+<td>int</td>
+<td>No</td>
+<td>-</td>
+<td>Flushes a batch before the next event would take it over this many bytes of encoded OTLP data. Without it, the size is not limited</td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td>string</td>
+<td>No</td>
+<td><code>"200ms"</code></td>
+<td>Flushes a batch this long after its first event arrived</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="p">{</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"batch"</span><span class="p">,</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"batch"</span><span class="p">,</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span><span class="nt">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"otlp-in"</span><span class="p">,</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">  </span><span class="nt">"spec"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">    </span><span class="nt">"max_records"</span><span class="p">:</span><span class="w"> </span><span class="mi">1000</span><span class="p">,</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">    </span><span class="nt">"timeout"</span><span class="p">:</span><span class="w"> </span><span class="s2">"500ms"</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="p">}</span>
+</code></pre></div>
+<details class="note">
+<summary>Behavior</summary>
+<ul>
+<li>Batching happens in memory only. Each caller waits until its batch has been delivered and receives the delivery result, so sources keep acknowledging or rejecting exactly what was delivered, and a slow downstream slows the sources down instead of growing the buffer</li>
+<li>Batching only helps when events arrive concurrently, e.g. parallel OTLP requests or a Broker Source with several <code>workers</code>. A source that sends one event at a time only adds <code>timeout</code> to its latency</li>
+<li>Behind an OTLP source, <code>timeout</code> has to stay below the source's <code>delivery_timeout</code> (8s by default), together with the other <code>batch</code> and <code>delay</code> stages on the way to a sink; otherwise the stream is rejected, see <a href="../#hold-times">Hold Times</a></li>
+<li>If a caller's context is cancelled (e.g. the OTLP client disconnects or the OTLP source's <code>delivery_timeout</code> expires) before the batch flushes, its event is withdrawn and not delivered. Once the flush has started, the event is delivered and the caller waits for the result</li>
+<li>A delivery error, including a rejection by a later stage, applies to every event in the batch. Place <code>validation</code> stages with <code>on_mismatch: reject</code> before the batch, so one invalid event does not reject the others</li>
+<li><code>max_bytes</code> keeps batches below a limit downstream, e.g. the NATS server's <code>max_payload</code> (1 MB by default) or the request size a destination accepts. It counts the protobuf encoding of the data, which is what the NATS and OTLP sinks send uncompressed. An event that is larger by itself is sent alone, since events are never split, so the limit downstream can still be exceeded by single large requests. Measuring costs a pass over every event, so it is only done with <code>max_bytes</code> set</li>
+<li>Events are merged by concatenating their resource entries. Resources and scopes that appear in several events are kept as separate entries, which OTLP allows</li>
+<li>On shutdown, the open batch is delivered before downstream stages and sinks stop</li>
+</ul>
+</details>
+<h2 id="delay-stage">Delay Stage<a class="headerlink" href="#delay-stage" title="Permanent link">&para;</a></h2>
+<p>Holds every event back for a fixed duration; the caller waits meanwhile, concurrent events in parallel. Useful for testing and simulating slow downstream systems.</p>
+<p><strong>Type:</strong> <code>delay</code></p>
+<p><strong>Configuration:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>delay</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>-</td>
+<td>Duration to hold each event back (e.g., <code>"100ms"</code>, <code>"1s"</code>, <code>"5m"</code>)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="p">{</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"delay-stage"</span><span class="p">,</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"delay"</span><span class="p">,</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span><span class="nt">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"source"</span><span class="p">,</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">  </span><span class="nt">"spec"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">    </span><span class="nt">"delay"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1s"</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="p">}</span>
+</code></pre></div>
+<details class="note">
+<summary>Behavior</summary>
+<ul>
+<li>Behind an OTLP source, the delay counts toward the source's <code>delivery_timeout</code> (8s by default). A stream in which the <code>delay</code> and <code>batch</code> stages on the way to a sink add up to the <code>delivery_timeout</code> or more is rejected, see <a href="../#hold-times">Hold Times</a>. Raise the <code>delivery_timeout</code> for longer delays</li>
+</ul>
+</details>
+<h2 id="encryption-stage">Encryption Stage<a class="headerlink" href="#encryption-stage" title="Permanent link">&para;</a></h2>
+<p>Encrypts the body of every log record and the record attributes listed in <code>attributes</code>, so sinks send them encrypted. Attributes it does not list — e.g. the ones a sink's destination expression routes by — stay in cleartext, as do metrics and traces. The key comes from a <code>driver</code>: <code>local</code> (a raw AES-256 key, in a Kubernetes <code>Stream</code> resource via <code>secretKeyRef</code>) or <code>stackit-kms</code> (envelope encryption against the STACKIT KMS, which wraps a per-stage data key once).</p>
+<p><strong>Type:</strong> <code>encryption</code></p>
+<p><strong>Configuration:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>driver</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>-</td>
+<td>Key source: <code>local</code> or <code>stackit-kms</code>; its options go under a key of the same name</td>
+</tr>
+<tr>
+<td><code>algorithm</code></td>
+<td>string</td>
+<td>No</td>
+<td><code>aes-256-gcm</code></td>
+<td>Payload encryption algorithm</td>
+</tr>
+<tr>
+<td><code>attributes</code></td>
+<td>[]string</td>
+<td>No</td>
+<td>-</td>
+<td>Record attributes to encrypt besides the body (string values only)</td>
+</tr>
+<tr>
+<td><code>marker_prefix</code></td>
+<td>string</td>
+<td>No</td>
+<td><code>tram.encryption</code></td>
+<td>Prefix of the marker attributes set on every encrypted record (<code>&lt;prefix&gt;.algorithm</code>, <code>&lt;prefix&gt;.key_id</code>, <code>&lt;prefix&gt;.wrapped_key</code>); set a neutral prefix if the attribute names should not reveal the product</td>
+</tr>
+<tr>
+<td><code>local.key</code></td>
+<td>string</td>
+<td>With <code>driver: local</code></td>
+<td>-</td>
+<td>Base64-encoded 32-byte key; exactly one of <code>key</code>, <code>key_env</code>, <code>key_file</code></td>
+</tr>
+<tr>
+<td><code>local.key_env</code></td>
+<td>string</td>
+<td>With <code>driver: local</code></td>
+<td>-</td>
+<td>Environment variable holding the base64-encoded key</td>
+</tr>
+<tr>
+<td><code>local.key_file</code></td>
+<td>string</td>
+<td>With <code>driver: local</code></td>
+<td>-</td>
+<td>File holding the base64-encoded key</td>
+</tr>
+<tr>
+<td><code>stackit-kms.project_id</code></td>
+<td>string</td>
+<td>With <code>driver: stackit-kms</code></td>
+<td>-</td>
+<td>STACKIT project UUID</td>
+</tr>
+<tr>
+<td><code>stackit-kms.region</code></td>
+<td>string</td>
+<td>With <code>driver: stackit-kms</code></td>
+<td>-</td>
+<td>Region of the key ring, e.g. <code>eu01</code></td>
+</tr>
+<tr>
+<td><code>stackit-kms.keyring_id</code></td>
+<td>string</td>
+<td>With <code>driver: stackit-kms</code></td>
+<td>-</td>
+<td>Key ring UUID</td>
+</tr>
+<tr>
+<td><code>stackit-kms.key_id</code></td>
+<td>string</td>
+<td>With <code>driver: stackit-kms</code></td>
+<td>-</td>
+<td>Key UUID</td>
+</tr>
+<tr>
+<td><code>stackit-kms.key_version</code></td>
+<td>int</td>
+<td>With <code>driver: stackit-kms</code></td>
+<td>-</td>
+<td>Version of the key that wraps the data key</td>
+</tr>
+<tr>
+<td><code>stackit-kms.endpoint</code></td>
+<td>string</td>
+<td>With <code>driver: stackit-kms</code></td>
+<td><code>https://kms.api.&lt;region&gt;.stackit.cloud</code></td>
+<td>KMS API base URL</td>
+</tr>
+<tr>
+<td><code>stackit-kms.token</code></td>
+<td>string</td>
+<td>With <code>driver: stackit-kms</code></td>
+<td>SDK default auth</td>
+<td>Bearer token of a STACKIT service account</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="p">{</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"encrypt"</span><span class="p">,</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"encryption"</span><span class="p">,</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">  </span><span class="nt">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"otlp"</span><span class="p">,</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">  </span><span class="nt">"spec"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">    </span><span class="nt">"driver"</span><span class="p">:</span><span class="w"> </span><span class="s2">"local"</span><span class="p">,</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">    </span><span class="nt">"local"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"key"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;base64-encoded 32-byte key&gt;"</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">    </span><span class="nt">"attributes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"user.email"</span><span class="p">]</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="p">}</span>
+</code></pre></div>
+<p>In a Kubernetes <code>Stream</code> resource, the key can come from a secret instead of the spec:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="nt">stages</span><span class="p">:</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">encrypt</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">encryption</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">      </span><span class="nt">from</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">otlp</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">      </span><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">        </span><span class="nt">driver</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">local</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">        </span><span class="nt">local</span><span class="p">:</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">          </span><span class="nt">key</span><span class="p">:</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="w">            </span><span class="nt">secretKeyRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">tram-encryption-key</span><span class="p p-Indicator">,</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">key</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="w">        </span><span class="nt">attributes</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"user.email"</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p>With the <code>stackit-kms</code> driver, the stage generates a random data key once, wraps it via the KMS, and encrypts every record locally with AES-256-GCM:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="p">{</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"encrypt"</span><span class="p">,</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"encryption"</span><span class="p">,</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">  </span><span class="nt">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"otlp"</span><span class="p">,</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">  </span><span class="nt">"spec"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">    </span><span class="nt">"driver"</span><span class="p">:</span><span class="w"> </span><span class="s2">"stackit-kms"</span><span class="p">,</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">    </span><span class="nt">"stackit-kms"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">      </span><span class="nt">"project_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;project UUID&gt;"</span><span class="p">,</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">      </span><span class="nt">"region"</span><span class="p">:</span><span class="w"> </span><span class="s2">"eu01"</span><span class="p">,</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">      </span><span class="nt">"keyring_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;key ring UUID&gt;"</span><span class="p">,</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="w">      </span><span class="nt">"key_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;key UUID&gt;"</span><span class="p">,</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="w">      </span><span class="nt">"key_version"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="w">      </span><span class="nt">"token"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;STACKIT service account token&gt;"</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="w">    </span><span class="nt">"attributes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"user.email"</span><span class="p">]</span>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a><span class="p">}</span>
+</code></pre></div>
+<p>In a Kubernetes <code>Stream</code> resource, the token can come from a secret instead of the spec:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span><span class="nt">stages</span><span class="p">:</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">encrypt</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">encryption</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">      </span><span class="nt">from</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">otlp</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">      </span><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="w">        </span><span class="nt">driver</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">stackit-kms</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="w">        </span><span class="nt">stackit-kms</span><span class="p">:</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">          </span><span class="nt">project_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;project UUID&gt;</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="w">          </span><span class="nt">region</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">eu01</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="w">          </span><span class="nt">keyring_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;key ring UUID&gt;</span>
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="w">          </span><span class="nt">key_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;key UUID&gt;</span>
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a><span class="w">          </span><span class="nt">key_version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a><span class="w">          </span><span class="nt">token</span><span class="p">:</span>
+<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a><span class="w">            </span><span class="nt">secretKeyRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">stackit-kms-token</span><span class="p p-Indicator">,</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">token</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a><span class="w">        </span><span class="nt">attributes</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"user.email"</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<details class="note">
+<summary>Behavior</summary>
+<ul>
+<li>Every encrypted record carries the marker attributes <code>&lt;marker_prefix&gt;.algorithm</code>, <code>&lt;marker_prefix&gt;.key_id</code> and, for KMS drivers, <code>&lt;marker_prefix&gt;.wrapped_key</code> (base64) — by default <code>tram.encryption.*</code>; set <code>marker_prefix</code> to rename them. They are cleartext, so consumers know how to decrypt: with <code>local</code>, the same key; with <code>stackit-kms</code>, KMS <code>Decrypt</code> on the wrapped data key, then local AES-256-GCM. The ciphertext is nonce + AES-256-GCM tag appended, base64-encoded in string fields</li>
+<li>Routing is unaffected as long as routing attributes are not listed in <code>attributes</code>: the broker and OTLP sinks evaluate their destination expressions on the encrypted event, and cleartext attributes resolve to the same subjects and URLs as without the stage. A listed attribute with a non-string value, or a body that is neither string nor bytes, rejects the event (the OTLP source answers with 422)</li>
+<li>The stage never modifies the incoming event; it forwards a copy, so sibling branches see the plaintext</li>
+<li>The stage holds no events back and does not count toward the <a href="../#hold-times">Hold Times</a></li>
+<li>Metrics and traces pass through unchanged; only logs are encrypted</li>
+</ul>
+</details>
+<h2 id="decryption-stage">Decryption Stage<a class="headerlink" href="#decryption-stage" title="Permanent link">&para;</a></h2>
+<p>Decrypts the body of every encrypted log record and the record attributes listed in <code>attributes</code>, and removes the encryption marker attributes the <a href="#encryption-stage">Encryption Stage</a> sets. Records without a marker attribute pass through unchanged, so the stage is idempotent and can sit in a branch that also receives plaintext. Metrics and traces pass through unchanged. The <code>driver</code> and key have to match the records' <code>tram.encryption.key_id</code> marker, no matter which stream or producer encrypted them: <code>local</code> (the raw AES-256 key, in a Kubernetes <code>Stream</code> resource via <code>secretKeyRef</code>) or <code>stackit-kms</code> (the STACKIT KMS key that wrapped the per-record data key, which the stage unwraps).</p>
+<p><strong>Type:</strong> <code>decryption</code></p>
+<p><strong>Configuration:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>driver</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>-</td>
+<td>Key source: <code>local</code> or <code>stackit-kms</code>; its options go under a key of the same name</td>
+</tr>
+<tr>
+<td><code>algorithm</code></td>
+<td>string</td>
+<td>No</td>
+<td><code>aes-256-gcm</code></td>
+<td>Payload encryption algorithm of the records; must match the records' <code>tram.encryption.algorithm</code></td>
+</tr>
+<tr>
+<td><code>attributes</code></td>
+<td>[]string</td>
+<td>No</td>
+<td>-</td>
+<td>Record attributes to decrypt besides the body; list the same ones the encryption stage encrypted</td>
+</tr>
+<tr>
+<td><code>marker_prefix</code></td>
+<td>string</td>
+<td>No</td>
+<td><code>tram.encryption</code></td>
+<td>Prefix of the marker attributes on encrypted records; has to match the prefix the records were encrypted with</td>
+</tr>
+<tr>
+<td><code>local.key</code></td>
+<td>string</td>
+<td>With <code>driver: local</code></td>
+<td>-</td>
+<td>Base64-encoded 32-byte key; exactly one of <code>key</code>, <code>key_env</code>, <code>key_file</code></td>
+</tr>
+<tr>
+<td><code>local.key_env</code></td>
+<td>string</td>
+<td>With <code>driver: local</code></td>
+<td>-</td>
+<td>Environment variable holding the base64-encoded key</td>
+</tr>
+<tr>
+<td><code>local.key_file</code></td>
+<td>string</td>
+<td>With <code>driver: local</code></td>
+<td>-</td>
+<td>File holding the base64-encoded key</td>
+</tr>
+<tr>
+<td><code>stackit-kms.project_id</code></td>
+<td>string</td>
+<td>With <code>driver: stackit-kms</code></td>
+<td>-</td>
+<td>STACKIT project UUID</td>
+</tr>
+<tr>
+<td><code>stackit-kms.region</code></td>
+<td>string</td>
+<td>With <code>driver: stackit-kms</code></td>
+<td>-</td>
+<td>Region of the key ring, e.g. <code>eu01</code></td>
+</tr>
+<tr>
+<td><code>stackit-kms.keyring_id</code></td>
+<td>string</td>
+<td>With <code>driver: stackit-kms</code></td>
+<td>-</td>
+<td>Key ring UUID</td>
+</tr>
+<tr>
+<td><code>stackit-kms.key_id</code></td>
+<td>string</td>
+<td>With <code>driver: stackit-kms</code></td>
+<td>-</td>
+<td>Key UUID</td>
+</tr>
+<tr>
+<td><code>stackit-kms.key_version</code></td>
+<td>int</td>
+<td>With <code>driver: stackit-kms</code></td>
+<td>-</td>
+<td>Version of the key that unwraps the data key</td>
+</tr>
+<tr>
+<td><code>stackit-kms.endpoint</code></td>
+<td>string</td>
+<td>With <code>driver: stackit-kms</code></td>
+<td><code>https://kms.api.&lt;region&gt;.stackit.cloud</code></td>
+<td>KMS API base URL</td>
+</tr>
+<tr>
+<td><code>stackit-kms.token</code></td>
+<td>string</td>
+<td>With <code>driver: stackit-kms</code></td>
+<td>SDK default auth</td>
+<td>Bearer token of a STACKIT service account</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="p">{</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"decrypt"</span><span class="p">,</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"decryption"</span><span class="p">,</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">  </span><span class="nt">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"encrypt"</span><span class="p">,</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">  </span><span class="nt">"spec"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">    </span><span class="nt">"driver"</span><span class="p">:</span><span class="w"> </span><span class="s2">"local"</span><span class="p">,</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">    </span><span class="nt">"local"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"key"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;base64-encoded 32-byte key&gt;"</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="w">    </span><span class="nt">"attributes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"user.email"</span><span class="p">]</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="p">}</span>
+</code></pre></div>
+<p>In a Kubernetes <code>Stream</code> resource, the key can come from a secret instead of the spec:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">  </span><span class="nt">stages</span><span class="p">:</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">decrypt</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">decryption</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="w">      </span><span class="nt">from</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">encrypt</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="w">      </span><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="w">        </span><span class="nt">driver</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">local</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="w">        </span><span class="nt">local</span><span class="p">:</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="w">          </span><span class="nt">key</span><span class="p">:</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="w">            </span><span class="nt">secretKeyRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">tram-encryption-key</span><span class="p p-Indicator">,</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">key</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="w">        </span><span class="nt">attributes</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"user.email"</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p>With the <code>stackit-kms</code> driver, the stage unwraps the wrapped data key of each record via the KMS (cached in memory) and decrypts locally. Point it at the KMS key named in the records' <code>tram.encryption.key_id</code> marker — the encrypted records may well come from a different stream:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="p">{</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"decrypt"</span><span class="p">,</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"decryption"</span><span class="p">,</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">  </span><span class="nt">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"encrypt"</span><span class="p">,</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="w">  </span><span class="nt">"spec"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">    </span><span class="nt">"driver"</span><span class="p">:</span><span class="w"> </span><span class="s2">"stackit-kms"</span><span class="p">,</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="w">    </span><span class="nt">"stackit-kms"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="w">      </span><span class="nt">"project_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;project UUID&gt;"</span><span class="p">,</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="w">      </span><span class="nt">"region"</span><span class="p">:</span><span class="w"> </span><span class="s2">"eu01"</span><span class="p">,</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="w">      </span><span class="nt">"keyring_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;key ring UUID&gt;"</span><span class="p">,</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="w">      </span><span class="nt">"key_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;key UUID&gt;"</span><span class="p">,</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a><span class="w">      </span><span class="nt">"key_version"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="w">      </span><span class="nt">"token"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;STACKIT service account token&gt;"</span>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a><span class="w">    </span><span class="nt">"attributes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"user.email"</span><span class="p">]</span>
+<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a><span class="p">}</span>
+</code></pre></div>
+<p>In a Kubernetes <code>Stream</code> resource, the token can come from a secret instead of the spec:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">  </span><span class="nt">stages</span><span class="p">:</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">decrypt</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">decryption</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="w">      </span><span class="nt">from</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">encrypt</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="w">      </span><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="w">        </span><span class="nt">driver</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">stackit-kms</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="w">        </span><span class="nt">stackit-kms</span><span class="p">:</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="w">          </span><span class="nt">project_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;project UUID&gt;</span>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="w">          </span><span class="nt">region</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">eu01</span>
+<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a><span class="w">          </span><span class="nt">keyring_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;key ring UUID&gt;</span>
+<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a><span class="w">          </span><span class="nt">key_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;key UUID&gt;</span>
+<a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a><span class="w">          </span><span class="nt">key_version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a><span class="w">          </span><span class="nt">token</span><span class="p">:</span>
+<a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a><span class="w">            </span><span class="nt">secretKeyRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">stackit-kms-token</span><span class="p p-Indicator">,</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">token</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a><span class="w">        </span><span class="nt">attributes</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"user.email"</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<details class="note">
+<summary>Behavior</summary>
+<ul>
+<li>A record is recognized as encrypted by its <code>&lt;marker_prefix&gt;.algorithm</code> attribute (default <code>tram.encryption.algorithm</code>). After decryption the stage removes the marker attributes <code>&lt;marker_prefix&gt;.algorithm</code>, <code>&lt;marker_prefix&gt;.key_id</code> and <code>&lt;marker_prefix&gt;.wrapped_key</code>, so downstream stages and sinks see plaintext again and routing on decrypted attributes works</li>
+<li>Records without the marker attribute pass through unchanged, as do metrics and traces; only logs are decrypted</li>
+<li>A record whose <code>tram.encryption.algorithm</code> differs from the stage's <code>algorithm</code>, or whose <code>tram.encryption.key_id</code> differs from the driver's key (e.g. after a key rotation), rejects the event (the OTLP source answers with 422). A listed attribute with a non-string value, or a body that is neither string nor bytes, rejects the event as well</li>
+<li>With <code>stackit-kms</code>, the wrapped data key of each record is unwrapped via KMS <code>Decrypt</code> and cached in memory, so repeated records do not call the KMS again</li>
+<li>The stage never modifies the incoming event; it forwards a copy, so sibling branches see the ciphertext</li>
+<li>The stage holds no events back and does not count toward the <a href="../#hold-times">Hold Times</a></li>
+</ul>
+</details>
+<h2 id="no-op-stage">No-op Stage<a class="headerlink" href="#no-op-stage" title="Permanent link">&para;</a></h2>
+<p>A pass-through stage that performs no processing — for testing, debugging, or as a placeholder.</p>
+<p><strong>Type:</strong> <code>noop</code></p>
+<p><strong>Configuration:</strong> None required.</p>
+<p><strong>Example:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="p">{</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"passthrough"</span><span class="p">,</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="w">  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"noop"</span><span class="p">,</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="w">  </span><span class="nt">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"source"</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="p">}</span>
+</code></pre></div>
+<h2 id="value-map-stage">Value Map Stage<a class="headerlink" href="#value-map-stage" title="Permanent link">&para;</a></h2>
+<p>Looks up a source attribute in a table for every record and sets a target attribute to the mapped value, or to <code>default</code> on a miss (missing attribute or no table entry). Every record is passed on; nothing is filtered, dropped or held back.</p>
+<p><strong>Type:</strong> <code>value_map</code></p>
+<p><strong>Configuration:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>source_attr</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>-</td>
+<td>Attribute whose value is looked up</td>
+</tr>
+<tr>
+<td><code>target_attr</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>-</td>
+<td>Attribute set to the result of the lookup. An existing attribute of that name is replaced</td>
+</tr>
+<tr>
+<td><code>default</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>-</td>
+<td>Value set when the source attribute is missing or its value has no table entry</td>
+</tr>
+<tr>
+<td><code>level</code></td>
+<td>string</td>
+<td>No</td>
+<td><code>"record"</code></td>
+<td>Level the source attribute is read from: <code>record</code> (the record's own attributes) or <code>resource</code> (the attributes of the record's resource)</td>
+</tr>
+<tr>
+<td><code>table</code></td>
+<td>object</td>
+<td>One of <code>table</code>, <code>table_ref</code></td>
+<td>-</td>
+<td>Embedded lookup table, source value to target value. In a Kubernetes <code>Stream</code> resource, the table can come from config maps selected by label, which keeps large tables out of the resource; see <a href="../../kubernetes/#config-maps">Config Maps</a></td>
+</tr>
+<tr>
+<td><code>table_ref</code></td>
+<td>string</td>
+<td>One of <code>table</code>, <code>table_ref</code></td>
+<td>-</td>
+<td>Path to a JSON file that holds the lookup table as an object of string values, e.g. <code>{"value-a": "target-a"}</code>. Read once when the stage is created; an unreadable file or invalid JSON is rejected. Exactly one of <code>table</code> and <code>table_ref</code> has to be set</td>
+</tr>
+</tbody>
+</table>
+<p>The target attribute is always set on the record itself, whatever <code>level</code> the source attribute is read from. A source value that is not a string cannot have a table entry and receives the default value.</p>
+<p><strong>Example:</strong> translate a <code>team</code> attribute into a <code>team.id</code> attribute:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="p">{</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"team-ids"</span><span class="p">,</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="w">  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"value_map"</span><span class="p">,</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="w">  </span><span class="nt">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"otlp-in"</span><span class="p">,</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="w">  </span><span class="nt">"spec"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="w">    </span><span class="nt">"source_attr"</span><span class="p">:</span><span class="w"> </span><span class="s2">"team"</span><span class="p">,</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="w">    </span><span class="nt">"target_attr"</span><span class="p">:</span><span class="w"> </span><span class="s2">"team.id"</span><span class="p">,</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="w">    </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="s2">"unassigned"</span><span class="p">,</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="w">    </span><span class="nt">"table"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a><span class="w">      </span><span class="nt">"team-0"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cart"</span><span class="p">,</span>
+<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a><span class="w">      </span><span class="nt">"team-1"</span><span class="p">:</span><span class="w"> </span><span class="s2">"checkout"</span>
+<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>Metrics:</strong> besides the node metrics of its stream, the stage records its lookup outcomes, with the <code>node</code> of the stage and the <code>signal</code> as labels:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Type</th>
+<th>Labels</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tram_stage_value_map_mapped_total</code></td>
+<td>Counter</td>
+<td><code>node</code>, <code>signal</code></td>
+<td>Records whose source value the table maps, which received the mapped value</td>
+</tr>
+<tr>
+<td><code>tram_stage_value_map_lookup_missing_attr_total</code></td>
+<td>Counter</td>
+<td><code>node</code>, <code>signal</code></td>
+<td>Records without the source attribute, which received the default value</td>
+</tr>
+<tr>
+<td><code>tram_stage_value_map_lookup_no_entry_total</code></td>
+<td>Counter</td>
+<td><code>node</code>, <code>signal</code></td>
+<td>Records whose source value has no table entry, which received the default value</td>
+</tr>
+</tbody>
+</table>
+<p>The node metrics framework counts records and durations only, not lookup outcomes, which is why the stage adds its own counters. Unlike the node metrics, they cannot carry the stream name, so they are series per stage name; keep stage names unique per stream to keep the series apart.</p>
+<details class="note">
+<summary>Behavior</summary>
+<ul>
+<li>A lookup miss is a defined state, not an error: the record is still passed on, with the target attribute set to <code>default</code></li>
+<li>Every record is annotated, so the stage always passes on a copy of the event: the containers it annotates (records of each signal) are rebuilt, resources, scopes and metric metadata are shared</li>
+<li>The table is fixed while the stream runs. To change it, update the stream with a changed spec, through the API, the config sync or a <code>Stream</code> resource, or change the config maps a <code>Stream</code> resource selects its table from; the usual stream update applies: an update with an identical spec changes nothing, an update with just a changed spec replaces the stage without touching the source</li>
+<li>The stage holds no events back and does not count toward the <a href="../#hold-times">Hold Times</a></li>
+</ul>
+</details>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-arrow-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../sources/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Sources">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Sources
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../sinks/" class="md-footer__link md-footer__link--next" aria-label="Next: Sinks">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Sinks
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/GO-TRAM/TRAM" target="_blank" rel="noopener" title="TRAM on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog" role="status" aria-atomic="true">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      
+      
+        
+        
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["navigation.instant","navigation.tracking","navigation.tabs","navigation.indexes","navigation.top","navigation.footer","search.highlight","search.suggest","toc.follow","content.code.copy"],"redirect":null,"search":"../../assets/javascripts/workers/search.719e0d91.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.9e76c64c.min.js"></script>
+      
+      
+    
+  </body>
+</html>
