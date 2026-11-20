@@ -13,6 +13,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// logo is printed by commands that are not written yet.
+//
+//nolint:unused // Used later.
 const logo = `
                                                                                                    :::
                                                                                                     :::
