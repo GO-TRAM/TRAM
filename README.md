@@ -387,7 +387,7 @@ A stream can carry test cases in `tests`. They are never run by loading the stre
 tram test stream.json [--secrets secrets.json]
 ```
 
-The file holds either a bare stream object or a file sync file that wraps it in `{"stream": {...}}`, like the examples in `examples/config/`; see `examples/config/otlp_with_filters.json` for a stream with test cases.
+The file holds either a bare stream object or a file sync file that wraps it in `{"stream": {...}}`, like the examples in `examples/tests/`; see `examples/tests/otlp_with_filters.json` for a stream with test cases.
 
 The stream is loaded into its own in-memory tree: the source is replaced by a test source that emits the test inputs, and every sink by a capture sink, so no external system is contacted. The stages are the real stages and process the events.
 

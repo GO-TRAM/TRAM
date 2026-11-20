@@ -58,6 +58,10 @@ func TestExamplesAreValid(t *testing.T) {
 	configs, err := filepath.Glob("../../examples/config/*.json")
 	require.NoError(t, err)
 	require.NotEmpty(t, configs)
+	testConfigs, err := filepath.Glob("../../examples/tests/*.json")
+	require.NoError(t, err)
+	require.NotEmpty(t, testConfigs)
+	configs = append(configs, testConfigs...)
 	for _, path := range configs {
 		t.Run(filepath.Base(path), func(t *testing.T) {
 			t.Parallel()
@@ -69,36 +73,6 @@ func TestExamplesAreValid(t *testing.T) {
 			checkExample(t, file.Stream)
 		})
 	}
-}
-
-// TestExampleTestsPass runs the test cases that examples carry in their
-// `tests` field, the same way `tram test` does.
-func TestExampleTestsPass(t *testing.T) {
-	t.Parallel()
-
-	logger := slog.New(slog.DiscardHandler)
-	configs, err := filepath.Glob("../../examples/config/*.json")
-	require.NoError(t, err)
-	require.NotEmpty(t, configs)
-	ran := false
-	for _, path := range configs {
-		spec, err := testrun.LoadStream(path)
-		require.NoError(t, err)
-		if len(spec.Tests) == 0 {
-			continue
-		}
-		ran = true
-		t.Run(filepath.Base(path), func(t *testing.T) {
-			t.Parallel()
-
-			results, err := core.RunStreamTests(t.Context(), spec, stage.NewFactory(logger), logger)
-			require.NoError(t, err)
-			for _, result := range results {
-				assert.True(t, result.Passed, "%s: %v", result.Name, result.Problems)
-			}
-		})
-	}
-	require.True(t, ran, "no example carries test cases")
 
 	manifests, err := filepath.Glob("../../examples/k8s/examples/*.yaml")
 	require.NoError(t, err)
@@ -121,6 +95,31 @@ func TestExampleTestsPass(t *testing.T) {
 			assert.Empty(t, validation.IsDNS1123Subdomain(manifest.Metadata.Name),
 				"Kubernetes rejects the name %q", manifest.Metadata.Name)
 			checkExample(t, manifest.Spec)
+		})
+	}
+}
+
+// TestExampleTestsPass runs the test cases of the examples in examples/tests/,
+// the same way `tram test` does.
+func TestExampleTestsPass(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	configs, err := filepath.Glob("../../examples/tests/*.json")
+	require.NoError(t, err)
+	require.NotEmpty(t, configs)
+	for _, path := range configs {
+		spec, err := testrun.LoadStream(path)
+		require.NoError(t, err)
+		require.NotEmpty(t, spec.Tests, "%s carries no test cases", path)
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			t.Parallel()
+
+			results, err := core.RunStreamTests(t.Context(), spec, stage.NewFactory(logger), logger)
+			require.NoError(t, err)
+			for _, result := range results {
+				assert.True(t, result.Passed, "%s: %v", result.Name, result.Problems)
+			}
 		})
 	}
 }
