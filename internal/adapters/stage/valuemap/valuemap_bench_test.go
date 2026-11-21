@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/go-playground/validator/v10"
+	"go.opentelemetry.io/otel"
 
 	"github.com/go-tram/tram/internal/adapters/stage/valuemap"
 	"github.com/go-tram/tram/internal/core/domain"
@@ -66,6 +67,8 @@ func BenchmarkNotifyLogs(b *testing.B) {
 			domain.StageSpec{Name: "mapper", From: "source", Spec: source.spec},
 			validator.New(),
 			logger,
+			otel.GetMeterProvider(),
+			"stream",
 		)
 		if err != nil {
 			b.Fatal(err)

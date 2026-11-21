@@ -76,7 +76,7 @@ func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (er
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	metricsHandler, shutdownMetrics, err := setupMetrics()
+	metricsHandler, meterProvider, shutdownMetrics, err := setupMetrics()
 	if err != nil {
 		return err
 	}
@@ -89,7 +89,7 @@ func runServer(ctx context.Context, logger *slog.Logger, opts serverOptions) (er
 	}
 
 	sourceFac := source.NewFactory(logger, source.WithDataDir(opts.dataDir))
-	stageFac := stage.NewFactory(logger)
+	stageFac := stage.NewFactory(logger, stage.WithMeterProvider(meterProvider))
 	sinkFac := sink.NewFactory(logger, sink.WithDataDir(opts.dataDir))
 
 	c := core.New(ctx, logger, sourceFac, stageFac, sinkFac)

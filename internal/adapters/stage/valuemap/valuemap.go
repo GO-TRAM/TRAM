@@ -14,7 +14,6 @@ import (
 	"os"
 
 	"github.com/go-playground/validator/v10"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
@@ -29,10 +28,9 @@ import (
 
 const Type = "value_map"
 
-// meterName names the meter the lookup metrics of the stage are created with.
-// Like the core's metrics, the meters read the globally configured provider,
-// which serves them on /metrics in the Prometheus format. The stage does not
-// know its stream, so its metrics carry the node and signal attributes only.
+// meterName names the meter the lookup metrics of the stage are created with,
+// from the meter provider its factory passes, which serves them on /metrics in
+// the Prometheus format like the core's metrics.
 const meterName = "github.com/go-tram/tram/internal/adapters/stage/valuemap"
 
 // Outcomes of a lookup, in the order of their metrics. A miss is a defined
@@ -60,7 +58,15 @@ type ValueMap struct {
 	logger  *slog.Logger
 }
 
-func New(stage domain.StageSpec, validator *validator.Validate, logger *slog.Logger) (*ValueMap, error) {
+// New takes the stream the stage belongs to and the provider its lookup
+// metrics are created from, both passed on by the factory like the logger.
+func New(
+	stage domain.StageSpec,
+	validator *validator.Validate,
+	logger *slog.Logger,
+	provider metric.MeterProvider,
+	stream string,
+) (*ValueMap, error) {
 	base, err := base.New[Spec](stage.Name, stage.From, stage.Spec, validator)
 	if err != nil {
 		return nil, err
@@ -87,7 +93,7 @@ func New(stage domain.StageSpec, validator *validator.Validate, logger *slog.Log
 		def:        spec.Default,
 		level:      level,
 		table:      table,
-		metrics:    newLookupMetrics(stage.Name),
+		metrics:    newLookupMetrics(stream, stage.Name, provider),
 		logger:     logger.With(slog.String("stage", stage.Name)),
 	}, nil
 }
@@ -465,11 +471,12 @@ type lookupCounts struct {
 // them, and the zero metrics then records nothing.
 type lookupMetrics struct {
 	counters [outcomeCount]metric.Int64Counter
-	// options holds the add options per outcome and signal: node and signal.
+	// options holds the add options per outcome and signal: stream, node and
+	// signal.
 	options [outcomeCount][signalCount][]metric.AddOption
 }
 
-func newLookupMetrics(node string) lookupMetrics {
+func newLookupMetrics(stream, node string, provider metric.MeterProvider) lookupMetrics {
 	lookupDescriptions := [outcomeCount]string{
 		"Records the stage annotated with a value its table maps the source attribute to",
 		"Records whose source attribute is missing and that received the default value",
@@ -477,7 +484,7 @@ func newLookupMetrics(node string) lookupMetrics {
 	}
 	lookupNames := [outcomeCount]string{"mapped", "lookup_missing_attr", "lookup_no_entry"}
 
-	meter := otel.GetMeterProvider().Meter(meterName)
+	meter := provider.Meter(meterName)
 	var m lookupMetrics
 	for outcome := range outcomeCount {
 		counter, err := meter.Int64Counter(
@@ -491,6 +498,7 @@ func newLookupMetrics(node string) lookupMetrics {
 		m.counters[outcome] = counter
 		for signal, sig := range [signalCount]domain.Signal{domain.SignalLogs, domain.SignalMetrics, domain.SignalTraces} {
 			m.options[outcome][signal] = []metric.AddOption{metric.WithAttributeSet(attribute.NewSet(
+				attribute.String("stream", stream),
 				attribute.String("node", node),
 				attribute.String("signal", string(sig)),
 			))}

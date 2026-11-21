@@ -47,7 +47,9 @@ func NewFactory(logger *slog.Logger, opts ...Option) *Factory {
 	return f
 }
 
-func (f *Factory) New(spec domain.SinkSpec) (domain.Sink, error) {
+// New creates the sink of spec. It ignores the stream it belongs to:
+// sinks record no metrics of their own.
+func (f *Factory) New(spec domain.SinkSpec, _ string) (domain.Sink, error) {
 	switch spec.Type {
 	case broker.Type:
 		return broker.New(spec, f.validator, f.logger)

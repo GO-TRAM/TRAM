@@ -21,7 +21,8 @@ import (
 func TestFactoryUnknownType(t *testing.T) {
 	t.Parallel()
 
-	_, err := source.NewFactory(slog.New(slog.DiscardHandler)).New(domain.SourceSpec{Name: "s", Type: "unknown"})
+	_, err := source.NewFactory(slog.New(slog.DiscardHandler)).
+		New(domain.SourceSpec{Name: "s", Type: "unknown"}, "stream")
 	require.ErrorIs(t, err, domain.ErrInvalidSourceType)
 	assert.ErrorContains(t, err, `"unknown"`)
 }

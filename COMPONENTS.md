@@ -755,15 +755,15 @@ The target attribute is always set on the record itself, whatever `level` the so
 }
 ```
 
-**Metrics:** besides the node metrics of its stream, the stage records its lookup outcomes, with the `node` of the stage and the `signal` as labels:
+**Metrics:** besides the node metrics of its stream, the stage records its lookup outcomes, with the `stream`, the `node` of the stage and the `signal` as labels:
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `tram_stage_value_map_mapped_total` | Counter | `node`, `signal` | Records whose source value the table maps, which received the mapped value |
-| `tram_stage_value_map_lookup_missing_attr_total` | Counter | `node`, `signal` | Records without the source attribute, which received the default value |
-| `tram_stage_value_map_lookup_no_entry_total` | Counter | `node`, `signal` | Records whose source value has no table entry, which received the default value |
+| `tram_stage_value_map_mapped_total` | Counter | `stream`, `node`, `signal` | Records whose source value the table maps, which received the mapped value |
+| `tram_stage_value_map_lookup_missing_attr_total` | Counter | `stream`, `node`, `signal` | Records without the source attribute, which received the default value |
+| `tram_stage_value_map_lookup_no_entry_total` | Counter | `stream`, `node`, `signal` | Records whose source value has no table entry, which received the default value |
 
-The node metrics framework counts records and durations only, not lookup outcomes, which is why the stage adds its own counters. Unlike the node metrics, they cannot carry the stream name, so they are series per stage name; keep stage names unique per stream to keep the series apart.
+The node metrics framework counts records and durations only, not lookup outcomes, which is why the stage adds its own counters, created from the meter provider its factory passes. They are labeled like the node metrics, so every stream and stage has a series of its own.
 
 ??? note "Behavior"
 

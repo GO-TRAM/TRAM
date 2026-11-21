@@ -10,6 +10,8 @@ import (
 	"log/slog"
 
 	"github.com/go-playground/validator/v10"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/go-tram/tram/internal/adapters/stage/batch"
 	"github.com/go-tram/tram/internal/adapters/stage/decryption"
@@ -27,16 +29,32 @@ import (
 type Factory struct {
 	validator *validator.Validate
 	logger    *slog.Logger
+	provider  metric.MeterProvider
 }
 
-func NewFactory(logger *slog.Logger) *Factory {
-	return &Factory{
+// Option configures the factory.
+type Option func(*Factory)
+
+// WithMeterProvider is the provider the stages that record metrics of their
+// own create their meters from, like the lookup outcomes of the value map
+// stage. Without it, the globally configured provider serves them.
+func WithMeterProvider(provider metric.MeterProvider) Option {
+	return func(f *Factory) { f.provider = provider }
+}
+
+func NewFactory(logger *slog.Logger, opts ...Option) *Factory {
+	f := &Factory{
 		validator: validator.New(validator.WithRequiredStructEnabled()),
 		logger:    logger,
+		provider:  otel.GetMeterProvider(),
 	}
+	for _, opt := range opts {
+		opt(f)
+	}
+	return f
 }
 
-func (f *Factory) New(spec domain.StageSpec) (domain.Stage, error) {
+func (f *Factory) New(spec domain.StageSpec, stream string) (domain.Stage, error) {
 	switch spec.Type {
 	case noop.Type:
 		return noop.New(spec, f.validator, f.logger)
@@ -53,7 +71,7 @@ func (f *Factory) New(spec domain.StageSpec) (domain.Stage, error) {
 	case batch.Type:
 		return batch.New(spec, f.validator, f.logger)
 	case valuemap.Type:
-		return valuemap.New(spec, f.validator, f.logger)
+		return valuemap.New(spec, f.validator, f.logger, f.provider, stream)
 	default:
 		return nil, fmt.Errorf("%w: %q", domain.ErrInvalidStageType, spec.Type)
 	}

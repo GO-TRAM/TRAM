@@ -46,7 +46,9 @@ func NewFactory(logger *slog.Logger, opts ...Option) *Factory {
 	return f
 }
 
-func (f *Factory) New(spec domain.SourceSpec) (domain.Source, error) {
+// New creates the source of spec. It ignores the stream it belongs to:
+// sources record no metrics of their own.
+func (f *Factory) New(spec domain.SourceSpec, _ string) (domain.Source, error) {
 	switch spec.Type {
 	case broker.Type:
 		return broker.New(spec, f.validator, f.logger)

@@ -155,7 +155,7 @@ func (s *fakeSink) Stop() error { s.reg.stop(s.name); return nil }
 
 type sourceFactory struct{ reg *registry }
 
-func (f sourceFactory) New(spec domain.SourceSpec) (domain.Source, error) {
+func (f sourceFactory) New(spec domain.SourceSpec, _ string) (domain.Source, error) {
 	f.reg.mu.Lock()
 	defer f.reg.mu.Unlock()
 	if spec.Type == brokenType {
@@ -219,7 +219,7 @@ func (s *fakeStage) Subscribe(sub domain.Subscriber) error {
 
 type stageFactory struct{ reg *registry }
 
-func (f stageFactory) New(spec domain.StageSpec) (domain.Stage, error) {
+func (f stageFactory) New(spec domain.StageSpec, _ string) (domain.Stage, error) {
 	var hold time.Duration
 	if raw, ok := spec.Spec["hold"].(string); ok {
 		var err error
@@ -239,7 +239,7 @@ func (s *fakeStage) MaxHold() time.Duration { return s.hold }
 
 type sinkFactory struct{ reg *registry }
 
-func (f sinkFactory) New(spec domain.SinkSpec) (domain.Sink, error) {
+func (f sinkFactory) New(spec domain.SinkSpec, _ string) (domain.Sink, error) {
 	if spec.Type == brokenType {
 		return nil, errors.New("broken sink")
 	}

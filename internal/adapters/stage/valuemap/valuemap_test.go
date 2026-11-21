@@ -14,6 +14,10 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
@@ -47,7 +51,10 @@ func (c *capture) Notify(_ context.Context, e *domain.Event) error {
 func newStage(t *testing.T, spec map[string]any) (*valuemap.ValueMap, *capture) {
 	t.Helper()
 	logger := slog.Default()
-	s, err := valuemap.New(domain.StageSpec{Name: "mapper", From: "source", Spec: spec}, validator.New(), logger)
+	s, err := valuemap.New(
+		domain.StageSpec{Name: "mapper", From: "source", Spec: spec},
+		validator.New(), logger, otel.GetMeterProvider(), "stream",
+	)
 	require.NoError(t, err)
 	c := &capture{}
 	require.NoError(t, s.Subscribe(c))
@@ -206,7 +213,8 @@ func TestNew(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := valuemap.New(domain.StageSpec{Name: "mapper", Spec: c.spec}, validator.New(), slog.Default())
+			_, err := valuemap.New(domain.StageSpec{Name: "mapper", Spec: c.spec},
+				validator.New(), slog.Default(), otel.GetMeterProvider(), "stream")
 			if !c.expectErr {
 				assert.NoError(t, err)
 				return
@@ -481,4 +489,52 @@ func TestInputStaysUntouched(t *testing.T) {
 	assert.True(t, proto.Equal(original, event.Logs), "the shared input must not be modified")
 	mapped, _ := attr(out2.events[0], teamIDKey)
 	assert.Equal(t, "other", mapped)
+}
+
+// TestLookupMetricsCarryStream proves the stage's own counters are labeled
+// with the stream, node and signal, like the node metrics of the core.
+func TestLookupMetricsCarryStream(t *testing.T) {
+	t.Parallel()
+
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.Background())) })
+
+	s, err := valuemap.New(
+		domain.StageSpec{Name: "mapper", From: "source", Spec: mappedSpec(map[string]string{team0: "cart"})},
+		validator.New(), slog.Default(), provider, "telemetry",
+	)
+	require.NoError(t, err)
+	require.NoError(t, s.Subscribe(&capture{}))
+
+	require.NoError(t, s.Notify(t.Context(), logs([]*logspb.LogRecord{
+		record(stringAttr("team", team0)), // mapped
+		record(stringAttr("team", team1)), // no table entry
+	})))
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(t.Context(), &rm))
+
+	// distinct holds the attribute sets of every data point, by metric name.
+	distinct := map[string][]attribute.Distinct{}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			require.True(t, ok)
+			for _, dp := range sum.DataPoints {
+				distinct[m.Name] = append(distinct[m.Name], dp.Attributes.Equivalent())
+			}
+		}
+	}
+
+	expectSet := attribute.NewSet(
+		attribute.String("stream", "telemetry"),
+		attribute.String("node", "mapper"),
+		attribute.String("signal", "logs"),
+	)
+	expect := expectSet.Equivalent()
+	assert.Contains(t, distinct["tram.stage.value_map.mapped"], expect,
+		"the mapped counter carries the stream, node and signal")
+	assert.Contains(t, distinct["tram.stage.value_map.lookup_no_entry"], expect,
+		"the no-entry counter carries the stream, node and signal")
 }

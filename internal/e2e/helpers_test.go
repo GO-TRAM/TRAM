@@ -94,9 +94,9 @@ type captureFactory struct {
 	sinks map[string]*captureSink
 }
 
-func (f *captureFactory) New(spec domain.SinkSpec) (domain.Sink, error) {
+func (f *captureFactory) New(spec domain.SinkSpec, stream string) (domain.Sink, error) {
 	if spec.Type != captureType {
-		return f.real.New(spec)
+		return f.real.New(spec, stream)
 	}
 	fail, _ := spec.Spec["fail"].(string)
 	s := &captureSink{name: spec.Name, from: spec.From, fail: fail}

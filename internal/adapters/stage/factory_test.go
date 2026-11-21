@@ -23,7 +23,7 @@ func TestFactoryUnknownType(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.Default()
-	_, err := stage.NewFactory(logger).New(domain.StageSpec{Name: "s", Type: "unknown"})
+	_, err := stage.NewFactory(logger).New(domain.StageSpec{Name: "s", Type: "unknown"}, "stream")
 	require.ErrorIs(t, err, domain.ErrInvalidStageType)
 	assert.ErrorContains(t, err, `"unknown"`)
 }
@@ -95,7 +95,7 @@ func TestFactoryDrivers(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := stage.NewFactory(slog.Default()).New(c.spec)
+			_, err := stage.NewFactory(slog.Default()).New(c.spec, "stream")
 			if c.expectErr == "" {
 				require.NoError(t, err)
 				return

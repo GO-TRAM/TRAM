@@ -296,7 +296,7 @@ type captureSinkFactory struct {
 	captures map[string]*captureSink
 }
 
-func (f captureSinkFactory) New(spec domain.SinkSpec) (domain.Sink, error) {
+func (f captureSinkFactory) New(spec domain.SinkSpec, _ string) (domain.Sink, error) {
 	sink := &captureSink{name: spec.Name}
 	f.captures[spec.Name] = sink
 	return sink, nil
