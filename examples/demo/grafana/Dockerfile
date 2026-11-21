@@ -5,7 +5,7 @@
 #   pinned.
 # - Infinity, for traces, which the OpenObserve plugin cannot query. 3.7.1 is
 #   the last version that supports this Grafana version.
-FROM docker.io/grafana/grafana:11.5.2
+FROM docker.io/grafana/grafana:13.3.1
 
 ARG OPENOBSERVE_PLUGIN_URL=https://zincsearch-releases.s3.us-west-2.amazonaws.com/zo_gp/zo_gp.tar.gz
 ARG INFINITY_PLUGIN_VERSION=3.7.1
