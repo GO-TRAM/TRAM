@@ -16,12 +16,11 @@ import (
 	"log/slog"
 
 	"github.com/go-playground/validator/v10"
-	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
-	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
-	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	"github.com/go-tram/tram/internal/adapters/driver"
 	"github.com/go-tram/tram/internal/adapters/stage/base"
+	"github.com/go-tram/tram/internal/adapters/stage/validation/drivers"
+	"github.com/go-tram/tram/internal/adapters/stage/validation/rules"
 	"github.com/go-tram/tram/internal/core/domain"
 )
 
@@ -43,35 +42,34 @@ type Spec struct {
 }
 
 // Driver compiles the options under its name into the rules of a validation.
-type Driver interface {
-	Compile(opts map[string]any) (Rules, error)
-}
 
 // Rules decide whether a signal matches. A signal without a rule matches.
 // An error rejects the event, whatever the stage does on a mismatch. Rules
 // are safe for concurrent use.
-type Rules interface {
-	Logs(*logspb.LogsData) (bool, error)
-	Metrics(*metricspb.MetricsData) (bool, error)
-	Traces(*tracepb.TracesData) (bool, error)
-}
 
 type Validation struct {
 	*base.Stage[Spec]
 
-	rules  Rules
+	rules  rules.Rules
 	logger *slog.Logger
 }
 
 // New creates the validation stage with the driver its spec names from
 // drivers.
-func New(
+// New creates the validation stage with the driver its spec names.
+func New(stage domain.StageSpec, validator *validator.Validate, logger *slog.Logger) (*Validation, error) {
+	return newValidation(stage, validator, logger, drivers.NewFactory(validator))
+}
+
+// newValidation is [New] with the drivers to resolve the spec's `driver`
+// from, so tests can inject a driver.
+func newValidation(
 	stage domain.StageSpec,
 	validator *validator.Validate,
 	logger *slog.Logger,
-	drivers driver.Factory[Driver],
+	driverFactory driver.Factory[rules.Driver],
 ) (*Validation, error) {
-	generic, opts, drv, err := driver.Split(stage.Spec, drivers)
+	generic, opts, drv, err := driver.Split(stage.Spec, driverFactory)
 	if err != nil {
 		return nil, err
 	}
@@ -79,13 +77,13 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	rules, err := drv.Compile(opts)
+	compiled, err := drv.Compile(opts)
 	if err != nil {
 		return nil, err
 	}
 	return &Validation{
 		Stage:  b,
-		rules:  rules,
+		rules:  compiled,
 		logger: logger.With(slog.String("stage", stage.Name)),
 	}, nil
 }

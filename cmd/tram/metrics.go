@@ -16,12 +16,13 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	otelprometheus "go.opentelemetry.io/otel/exporters/prometheus"
+	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/exemplar"
 	"go.opentelemetry.io/otel/sdk/resource"
 )
 
-func setupMetrics() (http.Handler, func(context.Context) error, error) {
+func setupMetrics() (http.Handler, metric.MeterProvider, func(context.Context) error, error) {
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(
 		collectors.NewGoCollector(),
@@ -30,7 +31,7 @@ func setupMetrics() (http.Handler, func(context.Context) error, error) {
 
 	exporter, err := otelprometheus.New(otelprometheus.WithRegisterer(registry))
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create Prometheus exporter: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to create Prometheus exporter: %w", err)
 	}
 
 	provider := sdkmetric.NewMeterProvider(
@@ -45,5 +46,5 @@ func setupMetrics() (http.Handler, func(context.Context) error, error) {
 	)
 	otel.SetMeterProvider(provider)
 
-	return promhttp.HandlerFor(registry, promhttp.HandlerOpts{}), provider.Shutdown, nil
+	return promhttp.HandlerFor(registry, promhttp.HandlerOpts{}), provider, provider.Shutdown, nil
 }

@@ -59,7 +59,7 @@ func (c *Core) buildStream(tree *domain.Tree) error {
 
 func (c *Core) createAll(tree *domain.Tree) error {
 	spec := tree.Spec
-	source, err := c.sourceFactory.New(spec.Source)
+	source, err := c.sourceFactory.New(spec.Source, spec.Name)
 	if err != nil {
 		return invalidSpec(spec.Source.Name, err)
 	}
@@ -92,7 +92,7 @@ func (c *Core) stopUnbuilt(tree *domain.Tree, includeSource bool) {
 
 func (c *Core) createReceivers(tree *domain.Tree) error {
 	for _, stageSpec := range tree.Spec.Stages {
-		stage, err := c.stageFactory.New(stageSpec)
+		stage, err := c.stageFactory.New(stageSpec, tree.Spec.Name)
 		if err != nil {
 			return invalidSpec(stageSpec.Name, err)
 		}
@@ -102,7 +102,7 @@ func (c *Core) createReceivers(tree *domain.Tree) error {
 	}
 
 	for _, sinkSpec := range tree.Spec.Sinks {
-		sink, err := c.sinkFactory.New(sinkSpec)
+		sink, err := c.sinkFactory.New(sinkSpec, tree.Spec.Name)
 		if err != nil {
 			return invalidSpec(sinkSpec.Name, err)
 		}
@@ -295,6 +295,10 @@ func (c *Core) restoreStream(resolved, spec domain.StreamSpec) {
 			slog.String("stream", spec.Name), slog.Any("error", err))
 		return
 	}
+	if resolved.Suspended {
+		c.streams[spec.Name] = &stream{tree: tree, spec: spec}
+		return
+	}
 	c.runStream(tree, spec, 0)
 }
 
@@ -313,7 +317,9 @@ func (c *Core) stopStream(s *stream) error {
 	if err = source.Stop(); err != nil {
 		errs = append(errs, fmt.Errorf("%s: %w", source.Name(), err))
 	}
-	<-s.done
+	if s.done != nil {
+		<-s.done
+	}
 
 	if err = stopNodes(s.tree, false); err != nil {
 		errs = append(errs, err)

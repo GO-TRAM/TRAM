@@ -94,9 +94,9 @@ type captureFactory struct {
 	sinks map[string]*captureSink
 }
 
-func (f *captureFactory) New(spec domain.SinkSpec) (domain.Sink, error) {
+func (f *captureFactory) New(spec domain.SinkSpec, stream string) (domain.Sink, error) {
 	if spec.Type != captureType {
-		return f.real.New(spec)
+		return f.real.New(spec, stream)
 	}
 	fail, _ := spec.Spec["fail"].(string)
 	s := &captureSink{name: spec.Name, from: spec.From, fail: fail}
@@ -144,13 +144,16 @@ func newPipeline(t *testing.T, stages []domain.StageSpec, sinks []domain.SinkSpe
 func newStream(t *testing.T, in domain.SourceSpec, stages []domain.StageSpec, sinks []domain.SinkSpec) *pipeline {
 	t.Helper()
 	p := &pipeline{
-		sinks: &captureFactory{real: sink.NewFactory(discard()), sinks: map[string]*captureSink{}},
-		in:    in,
+		sinks: &captureFactory{
+			real:  sink.NewFactory(discard(), sink.WithDataDir(t.TempDir())),
+			sinks: map[string]*captureSink{},
+		},
+		in: in,
 	}
 	p.core = core.New(
 		context.Background(),
 		discard(),
-		source.NewFactory(discard()),
+		source.NewFactory(discard(), source.WithDataDir(t.TempDir())),
 		stage.NewFactory(discard()),
 		p.sinks,
 	)

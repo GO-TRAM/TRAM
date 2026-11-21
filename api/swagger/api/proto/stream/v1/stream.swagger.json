@@ -161,6 +161,10 @@
             },
             "metrics": {
               "$ref": "#/definitions/v1Metrics"
+            },
+            "suspended": {
+              "type": "boolean",
+              "description": "When true, the stream is defined but its source does not run: no ports\nare opened and no consumers are attached. Used to pause a stream, e.g.\nthe writer of a buffer while its queue is drained."
             }
           }
         },
@@ -351,6 +355,10 @@
         },
         "metrics": {
           "$ref": "#/definitions/v1Metrics"
+        },
+        "suspended": {
+          "type": "boolean",
+          "description": "When true, the stream is defined but its source does not run: no ports\nare opened and no consumers are attached. Used to pause a stream, e.g.\nthe writer of a buffer while its queue is drained."
         }
       }
     },

@@ -52,3 +52,28 @@ func TestStreamFileLeavesOutDefaultMetrics(t *testing.T) {
 
 	assert.NotContains(t, string(written), "metrics", "a stream with the defaults writes no metrics")
 }
+
+func TestStreamFileMapsSuspended(t *testing.T) {
+	t.Parallel()
+
+	var stream configsync.Stream
+	require.NoError(t, json.Unmarshal([]byte(`{"stream": {
+		"name": "s",
+		"suspended": true,
+		"source": {"name": "in", "type": "otlp"},
+		"sinks": [{"name": "out", "type": "nats", "from": "in"}]
+	}}`), &stream))
+
+	spec := stream.AsDomain()
+	assert.True(t, spec.Suspended)
+	assert.True(t, configsync.StreamFromDomain(*spec).Stream.Suspended != nil &&
+		*configsync.StreamFromDomain(*spec).Stream.Suspended,
+		"writing the stream back keeps suspended")
+
+	written, err := json.Marshal(configsync.StreamFromDomain(domain.StreamSpec{
+		Name:   "s",
+		Source: domain.SourceSpec{Name: "in", Type: "otlp"},
+	}))
+	require.NoError(t, err)
+	assert.NotContains(t, string(written), "suspended", "a running stream writes no suspended field")
+}

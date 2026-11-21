@@ -646,7 +646,7 @@ The stage owns what every driver shares: walking the records and pruning what be
 - **filter:** `filter.Driver` returns `filter.Rules`, whose `Predicates` give a predicate per signal for one event. A nil predicate keeps all records of its signal
 - **validation:** `validation.Driver` returns `validation.Rules`, which decide per signal whether the whole signal matches. A signal without a rule matches
 
-To add a driver, e.g. OTTL, create `stage/filter/ottl` next to `stage/filter/cel` with a `Name` and a `Driver`, and register it in the driver set of `NewFactory` in `stage/factory.go`, the only place that knows the concrete stage drivers. Test it through the stage as `filter/cel` does, so the rules are checked with the stage's pruning and rejection.
+Each stage is laid out like the broker components: the contract package (`rules`, `persist`), one package per driver (`cel`, `sqlite`) that knows only the contract, and a `drivers` package, the only one that knows the concrete drivers. The stage creates its `drivers` factory itself in `New`; `stage/factory.go` knows no drivers. To add a driver, e.g. OTTL, create `stage/filter/ottl` next to `stage/filter/cel` with a `Name` and a `Driver` and register it in `stage/filter/drivers`. Test it through the stage as `filter/cel` does, so the rules are checked with the stage's pruning and rejection. The depguard rules in `.golangci.yml` enforce the layout: factories import no drivers, and only a `drivers` package imports concrete drivers (tests excepted).
 
 ### Kubernetes Operator Tests
 

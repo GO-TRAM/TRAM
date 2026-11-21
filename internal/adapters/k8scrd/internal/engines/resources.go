@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"maps"
 	"strconv"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -45,6 +46,30 @@ const (
 	defaultGRPCPort         = 50051
 	defaultTargetCPUPercent = 80
 	defaultLogLevel         = "info"
+
+	// VolumeLabel marks the volumes of an Engine's instances.
+	VolumeLabel = "tram.io/volume"
+	// DrainLabel carries the Engine's name on its drain Jobs, which must not
+	// carry EngineLabel: the Service and the disruption budget select it.
+	DrainLabel = "tram.io/drain"
+	// OrdinalLabel carries the ordinal of the volume a drain Job drains.
+	OrdinalLabel = "tram.io/ordinal"
+	// StorageLabel marks the pods of instances with storage. Once they are
+	// ready, the Service of an Engine with storage selects only them, so no
+	// request for a Stream with a buffer reaches an instance without one.
+	StorageLabel = "tram.io/storage"
+	// labelTrue is the value of boolean labels and annotations.
+	labelTrue = "true"
+
+	// volumeName is the name of the volume claim template; the claims are
+	// called <volumeName>-<StatefulSet>-<ordinal>.
+	volumeName       = "data"
+	defaultMountPath = "/var/lib/tram"
+	drainMountPath   = "/data"
+	// nonRootGroup is the group of the image's nonroot user; volumes are made
+	// writable for it.
+	nonRootGroup      = 65532
+	drainBackoffLimit = 10
 )
 
 // ErrInvalidEngine is the reason of an Engine whose spec cannot be run, e.g.
@@ -61,10 +86,13 @@ func ResourceName(engine string) string {
 type resources struct {
 	serviceAccount *corev1ac.ServiceAccountApplyConfiguration
 	roleBinding    *rbacv1ac.RoleBindingApplyConfiguration
-	deployment     *appsv1ac.DeploymentApplyConfiguration
-	service        *corev1ac.ServiceApplyConfiguration
-	hpa            *autoscalingv2ac.HorizontalPodAutoscalerApplyConfiguration
-	pdb            *policyv1ac.PodDisruptionBudgetApplyConfiguration
+	// Exactly one of deployment and statefulSet is set: a StatefulSet if the
+	// Engine has storage.
+	deployment  *appsv1ac.DeploymentApplyConfiguration
+	statefulSet *appsv1ac.StatefulSetApplyConfiguration
+	service     *corev1ac.ServiceApplyConfiguration
+	hpa         *autoscalingv2ac.HorizontalPodAutoscalerApplyConfiguration
+	pdb         *policyv1ac.PodDisruptionBudgetApplyConfiguration
 }
 
 // buildParams are the inputs of buildResources besides the Engine.
@@ -75,6 +103,8 @@ type buildParams struct {
 	clusterRole string
 	// replicas of the Deployment; nil leaves them to the autoscaler.
 	replicas *int32
+	// storageOnly narrows the Service to the instances with storage.
+	storageOnly bool
 }
 
 // buildResources returns the resources that run engine. It fails with
@@ -104,17 +134,16 @@ func buildResources(engine *tramv1alpha1.Engine, params buildParams) (resources,
 	if podLabels == nil {
 		podLabels = map[string]string{}
 	}
+	if engine.Spec.Storage != nil {
+		podLabels[StorageLabel] = labelTrue
+	}
 	maps.Copy(podLabels, labels)
 
-	deploymentSpec := appsv1ac.DeploymentSpec().
-		WithSelector(metav1ac.LabelSelector().WithMatchLabels(map[string]string{EngineLabel: engine.Name})).
-		WithTemplate(corev1ac.PodTemplateSpec().
-			WithLabels(podLabels).
-			WithAnnotations(engine.Spec.PodTemplate.Metadata.Annotations).
-			WithSpec(podSpec))
-	if params.replicas != nil {
-		deploymentSpec.WithReplicas(*params.replicas)
-	}
+	template := corev1ac.PodTemplateSpec().
+		WithLabels(podLabels).
+		WithAnnotations(engine.Spec.PodTemplate.Metadata.Annotations).
+		WithSpec(podSpec)
+	selector := metav1ac.LabelSelector().WithMatchLabels(map[string]string{EngineLabel: engine.Name})
 
 	res := resources{
 		serviceAccount: corev1ac.ServiceAccount(name, ns).WithLabels(labels).WithOwnerReferences(owner),
@@ -122,13 +151,96 @@ func buildResources(engine *tramv1alpha1.Engine, params buildParams) (resources,
 			WithRoleRef(rbacv1ac.RoleRef().
 				WithAPIGroup(rbacv1.GroupName).WithKind("ClusterRole").WithName(params.clusterRole)).
 			WithSubjects(rbacv1ac.Subject().WithKind(rbacv1.ServiceAccountKind).WithName(name).WithNamespace(ns)),
-		deployment: appsv1ac.Deployment(name, ns).WithLabels(labels).WithOwnerReferences(owner).
-			WithSpec(deploymentSpec),
-		service: serviceOf(engine, name, labels, owner, ports),
+		service: serviceOf(engine, name, labels, owner, ports, params.storageOnly),
 		hpa:     hpaOf(engine, name, labels, owner),
 		pdb:     pdbOf(engine, name, labels, owner),
 	}
+	if storage := engine.Spec.Storage; storage != nil {
+		spec := appsv1ac.StatefulSetSpec().
+			WithSelector(selector).
+			WithTemplate(template).
+			WithServiceName(name).
+			WithPodManagementPolicy(appsv1.ParallelPodManagement).
+			WithPersistentVolumeClaimRetentionPolicy(appsv1ac.StatefulSetPersistentVolumeClaimRetentionPolicy().
+				WithWhenDeleted(appsv1.RetainPersistentVolumeClaimRetentionPolicyType).
+				WithWhenScaled(appsv1.RetainPersistentVolumeClaimRetentionPolicyType)).
+			WithVolumeClaimTemplates(claimTemplateOf(engine.Name, storage))
+		if params.replicas != nil {
+			spec.WithReplicas(*params.replicas)
+		}
+		res.statefulSet = appsv1ac.StatefulSet(name, ns).WithLabels(labels).WithOwnerReferences(owner).WithSpec(spec)
+	} else {
+		spec := appsv1ac.DeploymentSpec().WithSelector(selector).WithTemplate(template)
+		if params.replicas != nil {
+			spec.WithReplicas(*params.replicas)
+		}
+		res.deployment = appsv1ac.Deployment(name, ns).WithLabels(labels).WithOwnerReferences(owner).WithSpec(spec)
+	}
 	return res, nil
+}
+
+// workloadKind is the kind of workload that runs engine.
+func workloadKind(engine *tramv1alpha1.Engine) string {
+	if engine.Spec.Storage != nil {
+		return tramv1alpha1.WorkloadStatefulSet
+	}
+	return tramv1alpha1.WorkloadDeployment
+}
+
+// claimTemplateOf is the volume of every instance. The claims carry the
+// managed labels, so the manager's cache holds them.
+func claimTemplateOf(
+	engine string,
+	storage *tramv1alpha1.StorageSpec,
+) *corev1ac.PersistentVolumeClaimApplyConfiguration {
+	labels := managedLabels(engine)
+	labels[VolumeLabel] = volumeName
+	requests := make(corev1.ResourceList)
+	requests[corev1.ResourceStorage] = storage.Size
+	spec := corev1ac.PersistentVolumeClaimSpec().
+		WithAccessModes(corev1.ReadWriteOnce).
+		WithResources(corev1ac.VolumeResourceRequirements().WithRequests(requests))
+	if storage.StorageClassName != nil {
+		spec.WithStorageClassName(*storage.StorageClassName)
+	}
+	return corev1ac.PersistentVolumeClaim(volumeName, "").WithLabels(labels).WithSpec(spec)
+}
+
+// mountPath is where the instances of engine mount their volume.
+func mountPath(storage *tramv1alpha1.StorageSpec) string {
+	if storage.MountPath != "" {
+		return storage.MountPath
+	}
+	return defaultMountPath
+}
+
+// gracePeriod is the termination grace period of the instances in seconds,
+// and whether one is set at all.
+func gracePeriod(engine *tramv1alpha1.Engine) (int64, bool) {
+	if p := engine.Spec.PodTemplate.Spec.TerminationGracePeriodSeconds; p != nil {
+		return *p, true
+	}
+	return 0, false
+}
+
+// ClaimName is the name of the volume claim of the instance with ordinal.
+func ClaimName(engine string, ordinal int) string {
+	return volumeName + "-" + ResourceName(engine) + "-" + strconv.Itoa(ordinal)
+}
+
+// claimOrdinal returns the ordinal of a volume claim of engine, and false
+// for other claims.
+func claimOrdinal(engine, claim string) (int, bool) {
+	prefix := volumeName + "-" + ResourceName(engine) + "-"
+	rest, ok := strings.CutPrefix(claim, prefix)
+	if !ok {
+		return 0, false
+	}
+	ordinal, err := strconv.Atoi(rest)
+	if err != nil || ordinal < 0 || strconv.Itoa(ordinal) != rest {
+		return 0, false
+	}
+	return ordinal, true
 }
 
 // managedLabels are the labels of every generated resource and pod.
@@ -209,6 +321,9 @@ func args(engine *tramv1alpha1.Engine, ports []port) []string {
 	if pprof := engine.Spec.Runtime.Pprof; pprof != nil {
 		out = append(out, "--pprof-endpoint=127.0.0.1:"+strconv.Itoa(int(pprof.Port)))
 	}
+	if storage := engine.Spec.Storage; storage != nil {
+		out = append(out, "--data-dir="+mountPath(storage))
+	}
 	return append(out,
 		"--enable-k8s-operator",
 		"--engine="+engine.Name,
@@ -230,8 +345,8 @@ func podSpecOf(
 	spec := corev1ac.PodSpec().
 		WithServiceAccountName(serviceAccount).
 		WithContainers(container)
-	if pod.TerminationGracePeriodSeconds != nil {
-		spec.WithTerminationGracePeriodSeconds(*pod.TerminationGracePeriodSeconds)
+	if seconds, ok := gracePeriod(engine); ok {
+		spec.WithTerminationGracePeriodSeconds(seconds)
 	}
 	if pod.PriorityClassName != "" {
 		spec.WithPriorityClassName(pod.PriorityClassName)
@@ -242,7 +357,21 @@ func podSpecOf(
 	if err = applyPodScheduling(pod, spec); err != nil {
 		return nil, err
 	}
+	if engine.Spec.Storage != nil {
+		writableVolumes(spec)
+	}
 	return spec, nil
+}
+
+// writableVolumes makes volumes writable for the image's nonroot user,
+// unless the Engine chose an fsGroup itself.
+func writableVolumes(spec *corev1ac.PodSpecApplyConfiguration) {
+	if spec.SecurityContext == nil {
+		spec.SecurityContext = corev1ac.PodSecurityContext()
+	}
+	if spec.SecurityContext.FSGroup == nil {
+		spec.SecurityContext.WithFSGroup(nonRootGroup)
+	}
 }
 
 func containerOf(
@@ -269,6 +398,9 @@ func containerOf(
 		}
 		container.WithPorts(corev1ac.ContainerPort().
 			WithName(p.name).WithContainerPort(p.number).WithProtocol(corev1.ProtocolTCP))
+	}
+	if storage := engine.Spec.Storage; storage != nil {
+		container.WithVolumeMounts(corev1ac.VolumeMount().WithName(volumeName).WithMountPath(mountPath(storage)))
 	}
 	resources, err := convert[corev1ac.ResourceRequirementsApplyConfiguration](engine.Spec.Resources)
 	if err != nil {
@@ -310,6 +442,7 @@ func serviceOf(
 	labels map[string]string,
 	owner *metav1ac.OwnerReferenceApplyConfiguration,
 	ports []port,
+	storageOnly bool,
 ) *corev1ac.ServiceApplyConfiguration {
 	serviceType := engine.Spec.Service.Type
 	if serviceType == "" {
@@ -317,7 +450,7 @@ func serviceOf(
 	}
 	spec := corev1ac.ServiceSpec().
 		WithType(serviceType).
-		WithSelector(map[string]string{EngineLabel: engine.Name})
+		WithSelector(serviceSelector(engine.Name, storageOnly))
 	for _, p := range ports {
 		if p.internal {
 			continue
@@ -327,6 +460,15 @@ func serviceOf(
 			WithProtocol(corev1.ProtocolTCP))
 	}
 	return corev1ac.Service(name, engine.Namespace).WithLabels(labels).WithOwnerReferences(owner).WithSpec(spec)
+}
+
+// serviceSelector selects the Engine's instances, or only those with storage.
+func serviceSelector(engine string, storageOnly bool) map[string]string {
+	selector := map[string]string{EngineLabel: engine}
+	if storageOnly {
+		selector[StorageLabel] = labelTrue
+	}
+	return selector
 }
 
 func hpaOf(
@@ -347,7 +489,7 @@ func hpaOf(
 		WithLabels(labels).WithOwnerReferences(owner).
 		WithSpec(autoscalingv2ac.HorizontalPodAutoscalerSpec().
 			WithScaleTargetRef(autoscalingv2ac.CrossVersionObjectReference().
-				WithAPIVersion(appsv1.SchemeGroupVersion.String()).WithKind("Deployment").WithName(name)).
+				WithAPIVersion(appsv1.SchemeGroupVersion.String()).WithKind(workloadKind(engine)).WithName(name)).
 			WithMinReplicas(*scaling.MinReplicas).
 			WithMaxReplicas(*scaling.MaxReplicas).
 			WithMetrics(autoscalingv2ac.MetricSpec().

@@ -71,6 +71,12 @@ type StreamSpec struct {
 	// defaults.
 	// +optional
 	Metrics *MetricsSpec `json:"metrics,omitempty"`
+
+	// Suspended keeps the stream defined but does not run its source: no
+	// ports are opened and no consumers are attached. Used to pause a
+	// stream, e.g. the writer of a buffer while its queue is drained.
+	// +optional
+	Suspended *bool `json:"suspended,omitempty"`
 }
 
 type MetricsSpec struct {
@@ -101,6 +107,11 @@ type NodeMetricsSpec struct {
 // ConditionAccepted is the condition type of a Stream's engine entry that
 // tells whether the referenced Engine exists.
 const ConditionAccepted = "Accepted"
+
+// ConditionStorageAvailable is the condition type of a Stream's engine entry
+// that tells whether the Engine's instances have the storage the Stream's
+// buffer sink or source needs. Without it, the Stream does not run there.
+const ConditionStorageAvailable = "StorageAvailable"
 
 type StreamStatus struct {
 	// Active tells whether the stream runs.

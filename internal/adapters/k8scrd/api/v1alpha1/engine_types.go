@@ -7,6 +7,7 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -16,9 +17,27 @@ import (
 const (
 	// ConditionReconciled tells whether the manager applied the latest spec.
 	ConditionReconciled = "Reconciled"
-	// ConditionReady tells whether the Engine's Deployment is available.
+	// ConditionReady tells whether the Engine's Deployment or StatefulSet is
+	// available.
 	ConditionReady = "Ready"
+	// ConditionMigrating is true while the instances move from a Deployment to
+	// a StatefulSet or back, after spec.storage was added or removed.
+	ConditionMigrating = "Migrating"
+	// ConditionDraining is true while volumes without an instance hold buffer
+	// files that drain Jobs still deliver.
+	ConditionDraining = "Draining"
 )
+
+// Workloads that run an Engine's instances.
+const (
+	WorkloadDeployment  = "Deployment"
+	WorkloadStatefulSet = "StatefulSet"
+)
+
+// DiscardBuffersAnnotation lets the manager delete an Engine that carries it
+// with the value "true" at once, discarding what buffers still hold instead of
+// waiting for drains or for their max_age.
+const DiscardBuffersAnnotation = "tram.io/discard-buffers"
 
 // EngineSpec describes a group of Tram instances. The manager runs them as a
 // Deployment; every instance runs every Stream whose spec.engineRefs names the
@@ -72,6 +91,38 @@ type EngineSpec struct {
 	// container is configured by the other fields.
 	// +optional
 	PodTemplate PodTemplate `json:"podTemplate,omitempty"`
+
+	// Storage gives every instance a volume of its own for the files of the
+	// buffer stages of its Streams. With it, the instances run as a
+	// StatefulSet; without it, as a Deployment, and buffers pass events
+	// through without storing them. Adding or removing it migrates the
+	// instances; volumes without an instance are drained before they are
+	// deleted.
+	// +optional
+	Storage *StorageSpec `json:"storage,omitempty"`
+}
+
+// StorageSpec is the volume of every instance of an Engine.
+// +kubebuilder:validation:XValidation:rule="self.size == oldSelf.size",message="size cannot be changed; resize the volumes by hand"
+// +kubebuilder:validation:XValidation:rule="has(self.storageClassName) == has(oldSelf.storageClassName) && (!has(self.storageClassName) || self.storageClassName == oldSelf.storageClassName)",message="storageClassName cannot be changed"
+type StorageSpec struct {
+	// Size of each instance's volume. It holds the buffer files, whose
+	// payloads max_bytes limits, plus their write-ahead logs and free pages.
+	Size resource.Quantity `json:"size"`
+	// StorageClassName of the volumes; the cluster's default class if unset.
+	// +optional
+	StorageClassName *string `json:"storageClassName,omitempty"`
+	// MountPath of the volume in the instances, the data directory of their
+	// buffers. Defaults to /var/lib/tram.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^/[A-Za-z0-9._/-]*$`
+	MountPath string `json:"mountPath,omitempty"`
+	// DrainResources are the resources of the drain Jobs that deliver what
+	// volumes without an instance hold. They run no sources, so they need
+	// less than an instance. Defaults to requests of 50m CPU and 128Mi
+	// memory, and the limits of the instances.
+	// +optional
+	DrainResources *corev1.ResourceRequirements `json:"drainResources,omitempty"`
 }
 
 // AutoscalingSpec configures the HorizontalPodAutoscaler of an Engine.
@@ -221,6 +272,18 @@ type EngineStatus struct {
 	// Selector selects the instances' pods, for the scale subresource.
 	// +optional
 	Selector string `json:"selector,omitempty"`
+	// Workload runs the instances: Deployment or StatefulSet. While the
+	// Engine migrates, the one it migrates to.
+	// +optional
+	Workload string `json:"workload,omitempty"`
+	// Volumes is the number of volumes of the Engine, with an instance or
+	// draining.
+	// +optional
+	Volumes int32 `json:"volumes,omitempty"`
+	// DrainingVolumes is the number of volumes without an instance whose
+	// buffer files are being drained.
+	// +optional
+	DrainingVolumes int32 `json:"drainingVolumes,omitempty"`
 	// +optional
 	// +listType=map
 	// +listMapKey=type
@@ -235,6 +298,7 @@ type EngineStatus struct {
 // +kubebuilder:printcolumn:name="Replicas",type=integer,JSONPath=`.status.replicas`
 // +kubebuilder:printcolumn:name="Ready",type=integer,JSONPath=`.status.readyReplicas`
 // +kubebuilder:printcolumn:name="Streams",type=integer,JSONPath=`.status.streams`
+// +kubebuilder:printcolumn:name="Workload",type=string,JSONPath=`.status.workload`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 // +kubebuilder:validation:XValidation:rule="self.metadata.name.size() <= 51 && self.metadata.name.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')",message="the name must be a DNS-1123 label of at most 51 characters"
 type Engine struct {

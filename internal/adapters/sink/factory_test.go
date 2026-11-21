@@ -21,7 +21,7 @@ import (
 func TestFactoryUnknownType(t *testing.T) {
 	t.Parallel()
 
-	_, err := sink.NewFactory(slog.New(slog.DiscardHandler)).New(domain.SinkSpec{Name: "s", Type: "unknown"})
+	_, err := sink.NewFactory(slog.New(slog.DiscardHandler)).New(domain.SinkSpec{Name: "s", Type: "unknown"}, "stream")
 	require.ErrorIs(t, err, domain.ErrInvalidSinkType)
 	assert.ErrorContains(t, err, `"unknown"`)
 }
@@ -39,7 +39,7 @@ func TestFactoryOTLPSink(t *testing.T) {
 		},
 	}
 
-	sink, err := factory.New(spec)
+	sink, err := factory.New(spec, "stream")
 	require.NoError(t, err)
 	assert.NotNil(t, sink)
 	assert.Equal(t, "otlp-sink", sink.Name())

@@ -20,7 +20,7 @@ import (
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 
-	"github.com/go-tram/tram/internal/adapters/stage/validation"
+	validationrules "github.com/go-tram/tram/internal/adapters/stage/validation/rules"
 	"github.com/go-tram/tram/internal/core/domain"
 )
 
@@ -38,13 +38,13 @@ type Driver struct {
 	validator *validator.Validate
 }
 
-var _ validation.Driver = (*Driver)(nil)
+var _ validationrules.Driver = (*Driver)(nil)
 
 func New(validator *validator.Validate) *Driver {
 	return &Driver{validator: validator}
 }
 
-func (d *Driver) Compile(opts map[string]any) (validation.Rules, error) {
+func (d *Driver) Compile(opts map[string]any) (validationrules.Rules, error) {
 	spec, err := domain.ParseSpec(opts, new(Spec))
 	if err != nil {
 		return nil, err

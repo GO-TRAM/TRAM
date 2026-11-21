@@ -1,0 +1,39 @@
+{
+  "stream": {
+    "name": "buffer_to_otlp",
+    "source": {
+      "name": "outbox",
+      "type": "buffer",
+      "spec": {
+        "driver": "sqlite",
+        "sqlite": {},
+        "queue": "outbox",
+        "workers": 4,
+        "retry_initial": "1s",
+        "retry_max": "5m"
+      }
+    },
+    "stages": [
+      {
+        "name": "batch_stage",
+        "type": "batch",
+        "from": "outbox",
+        "spec": {
+          "max_records": 1000,
+          "timeout": "200ms"
+        }
+      }
+    ],
+    "sinks": [
+      {
+        "name": "otlp_sink",
+        "type": "otlp",
+        "from": "batch_stage",
+        "spec": {
+          "url": "http://telemetry-collector:4318",
+          "timeout": "30s"
+        }
+      }
+    ]
+  }
+}

@@ -74,5 +74,6 @@ backends.`,
 	root.AddCommand(newServerCmd(logger))
 	root.AddCommand(newManagerCmd(logger))
 	root.AddCommand(newTestCmd(logger))
+	root.AddCommand(newDrainCmd(logger))
 	return root
 }

@@ -24,6 +24,9 @@ spec:
     - jsonPath: .status.streams
       name: Streams
       type: integer
+    - jsonPath: .status.workload
+      name: Workload
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -1701,6 +1704,106 @@ spec:
                     - LoadBalancer
                     type: string
                 type: object
+              storage:
+                description: |-
+                  Storage gives every instance a volume of its own for the files of the
+                  buffer stages of its Streams. With it, the instances run as a
+                  StatefulSet; without it, as a Deployment, and buffers pass events
+                  through without storing them. Adding or removing it migrates the
+                  instances; volumes without an instance are drained before they are
+                  deleted.
+                properties:
+                  drainResources:
+                    description: |-
+                      DrainResources are the resources of the drain Jobs that deliver what
+                      volumes without an instance hold. They run no sources, so they need
+                      less than an instance. Defaults to requests of 50m CPU and 128Mi
+                      memory, and the limits of the instances.
+                    properties:
+                      claims:
+                        description: |-
+                          Claims lists the names of resources, defined in spec.resourceClaims,
+                          that are used by this container.
+
+                          This field depends on the
+                          DynamicResourceAllocation feature gate.
+
+                          This field is immutable. It can only be set for containers.
+                        items:
+                          description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                          properties:
+                            name:
+                              description: |-
+                                Name must match the name of one entry in pod.spec.resourceClaims of
+                                the Pod where this field is used. It makes that resource available
+                                inside a container.
+                              type: string
+                            request:
+                              description: |-
+                                Request is the name chosen for a request in the referenced claim.
+                                If empty, everything from the claim is made available, otherwise
+                                only the result of this request.
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                      limits:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Limits describes the maximum amount of compute resources allowed.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                      requests:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Requests describes the minimum amount of compute resources required.
+                          If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                          otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                    type: object
+                  mountPath:
+                    description: |-
+                      MountPath of the volume in the instances, the data directory of their
+                      buffers. Defaults to /var/lib/tram.
+                    pattern: ^/[A-Za-z0-9._/-]*$
+                    type: string
+                  size:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: |-
+                      Size of each instance's volume. It holds the buffer files, whose
+                      payloads max_bytes limits, plus their write-ahead logs and free pages.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  storageClassName:
+                    description: StorageClassName of the volumes; the cluster's default
+                      class if unset.
+                    type: string
+                required:
+                - size
+                type: object
+                x-kubernetes-validations:
+                - message: size cannot be changed; resize the volumes by hand
+                  rule: self.size == oldSelf.size
+                - message: storageClassName cannot be changed
+                  rule: has(self.storageClassName) == has(oldSelf.storageClassName)
+                    && (!has(self.storageClassName) || self.storageClassName == oldSelf.storageClassName)
             type: object
           status:
             description: EngineStatus is the observed state of an Engine.
@@ -1764,6 +1867,12 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              drainingVolumes:
+                description: |-
+                  DrainingVolumes is the number of volumes without an instance whose
+                  buffer files are being drained.
+                format: int32
+                type: integer
               observedGeneration:
                 description: ObservedGeneration is the generation the status describes.
                 format: int64
@@ -1784,6 +1893,17 @@ spec:
                   name the Engine.
                 format: int32
                 type: integer
+              volumes:
+                description: |-
+                  Volumes is the number of volumes of the Engine, with an instance or
+                  draining.
+                format: int32
+                type: integer
+              workload:
+                description: |-
+                  Workload runs the instances: Deployment or StatefulSet. While the
+                  Engine migrates, the one it migrates to.
+                type: string
             type: object
         type: object
         x-kubernetes-validations:

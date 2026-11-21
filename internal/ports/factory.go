@@ -5,6 +5,9 @@
 
 package ports
 
+// Factory creates the components of one kind: sources, stages or sinks. The
+// stream is the name of the stream the component belongs to; components that
+// record metrics of their own label them with it.
 type Factory[S, T any] interface {
-	New(S) (T, error)
+	New(spec S, stream string) (T, error)
 }

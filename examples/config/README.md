@@ -45,6 +45,13 @@ These examples demonstrate using the OTLP sink in Tram for various use cases.
 - 200ms timeout for batch flush
 - **Kubernetes version**: [../k8s/examples/otlp_batch.yaml](../k8s/examples/otlp_batch.yaml)
 
+#### [`otlp_to_buffer.json`](otlp_to_buffer.json) and [`buffer_to_otlp.json`](buffer_to_otlp.json)
+**Purpose**: OTLP forwarding that rides out outages of the destination, with two streams around a buffer queue.
+- `otlp_to_buffer` stores every request in the queue `outbox` before answering the client
+- `buffer_to_otlp` delivers the queue to the destination, retrying for up to the queue's `max_age` (24 hours)
+- Both run on the same instance, with `tram server --data-dir` on a persistent volume
+- **Kubernetes version**: [../k8s/examples/otlp_to_buffer.yaml](../k8s/examples/otlp_to_buffer.yaml) and [../k8s/examples/buffer_to_otlp.yaml](../k8s/examples/buffer_to_otlp.yaml), on an Engine with `storage`
+
 #### [`otlp_with_filters.json`](../tests/otlp_with_filters.json)
 **Purpose**: OTLP forwarding with CEL filtering. Lives in `../tests/` because it carries test cases.
 - Filters logs based on customer attribute

@@ -59,6 +59,10 @@ type StreamReconciler struct {
 	// label is just an index for the API server's filter: a label set by hand
 	// runs nothing.
 	Engine string
+	// Drain, for `tram drain`, runs only the Streams that read from a buffer,
+	// so they deliver what the buffer files of a volume hold, and treats all
+	// others as suspended: nothing writes to the volume any more.
+	Drain bool
 }
 
 // +kubebuilder:rbac:groups=io.tram.core,resources=streams,verbs=get;list;watch;create;update;patch;delete
@@ -96,6 +100,16 @@ func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, errors.Join(r.setActive(ctx, &stream, false), resolveError(err))
 	}
 
+	if r.Drain {
+		if !ReadsBuffer(*desired) {
+			return ctrl.Result{}, r.deleteFromCore(ctx, name)
+		}
+		// Draining runs the readers even when their stream is suspended:
+		// delivering what the queues hold is the point of the drain.
+		desired.Suspended = false
+		resolved.Suspended = false
+	}
+
 	current, err := r.Core.GetStream(ctx, name)
 	if err != nil && !errors.Is(err, domain.ErrStreamNotFound) {
 		return ctrl.Result{}, fmt.Errorf("get from core: %w", err)
@@ -118,6 +132,15 @@ func (r *StreamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	return ctrl.Result{}, r.setActive(ctx, &stream, true)
+}
+
+// BufferType is the type of the buffer source and sink, which keep events in
+// the data directory of the instance.
+const BufferType = "buffer"
+
+// ReadsBuffer reports whether a stream's source reads from a buffer.
+func ReadsBuffer(spec domain.StreamSpec) bool {
+	return spec.Source.Type == BufferType
 }
 
 // deleteFromCore removes a Stream that no longer exists from the core.
@@ -162,6 +185,10 @@ func (r *StreamReconciler) references() client.Reader {
 }
 
 func (r *StreamReconciler) setActive(ctx context.Context, stream *tramv1.Stream, active bool) error {
+	if r.Drain {
+		// Draining is no instance; status.active belongs to the instances.
+		return nil
+	}
 	if stream.Status.Active == active {
 		return nil
 	}
@@ -222,11 +249,12 @@ func toDomain(name string, s tramv1.Stream) (*domain.StreamSpec, error) {
 	}
 
 	return &domain.StreamSpec{
-		Name:    name,
-		Source:  source,
-		Stages:  stages,
-		Sinks:   sinks,
-		Metrics: metricsToDomain(s.Spec.Metrics),
+		Name:      name,
+		Source:    source,
+		Stages:    stages,
+		Sinks:     sinks,
+		Metrics:   metricsToDomain(s.Spec.Metrics),
+		Suspended: s.Spec.Suspended != nil && *s.Spec.Suspended,
 	}, nil
 }
 

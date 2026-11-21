@@ -166,7 +166,7 @@ func TestStagesLeaveTheSharedEventUnchanged(t *testing.T) {
 			t.Parallel()
 
 			c.spec.Name, c.spec.From = c.name, "in"
-			s, err := stage.NewFactory(slog.New(slog.DiscardHandler)).New(c.spec)
+			s, err := stage.NewFactory(slog.New(slog.DiscardHandler)).New(c.spec, "stream")
 			require.NoError(t, err)
 			out := &collector{}
 			require.NoError(t, s.Subscribe(out))

@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	"github.com/go-tram/tram/internal/adapters/driver"
 	"github.com/go-tram/tram/internal/adapters/stage/validation"
 	"github.com/go-tram/tram/internal/adapters/stage/validation/cel"
 	"github.com/go-tram/tram/internal/core/domain"
@@ -30,11 +29,9 @@ func newStage(name string, spec map[string]any) (*validation.Validation, error) 
 	}
 	stage[cel.Name] = opts
 
-	v := validator.New()
 	return validation.New(
 		domain.StageSpec{Name: name, Spec: stage},
-		v,
+		validator.New(),
 		slog.Default(),
-		driver.Set[validation.Driver]{cel.Name: cel.New(v)},
 	)
 }

@@ -221,47 +221,116 @@ linters:
           deny:
             - pkg: log$
               desc: Use log/slog instead, see https://go.dev/blog/slog
-        # Prevent core from importing from adapters directly
-        "no core to adapter":
-          files:
-            - "internal/core/..."
-          allow:
-            - $std
-            - github.com/go-tram/tram/internal/core
+        # File globs match absolute paths: start them with `**/`, and use
+        # `dir/**` for everything below a directory (`dir/**/*.go` would miss
+        # the files directly in it). Test files may wire anything together.
 
-        # Prevent domain from importing from adapters
-        "no domain to adapter":
+        # The core knows no adapter; adapters come in through the ports.
+        "core knows no adapters":
           files:
-            - "internal/core/domain/..."
-          allow:
-            - $std
-            - github.com/go-tram/tram/internal/core/domain
+            - "**/internal/core/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/go-tram/tram/internal/adapters
+              desc: The core must not depend on adapters; use the interfaces in internal/ports
+        "domain knows nothing above it":
+          files:
+            - "**/internal/core/domain/**"
+          deny:
+            - pkg: github.com/go-tram/tram/internal/core$
+              desc: The domain must not depend on the core
+            - pkg: github.com/go-tram/tram/internal/ports
+              desc: The domain must not depend on the ports
+            - pkg: github.com/go-tram/tram/internal/adapters
+              desc: The domain must not depend on adapters
 
-        # Prevent adapters from importing from other adapters
-        "no source adapter cross-imports":
+        # Sources, stages and sinks do not import each other.
+        "sources import no stages or sinks":
           files:
-            - "internal/adapters/source/..."
-          allow:
-            - $std
-            - github.com/go-playground/validator/v10
-            - github.com/go-tram/tram/internal/core/domain
-            - github.com/go-tram/tram/internal/adapters/source/...
-        "no stage adapter cross-imports":
+            - "**/internal/adapters/source/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/go-tram/tram/internal/adapters/stage
+              desc: Sources must not depend on stages
+            - pkg: github.com/go-tram/tram/internal/adapters/sink
+              desc: Sources must not depend on sinks
+        "stages import no sources or sinks":
           files:
-            - "internal/adapters/stage/..."
-          allow:
-            - $std
-            - github.com/go-playground/validator/v10
-            - github.com/go-tram/tram/internal/core/domain
-            - github.com/go-tram/tram/internal/adapters/stage/...
-        "no sink adapter cross-imports":
+            - "**/internal/adapters/stage/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/go-tram/tram/internal/adapters/source
+              desc: Stages must not depend on sources
+            - pkg: github.com/go-tram/tram/internal/adapters/sink
+              desc: Stages must not depend on sinks
+        "sinks import no sources or stages":
           files:
-            - "internal/adapters/sink/..."
-          allow:
-            - $std
-            - github.com/go-playground/validator/v10
-            - github.com/go-tram/tram/internal/core/domain
-            - github.com/go-tram/tram/internal/adapters/sink/...
+            - "**/internal/adapters/sink/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/go-tram/tram/internal/adapters/source
+              desc: Sinks must not depend on sources
+            - pkg: github.com/go-tram/tram/internal/adapters/stage
+              desc: Sinks must not depend on stages
+
+        # The factories create components by type and know no drivers: a
+        # component with drivers resolves them through its own drivers
+        # package, see the broker sink.
+        "factories know no drivers":
+          files:
+            - "**/internal/adapters/source/factory.go"
+            - "**/internal/adapters/stage/factory.go"
+            - "**/internal/adapters/sink/factory.go"
+          deny:
+            - pkg: github.com/go-tram/tram/internal/adapters/driver
+              desc: Components resolve their drivers themselves, through their drivers package
+            - pkg: github.com/go-tram/tram/internal/adapters/broker
+              desc: The broker source and sink resolve their drivers through broker/drivers
+            - pkg: github.com/go-tram/tram/internal/adapters/crypto
+              desc: The crypto stages resolve their drivers through crypto/drivers
+            - pkg: github.com/go-tram/tram/internal/adapters/stage/filter/
+              desc: The filter stage resolves its drivers through filter/drivers
+            - pkg: github.com/go-tram/tram/internal/adapters/stage/validation/
+              desc: The validation stage resolves its drivers through validation/drivers
+            - pkg: github.com/go-tram/tram/internal/adapters/buffer
+              desc: The buffer source and sink resolve their drivers through buffer/drivers
+
+        # Concrete drivers are known only to the drivers package of their
+        # kind; everything else uses the contract and the drivers package.
+        "concrete drivers only through their drivers package":
+          files:
+            - "$all"
+            - "!$test"
+            - "!**/internal/adapters/broker/drivers/*.go"
+            - "!**/internal/adapters/broker/nats/**"
+            - "!**/internal/adapters/broker/kafka/**"
+            - "!**/internal/adapters/broker/amqp/**"
+            - "!**/internal/adapters/crypto/drivers/*.go"
+            - "!**/internal/adapters/crypto/local/**"
+            - "!**/internal/adapters/crypto/stackitkms/**"
+            - "!**/internal/adapters/stage/filter/drivers/*.go"
+            - "!**/internal/adapters/stage/filter/cel/**"
+            - "!**/internal/adapters/stage/validation/drivers/*.go"
+            - "!**/internal/adapters/stage/validation/cel/**"
+            - "!**/internal/adapters/buffer/drivers/*.go"
+            - "!**/internal/adapters/buffer/sqlite/**"
+          deny:
+            - pkg: github.com/go-tram/tram/internal/adapters/broker/nats
+              desc: Use the broker contract and broker/drivers
+            - pkg: github.com/go-tram/tram/internal/adapters/broker/kafka
+              desc: Use the broker contract and broker/drivers
+            - pkg: github.com/go-tram/tram/internal/adapters/broker/amqp
+              desc: Use the broker contract and broker/drivers
+            - pkg: github.com/go-tram/tram/internal/adapters/crypto/local
+              desc: Use the crypto contract and crypto/drivers
+            - pkg: github.com/go-tram/tram/internal/adapters/crypto/stackitkms
+              desc: Use the crypto contract and crypto/drivers
+            - pkg: github.com/go-tram/tram/internal/adapters/stage/filter/cel
+              desc: Use filter/rules and filter/drivers
+            - pkg: github.com/go-tram/tram/internal/adapters/stage/validation/cel
+              desc: Use validation/rules and validation/drivers
+            - pkg: github.com/go-tram/tram/internal/adapters/buffer/sqlite
+              desc: Use the buffer contract and buffer/drivers
 
     embeddedstructfieldcheck:
       # Checks that sync.Mutex and sync.RWMutex are not used as embedded fields.

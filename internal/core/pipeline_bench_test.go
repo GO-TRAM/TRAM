@@ -42,7 +42,7 @@ func (s *benchSource) Stop() error {
 
 type benchSourceFactory struct{ src *benchSource }
 
-func (f benchSourceFactory) New(domain.SourceSpec) (domain.Source, error) { return f.src, nil }
+func (f benchSourceFactory) New(domain.SourceSpec, string) (domain.Source, error) { return f.src, nil }
 
 type countingSink struct {
 	name, from string
@@ -68,7 +68,7 @@ func (s *countingSink) Notify(_ context.Context, e *domain.Event) error {
 
 type countingSinkFactory struct{ records *atomic.Int64 }
 
-func (f countingSinkFactory) New(spec domain.SinkSpec) (domain.Sink, error) {
+func (f countingSinkFactory) New(spec domain.SinkSpec, _ string) (domain.Sink, error) {
 	return &countingSink{name: spec.Name, from: spec.From, records: f.records}, nil
 }
 
