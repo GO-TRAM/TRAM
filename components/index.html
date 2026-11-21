@@ -967,6 +967,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#buffers" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Buffers
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#suspended-streams" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Suspended Streams
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#hold-times" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1018,6 +1040,11 @@
 <td><code>broker</code></td>
 <td><code>broker</code></td>
 <td>Receives OTLP data from a message broker through a driver (NATS JetStream, Kafka, AMQP 1.0)</td>
+</tr>
+<tr>
+<td><code>buffer</code></td>
+<td><code>buffer</code></td>
+<td>Reads a queue on the instance's disk that a Buffer Sink writes, through a driver (SQLite), and delivers it with retries; see <a href="#buffers">Buffers</a></td>
 </tr>
 <tr>
 <td><code>generator</code></td>
@@ -1099,6 +1126,11 @@
 <td>Sends OTLP data to a message broker through a driver (NATS JetStream, Kafka, AMQP 1.0), with the destination of each record computed by CEL</td>
 </tr>
 <tr>
+<td><code>buffer</code></td>
+<td><code>buffer</code></td>
+<td>Stores OTLP data durably in a queue on the instance's disk through a driver (SQLite), for a Buffer Source to deliver; see <a href="#buffers">Buffers</a></td>
+</tr>
+<tr>
 <td><code>debug</code></td>
 <td><code>debug</code></td>
 <td>Writes events to the log (stderr) for debugging and development</td>
@@ -1117,9 +1149,24 @@
 <li><strong>Tree Structure:</strong> Pipelines form a tree with the source as root, stages as intermediate nodes, and sinks as leaves.</li>
 <li><strong>Delivery Guarantee:</strong> Delivery is at-least-once, and TRAM does not deduplicate. A sink can receive the same data again, e.g. when a client retries after a <code>503</code> although some sinks had already accepted the data, when a broker message is redelivered after one branch of its stream failed, or when a publish succeeded but its acknowledgement was lost. Deduplicate at the destination where duplicates matter.</li>
 </ul>
+<h3 id="buffers">Buffers<a class="headerlink" href="#buffers" title="Permanent link">&para;</a></h3>
+<p>A buffer rides out outages of a destination by storing events on the instance's disk: one stream writes them with a <a href="sinks/#buffer-sink">Buffer Sink</a>, another reads them with a <a href="sources/#buffer-source">Buffer Source</a> and delivers them. The queue name connects the two. Pipelines stay synchronous and in memory; the queue is a broker embedded in the instance, and the Buffer Source handles deliveries like the Broker Source.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>stream otlp-to-buffer:  OTLP Source ──▶ Buffer Sink   (queue: outbox)
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>stream buffer-to-otlp:  Buffer Source (queue: outbox) ──▶ batch ──▶ OTLP Sink
+</code></pre></div>
+<ul>
+<li><strong>The queue is local.</strong> A Buffer Source reads only the queue of its own instance. Run both streams on the same instance, on Kubernetes on the same Engine; every instance then has a queue of its own</li>
+<li><strong>Data directory.</strong> Queues live in <code>tram server --data-dir</code>, which has to be on a volume that outlives the process. Without it, streams with a buffer sink or source fail to build. On Kubernetes, an <a href="../kubernetes/#storage-for-buffers">Engine with storage</a> gives every instance a volume and sets it</li>
+<li><strong>One process per queue.</strong> A queue file is locked by the instance that uses it; another process cannot open it</li>
+<li><strong>Retention.</strong> The writing sink sets <code>max_age</code>, which the queue keeps. Deleting or suspending the reading stream discards nothing: the events wait until a reader comes back or they expire, like messages of a broker without a consumer</li>
+<li><strong>Draining a buffer.</strong> <a href="#suspended-streams">Suspend</a> the writing stream and keep the reading one running until the queue is empty. On Kubernetes, the volumes of instances that go are drained by Jobs, see <a href="../kubernetes/#storage-for-buffers">Storage for buffers</a></li>
+<li><strong>Throughput.</strong> Every commit is synced to disk, so the latency of the volume limits the throughput. Size the volume above <code>max_bytes</code>, which counts the payloads only, for the write-ahead log and space not yet returned to the file system</li>
+</ul>
+<h3 id="suspended-streams">Suspended Streams<a class="headerlink" href="#suspended-streams" title="Permanent link">&para;</a></h3>
+<p>A stream with <code>"suspended": true</code> stays defined but does not run: its source is not started, and its stages and sinks are not built, so it opens no port and reads from no broker or buffer. Setting it back to <code>false</code> starts the stream again. Use it to pause a stream, e.g. during maintenance of a destination, or to drain a buffer.</p>
 <h3 id="hold-times">Hold Times<a class="headerlink" href="#hold-times" title="Permanent link">&para;</a></h3>
 <p>A source like OTLP waits for a delivery only for a limited time, its <code>delivery_timeout</code>, and then answers with <code>503</code>. <code>batch</code> stages can hold an event back for up to their <code>timeout</code>, <code>delay</code> stages for their <code>delay</code>. When a stream is created or updated, TRAM adds up these hold times on the way from the source to each sink and rejects the stream if the sum reaches the source's limit: every event that does not fill its batch would be cancelled, so the stream would fail as soon as traffic gets low. The error names the stages:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>stream spec is invalid: on the way to sink openobserve-traces, batch-traces (10s) can hold an event for 10s, but source otlp cancels deliveries after 8s
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>stream spec is invalid: on the way to sink openobserve-traces, batch-traces (10s) can hold an event for 10s, but source otlp cancels deliveries after 8s
 </code></pre></div>
 <p>An update that is rejected leaves the running stream unchanged. Shorten the <code>timeout</code> or <code>delay</code>, or raise the source's <code>delivery_timeout</code>, and keep that below the time the clients wait. Sources without such a limit, like the Broker Source, are not checked.</p>
 

@@ -900,6 +900,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#buffer-sink" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Buffer Sink
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1099,6 +1110,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#buffer-sink" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Buffer Sink
+      </span>
+    </span>
+  </a>
   
 </li>
       
@@ -1465,6 +1487,88 @@
 <li>An expression for the key that fails or does not return a string rejects the event. A missing attribute gives the key <code>""</code>, which is a valid key like any other</li>
 <li>Changing <code>count</code> moves keys to other partitions. Data already stored stays where it is, so changing it is a migration</li>
 </ul>
+<h2 id="buffer-sink">Buffer Sink<a class="headerlink" href="#buffer-sink" title="Permanent link">&para;</a></h2>
+<p>Stores every event durably in a queue on the instance's disk, from which a <a href="../sources/#buffer-source">Buffer Source</a> of the same instance delivers it. The sink returns once the event is synced to disk, so an OTLP client gets <code>200</code>, and a Broker Source acknowledges its message, when the event is stored, not when it is delivered; see <a href="../#buffers">Buffers</a>.</p>
+<p><strong>Type:</strong> <code>buffer</code></p>
+<p><strong>Configuration:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>driver</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>-</td>
+<td>The storage of the queue: <code>sqlite</code></td>
+</tr>
+<tr>
+<td><code>sqlite</code></td>
+<td>object</td>
+<td>With <code>driver: sqlite</code></td>
+<td>-</td>
+<td>Options of the SQLite driver; it has none yet, so <code>{}</code></td>
+</tr>
+<tr>
+<td><code>queue</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>-</td>
+<td>The queue to write: letters, digits and <code>. _ -</code>, starting with a letter or digit. SQLite keeps it in <code>&lt;data dir&gt;/&lt;queue&gt;.db</code></td>
+</tr>
+<tr>
+<td><code>max_age</code></td>
+<td>string</td>
+<td>No</td>
+<td><code>"24h"</code></td>
+<td>How long an event waits for its delivery at most, as a Go duration. It is kept with the queue, so its readers and drains know it</td>
+</tr>
+<tr>
+<td><code>max_bytes</code></td>
+<td>int</td>
+<td>No</td>
+<td><code>1073741824</code> (1 GiB)</td>
+<td>Size of the stored payloads at which the sink refuses further events with an error sources retry (<code>503</code> for OTLP clients)</td>
+</tr>
+<tr>
+<td><code>max_pending</code></td>
+<td>int</td>
+<td>No</td>
+<td><code>256</code></td>
+<td>Events handed to the queue but not yet synced; the sink waits beyond it</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p">{</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"outbox"</span><span class="p">,</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"buffer"</span><span class="p">,</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="nt">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"otlp-in"</span><span class="p">,</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span><span class="nt">"spec"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="nt">"driver"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sqlite"</span><span class="p">,</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="nt">"sqlite"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="nt">"queue"</span><span class="p">:</span><span class="w"> </span><span class="s2">"outbox"</span><span class="p">,</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">    </span><span class="nt">"max_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"24h"</span><span class="p">,</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">    </span><span class="nt">"max_bytes"</span><span class="p">:</span><span class="w"> </span><span class="mi">10737418240</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="p">}</span>
+</code></pre></div>
+<details class="note">
+<summary>Behavior</summary>
+<ul>
+<li>An event is stored as one entry per signal. Concurrent events are stored in one commit, which is synced to disk before their callers return; there is no added delay</li>
+<li>An event larger than <code>max_bytes</code> by itself is rejected (<code>422</code> for OTLP clients), since it can never fit</li>
+<li>Without a data directory (<code>tram server --data-dir</code>), the stream fails to build</li>
+<li>Metrics of the queue are not recorded yet; a queue that holds events but has no Buffer Source in the instance is logged every 10 minutes</li>
+</ul>
+</details>
 
 
 

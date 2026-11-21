@@ -919,6 +919,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#storage-for-buffers" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Storage for buffers
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1135,6 +1146,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#storage-for-buffers" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Storage for buffers
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1261,7 +1283,7 @@
 <li><code>--engine</code> only assigns streams to instances, it is no access control. Anyone who can create a <code>Stream</code> in a watched namespace can name any engine. Use <code>--watch-namespace</code> and RBAC to restrict who can run streams on an instance</li>
 </ul>
 <h2 id="engines">Engines<a class="headerlink" href="#engines" title="Permanent link">&para;</a></h2>
-<p>An <code>Engine</code> (<code>io.tram.core/v1alpha1</code>) is a group of TRAM instances that <code>tram manager</code> runs as a Deployment. A <code>Stream</code> names the engines that run it in <code>spec.engineRefs</code>, and every instance of each of them runs it:</p>
+<p>An <code>Engine</code> (<code>io.tram.core/v1alpha1</code>) is a group of TRAM instances that <code>tram manager</code> runs as a Deployment, or as a StatefulSet if it has <a href="#storage-for-buffers">storage for buffers</a>. A <code>Stream</code> names the engines that run it in <code>spec.engineRefs</code>, and every instance of each of them runs it:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">io.tram.core/v1alpha1</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Engine</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">metadata</span><span class="p">:</span>
@@ -1306,6 +1328,12 @@
 <a id="__codelineno-3-42" name="__codelineno-3-42" href="#__codelineno-3-42"></a><span class="w">      </span><span class="nt">topologySpreadConstraints</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">...</span><span class="p p-Indicator">]</span>
 <a id="__codelineno-3-43" name="__codelineno-3-43" href="#__codelineno-3-43"></a><span class="w">      </span><span class="nt">securityContext</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nv">...</span><span class="p p-Indicator">}</span>
 <a id="__codelineno-3-44" name="__codelineno-3-44" href="#__codelineno-3-44"></a><span class="w">      </span><span class="nt">imagePullSecrets</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">...</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-3-45" name="__codelineno-3-45" href="#__codelineno-3-45"></a><span class="w">  </span><span class="nt">storage</span><span class="p">:</span><span class="w">                          </span><span class="c1"># optional, see Storage for buffers</span>
+<a id="__codelineno-3-46" name="__codelineno-3-46" href="#__codelineno-3-46"></a><span class="w">    </span><span class="nt">size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">20Gi</span><span class="w">                      </span><span class="c1"># cannot be changed</span>
+<a id="__codelineno-3-47" name="__codelineno-3-47" href="#__codelineno-3-47"></a><span class="w">    </span><span class="nt">storageClassName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fast-ssd</span><span class="w">      </span><span class="c1"># optional, cannot be changed</span>
+<a id="__codelineno-3-48" name="__codelineno-3-48" href="#__codelineno-3-48"></a><span class="w">    </span><span class="nt">mountPath</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/lib/tram</span><span class="w">        </span><span class="c1"># default</span>
+<a id="__codelineno-3-49" name="__codelineno-3-49" href="#__codelineno-3-49"></a><span class="w">    </span><span class="nt">drainResources</span><span class="p">:</span><span class="w">                 </span><span class="c1"># default: requests 50m CPU, 128Mi; the instances' limits</span>
+<a id="__codelineno-3-50" name="__codelineno-3-50" href="#__codelineno-3-50"></a><span class="w">      </span><span class="nt">requests</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> cpu</span><span class="p">:</span><span class="w"> </span><span class="nv">50m</span><span class="p p-Indicator">,</span><span class="nt"> memory</span><span class="p">:</span><span class="w"> </span><span class="nv">128Mi</span><span class="w"> </span><span class="p p-Indicator">}</span>
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">io.tram.core/v1</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Stream</span>
@@ -1319,7 +1347,7 @@
 </code></pre></div>
 <p><code>examples/k8s/manager.yaml</code> deploys the manager, and <code>examples/k8s/examples/</code> holds an Engine and Streams that run on it.</p>
 <h3 id="the-manager">The Manager<a class="headerlink" href="#the-manager" title="Permanent link">&para;</a></h3>
-<p><code>tram manager</code> runs no streams. It runs one Deployment per <code>Engine</code>, and it labels every <code>Stream</code> <code>engine.tram.io/&lt;name&gt;</code> (with an empty value) for each engine its <code>spec.engineRefs</code> name; the instances of an engine select the key, e.g. <code>kubectl get streams -l engine.tram.io/engine-1</code>. Run it once per cluster, or as several replicas, of which one at a time works:</p>
+<p><code>tram manager</code> runs no streams. It runs one Deployment or StatefulSet per <code>Engine</code>, and it labels every <code>Stream</code> <code>engine.tram.io/&lt;name&gt;</code> (with an empty value) for each engine its <code>spec.engineRefs</code> name; the instances of an engine select the key, e.g. <code>kubectl get streams -l engine.tram.io/engine-1</code>. Run it once per cluster, or as several replicas, of which one at a time works:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>./tram<span class="w"> </span>manager<span class="w"> </span>--engine-image<span class="w"> </span>registry.example.com/tram:1.14.0
 </code></pre></div>
 <h3 id="rbac">RBAC<a class="headerlink" href="#rbac" title="Permanent link">&para;</a></h3>
@@ -1335,7 +1363,7 @@
 <tr>
 <td><code>tram-manager</code></td>
 <td><code>config/rbac/manager/role.yaml</code></td>
-<td>The manager's service account, with a <code>ClusterRoleBinding</code> (a <code>RoleBinding</code> per namespace with <code>--watch-namespace</code>). Engines, Streams, the generated resources, leader election, and <code>bind</code> on <code>manager-role</code></td>
+<td>The manager's service account, with a <code>ClusterRoleBinding</code> (a <code>RoleBinding</code> per namespace with <code>--watch-namespace</code>). Engines, Streams, the generated resources including StatefulSets, drain Jobs and volume claims, reading pods, leader election, and <code>bind</code> on <code>manager-role</code></td>
 </tr>
 <tr>
 <td><code>manager-role</code></td>
@@ -1345,6 +1373,50 @@
 </tbody>
 </table>
 <p>Both <code>ClusterRole</code>s have to exist. With another <code>--engine-cluster-role</code>, grant the manager <code>bind</code> on that role instead.</p>
+<h3 id="storage-for-buffers">Storage for buffers<a class="headerlink" href="#storage-for-buffers" title="Permanent link">&para;</a></h3>
+<p>The <a href="../components/#buffers">buffer sink and source</a> keep their queues on the instance's disk. With <code>spec.storage</code>, the manager runs the Engine as a StatefulSet in which every instance has a volume of its own (<code>ReadWriteOnce</code>, claim <code>data-tram-engine-&lt;engine&gt;-&lt;ordinal&gt;</code>) mounted as its data directory. Without it, the Engine runs as a Deployment, and Streams with a buffer sink or source do not run on it. Every such Stream reports per Engine in <code>status.engines[].conditions</code> whether it can: <code>StorageAvailable</code> is <code>True</code>, or <code>False</code> with reason <code>EngineHasNoStorage</code>, or <code>StorageMigrating</code> while the instances move to a StatefulSet.</p>
+<p><strong>Rule: buffered events are never discarded before their <code>max_age</code> because of a change in Kubernetes.</strong> The manager keeps every volume either with a running instance or with a drain Job, and deletes a volume only when its drain Job finished, or once everything on it has expired.</p>
+<table>
+<thead>
+<tr>
+<th>What happens</th>
+<th>What the manager does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>storage</code> is added</td>
+<td>Starts a StatefulSet with as many instances as the Deployment, next to it; both serve meanwhile. Once the StatefulSet is ready, the Service selects only its instances (label <code>tram.io/storage: "true"</code>), then the Deployment is deleted, so no request reaches an instance without storage. <code>Migrating</code> is <code>True</code> meanwhile</td>
+</tr>
+<tr>
+<td><code>storage</code> is removed</td>
+<td>Waits while Streams with a buffer sink or source still run on the Engine: <code>Reconciled</code> is <code>False</code> with reason <code>StorageInUse</code>, naming them. Once none is left, starts a Deployment, and when it is ready, deletes the StatefulSet; its volumes stay and are drained</td>
+</tr>
+<tr>
+<td>Scaling down, also by the autoscaler</td>
+<td>The volume of an instance that goes stays and is drained</td>
+</tr>
+<tr>
+<td>Scaling up while a volume is drained</td>
+<td>Stops the drain Job; the instance continues with its volume</td>
+</tr>
+<tr>
+<td>The Engine is deleted</td>
+<td>Keeps it (finalizer <code>tram.io/drain-buffers</code>) until all its volumes are drained, after stopping its instances</td>
+</tr>
+</tbody>
+</table>
+<p>A <strong>drain Job</strong> (<code>tram-drain-&lt;random&gt;</code>, labels <code>tram.io/drain=&lt;engine&gt;</code> and <code>tram.io/ordinal=&lt;n&gt;</code>) runs <code>tram drain</code> with the volume mounted: it loads the Engine's Streams and runs only those that read from a buffer, treating all others as suspended, so nothing writes to the volume any more. It ends once every queue is empty or holds only expired events, also queues no Stream reads any more, so it takes at most about the largest <code>max_age</code> after the instance stopped. Its pod is not selected by the Engine's Service or disruption budget and uses <code>storage.drainResources</code>. If a drain Job fails after its retries, the volume is kept and the Engine's <code>Draining</code> condition says so; delete the Job to try again. If a drain Job never finishes, e.g. because its volume cannot be attached, the volume is deleted once the Job is older than the largest <code>max_age</code> of the Engine's buffer sinks (at least 24 hours) plus one hour, since everything on it has expired by then.</p>
+<p>Deleting or suspending a Stream discards nothing: what its buffer sink wrote waits in the queue until a reading Stream delivers it or it expires, like messages of a broker without a consumer.</p>
+<p>The Engine's status shows the workload (<code>status.workload</code>), the number of volumes (<code>status.volumes</code>) and of volumes being drained (<code>status.drainingVolumes</code>), and the conditions <code>Migrating</code> and <code>Draining</code>.</p>
+<p>To give up buffered events on purpose, annotate the Engine with <code>tram.io/discard-buffers: "true"</code> before or while deleting it; its volumes are deleted at once.</p>
+<p>Limits:</p>
+<ul>
+<li><strong>Deleting a namespace discards buffered events.</strong> Kubernetes deletes everything in it, and nothing can be created in it any more, so no drain Job can run. Delete the Streams and Engines first and wait until they are gone</li>
+<li><code>size</code> and <code>storageClassName</code> cannot be changed; resize the volumes by hand if the storage class allows it</li>
+<li>When a node fails, the StatefulSet does not start its instance elsewhere until the pod is gone; the volume is delivered once the instance runs again</li>
+<li>PVCs need Kubernetes 1.32 or later for <code>persistentVolumeClaimRetentionPolicy</code>; older clusters ignore it, and the manager's drains still delete volumes only when they are done</li>
+</ul>
 <h2 id="the-stream-resource">The Stream Resource<a class="headerlink" href="#the-stream-resource" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">io.tram.core/v1</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Stream</span>

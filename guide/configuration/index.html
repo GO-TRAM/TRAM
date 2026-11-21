@@ -1035,7 +1035,7 @@
 <h1 id="configuration-sources">Configuration Sources<a class="headerlink" href="#configuration-sources" title="Permanent link">&para;</a></h1>
 <p>Besides the API, streams can be managed from two further sources. All of them change the same set of streams.</p>
 <h2 id="file-sync">File Sync<a class="headerlink" href="#file-sync" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>./tram<span class="w"> </span>server<span class="w"> </span>--enable-file-sync<span class="w"> </span>--config-directory<span class="w"> </span>config
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>./tram<span class="w"> </span>server<span class="w"> </span>--enable-file-sync<span class="w"> </span>--config-dir<span class="w"> </span>config
 </code></pre></div>
 <p>Every <code>&lt;name&gt;.json</code> file in the directory describes one stream, in the same format as the API request body (<code>{"stream": {...}}</code>); see <code>examples/config/</code> for examples. The file name, without <code>.json</code>, is the stream name. The sync works in both directions:</p>
 <ul>

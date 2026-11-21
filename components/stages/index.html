@@ -1996,7 +1996,7 @@
 <a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a><span class="w">  </span><span class="p">}</span>
 <a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a><span class="p">}</span>
 </code></pre></div>
-<p><strong>Metrics:</strong> besides the node metrics of its stream, the stage records its lookup outcomes, with the <code>node</code> of the stage and the <code>signal</code> as labels:</p>
+<p><strong>Metrics:</strong> besides the node metrics of its stream, the stage records its lookup outcomes, with the <code>stream</code>, the <code>node</code> of the stage and the <code>signal</code> as labels:</p>
 <table>
 <thead>
 <tr>
@@ -2010,24 +2010,24 @@
 <tr>
 <td><code>tram_stage_value_map_mapped_total</code></td>
 <td>Counter</td>
-<td><code>node</code>, <code>signal</code></td>
+<td><code>stream</code>, <code>node</code>, <code>signal</code></td>
 <td>Records whose source value the table maps, which received the mapped value</td>
 </tr>
 <tr>
 <td><code>tram_stage_value_map_lookup_missing_attr_total</code></td>
 <td>Counter</td>
-<td><code>node</code>, <code>signal</code></td>
+<td><code>stream</code>, <code>node</code>, <code>signal</code></td>
 <td>Records without the source attribute, which received the default value</td>
 </tr>
 <tr>
 <td><code>tram_stage_value_map_lookup_no_entry_total</code></td>
 <td>Counter</td>
-<td><code>node</code>, <code>signal</code></td>
+<td><code>stream</code>, <code>node</code>, <code>signal</code></td>
 <td>Records whose source value has no table entry, which received the default value</td>
 </tr>
 </tbody>
 </table>
-<p>The node metrics framework counts records and durations only, not lookup outcomes, which is why the stage adds its own counters. Unlike the node metrics, they cannot carry the stream name, so they are series per stage name; keep stage names unique per stream to keep the series apart.</p>
+<p>The node metrics framework counts records and durations only, not lookup outcomes, which is why the stage adds its own counters, created from the meter provider its factory passes. They are labeled like the node metrics, so every stream and stage has a series of its own.</p>
 <details class="note">
 <summary>Behavior</summary>
 <ul>
